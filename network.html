@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>InternTrack | Networking Tracker</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script defer src="app.js"></script>
+  </head>
+  <body data-page="network">
+    <header class="site-header">
+      <div class="container nav-wrap">
+        <h1 class="brand">InternTrack</h1>
+        <nav class="nav" aria-label="Main navigation">
+          <a href="index.html" class="nav-link">Dashboard</a>
+          <a href="network.html" class="nav-link active">Networking</a>
+          <a href="summary.html" class="nav-link">Weekly Summary</a>
+        </nav>
+        <button id="themeToggle" class="btn btn-secondary" type="button">🌙 Dark</button>
+      </div>
+    </header>
+
+    <main class="container app-shell">
+      <aside class="card internship-panel">
+        <h2>Internships</h2>
+        <p class="muted">Switch between current and past internships.</p>
+
+        <div class="field-group">
+          <label for="internshipSelect">Active Internship</label>
+          <select id="internshipSelect"></select>
+        </div>
+
+        <ul id="internshipList" class="list compact-list"></ul>
+
+        <h3>Add Internship</h3>
+        <form id="internshipForm" novalidate>
+          <div class="field-group">
+            <label for="internshipName">Internship Name</label>
+            <input id="internshipName" type="text" placeholder="Summer 2026 Internship" required />
+          </div>
+          <div class="field-group">
+            <label for="internshipCompany">Company</label>
+            <input id="internshipCompany" type="text" placeholder="Company name" />
+          </div>
+          <p id="internshipError" class="error" aria-live="polite"></p>
+          <button class="btn" type="submit">Add Internship</button>
+        </form>
+      </aside>
+
+      <section class="main-content single-col">
+        <section class="card">
+          <h2>Add Networking Contact</h2>
+          <form id="contactForm" novalidate>
+            <div class="two-col">
+              <div class="field-group">
+                <label for="contactName">Name</label>
+                <input id="contactName" type="text" required />
+              </div>
+              <div class="field-group">
+                <label for="contactEmail">Email</label>
+                <input id="contactEmail" type="email" required />
+              </div>
+            </div>
+            <div class="two-col">
+              <div class="field-group">
+                <label for="dateMet">Date Met</label>
+                <input id="dateMet" type="date" required />
+              </div>
+              <div class="field-group">
+                <label for="followUp">Follow-up Date</label>
+                <input id="followUp" type="date" required />
+              </div>
+            </div>
+            <div class="field-group">
+              <label for="contactNotes">Notes</label>
+              <textarea id="contactNotes" rows="3" required></textarea>
+            </div>
+            <p id="contactError" class="error" aria-live="polite"></p>
+            <button class="btn" type="submit">Save Contact</button>
+          </form>
+        </section>
+
+        <section class="card">
+          <h2>Contact List</h2>
+          <ul id="contactList" class="list"></ul>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

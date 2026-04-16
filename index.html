@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>InternTrack | Dashboard</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script defer src="app.js"></script>
+  </head>
+  <body data-page="dashboard">
+    <header class="site-header">
+      <div class="container nav-wrap">
+        <h1 class="brand">InternTrack</h1>
+        <nav class="nav" aria-label="Main navigation">
+          <a href="index.html" class="nav-link active">Dashboard</a>
+          <a href="network.html" class="nav-link">Networking</a>
+          <a href="summary.html" class="nav-link">Weekly Summary</a>
+        </nav>
+        <button id="themeToggle" class="btn btn-secondary" type="button">🌙 Dark</button>
+      </div>
+    </header>
+
+    <main class="container app-shell">
+      <aside class="card internship-panel">
+        <h2>Internships</h2>
+        <p class="muted">Switch between current and past internships.</p>
+
+        <div class="field-group">
+          <label for="internshipSelect">Active Internship</label>
+          <select id="internshipSelect"></select>
+        </div>
+
+        <ul id="internshipList" class="list compact-list"></ul>
+
+        <h3>Add Internship</h3>
+        <form id="internshipForm" novalidate>
+          <div class="field-group">
+            <label for="internshipName">Internship Name</label>
+            <input id="internshipName" type="text" placeholder="Summer 2026 Internship" required />
+          </div>
+          <div class="field-group">
+            <label for="internshipCompany">Company</label>
+            <input id="internshipCompany" type="text" placeholder="Company name" />
+          </div>
+          <p id="internshipError" class="error" aria-live="polite"></p>
+          <button class="btn" type="submit">Add Internship</button>
+        </form>
+      </aside>
+
+      <section class="main-content grid">
+        <section class="card">
+          <h2>Daily / Weekly Log</h2>
+          <form id="logForm" novalidate>
+            <div class="field-group">
+              <label for="logDate">Date</label>
+              <input id="logDate" type="date" required />
+            </div>
+            <div class="field-group">
+              <label for="logText">What did you work on?</label>
+              <textarea id="logText" rows="4" placeholder="Worked on onboarding docs and fixed UI bug..." required></textarea>
+            </div>
+            <p id="logError" class="error" aria-live="polite"></p>
+            <button class="btn" type="submit">Add Entry</button>
+          </form>
+        </section>
+
+        <section class="card">
+          <h2>Saved Logs</h2>
+          <ul id="logList" class="list"></ul>
+        </section>
+
+        <section class="card">
+          <h2>Files</h2>
+          <p class="muted">For MVP, only file names are saved.</p>
+          <div class="row">
+            <input id="fileInput" type="file" multiple />
+            <button id="addFileBtn" class="btn" type="button">Save File Name(s)</button>
+          </div>
+          <p id="fileError" class="error" aria-live="polite"></p>
+          <ul id="fileList" class="list"></ul>
+        </section>
+
+        <section class="card">
+          <h2>Weekly Summary Preview</h2>
+          <div class="two-col">
+            <div class="field-group">
+              <label for="managerName">Manager Name</label>
+              <input id="managerName" type="text" placeholder="Manager" />
+            </div>
+            <div class="field-group">
+              <label for="yourName">Your Name</label>
+              <input id="yourName" type="text" placeholder="Your name" />
+            </div>
+          </div>
+          <button id="generatePreviewBtn" class="btn" type="button">Generate Summary</button>
+          <textarea id="summaryPreview" rows="10" readonly></textarea>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

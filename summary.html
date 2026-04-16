@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>InternTrack | Weekly Summary</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script defer src="app.js"></script>
+  </head>
+  <body data-page="summary">
+    <header class="site-header">
+      <div class="container nav-wrap">
+        <h1 class="brand">InternTrack</h1>
+        <nav class="nav" aria-label="Main navigation">
+          <a href="index.html" class="nav-link">Dashboard</a>
+          <a href="network.html" class="nav-link">Networking</a>
+          <a href="summary.html" class="nav-link active">Weekly Summary</a>
+        </nav>
+        <button id="themeToggle" class="btn btn-secondary" type="button">🌙 Dark</button>
+      </div>
+    </header>
+
+    <main class="container app-shell">
+      <aside class="card internship-panel">
+        <h2>Internships</h2>
+        <p class="muted">Switch between current and past internships.</p>
+
+        <div class="field-group">
+          <label for="internshipSelect">Active Internship</label>
+          <select id="internshipSelect"></select>
+        </div>
+
+        <ul id="internshipList" class="list compact-list"></ul>
+
+        <h3>Add Internship</h3>
+        <form id="internshipForm" novalidate>
+          <div class="field-group">
+            <label for="internshipName">Internship Name</label>
+            <input id="internshipName" type="text" placeholder="Summer 2026 Internship" required />
+          </div>
+          <div class="field-group">
+            <label for="internshipCompany">Company</label>
+            <input id="internshipCompany" type="text" placeholder="Company name" />
+          </div>
+          <p id="internshipError" class="error" aria-live="polite"></p>
+          <button class="btn" type="submit">Add Internship</button>
+        </form>
+      </aside>
+
+      <section class="main-content single-col">
+        <section class="card">
+          <h2>Weekly Summary Generator</h2>
+          <div class="two-col">
+            <div class="field-group">
+              <label for="summaryManagerName">Manager Name</label>
+              <input id="summaryManagerName" type="text" placeholder="Manager" />
+            </div>
+            <div class="field-group">
+              <label for="summaryYourName">Your Name</label>
+              <input id="summaryYourName" type="text" placeholder="Your name" />
+            </div>
+          </div>
+
+          <div class="row wrap">
+            <button id="formalBtn" class="btn" type="button">Formal</button>
+            <button id="casualBtn" class="btn btn-secondary" type="button">Casual</button>
+            <button id="generateSummaryBtn" class="btn" type="button">Generate Summary</button>
+            <button id="copySummaryBtn" class="btn btn-secondary" type="button">Copy Summary</button>
+          </div>
+
+          <p id="summaryMessage" class="success" aria-live="polite"></p>
+        </section>
+
+        <section class="card">
+          <h3>Logs from Last 7 Days</h3>
+          <ul id="weeklyLogs" class="list"></ul>
+        </section>
+
+        <section class="card">
+          <h3>Generated Summary</h3>
+          <textarea id="generatedSummary" rows="12" readonly></textarea>
+        </section>
+
+        <section class="card">
+          <h3>Weekly Insight</h3>
+          <p id="quoteText" class="quote">Click "Generate Summary" to load a motivation quote.</p>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>
