@@ -41,7 +41,17 @@ function makeId() {
 }
 
 function getInternships() {
-  return readStore(STORAGE_KEYS.internships, []);
+  const internships = readStore(STORAGE_KEYS.internships, []);
+  return Array.isArray(internships)
+    ? internships.map((item) => ({
+        id: item.id || makeId(),
+        name: (item.name || "").trim(),
+        company: (item.company || "").trim(),
+        startDate: item.startDate || "",
+        endDate: item.endDate || "",
+        createdAt: item.createdAt || new Date().toISOString()
+      }))
+    : [];
 }
 
 function getActiveInternshipId() {
@@ -53,7 +63,30 @@ function setActiveInternshipId(id) {
 }
 
 function scopedKey(baseKey, internshipId = getActiveInternshipId()) {
-  return `${baseKey}_${internshipId}`;
+  return `${baseKey}_${internshipId || "__none__"}`;
+}
+
+function hasActiveInternship() {
+  return Boolean(getActiveInternshipId());
+}
+
+function requireActiveInternship(errorEl, message = "Please add or select an internship first.") {
+  if (hasActiveInternship()) return true;
+  if (errorEl) errorEl.textContent = message;
+  return false;
+}
+
+function deleteInternshipScopedData(internshipId) {
+  [
+    STORAGE_KEYS.logs,
+    STORAGE_KEYS.contacts,
+    STORAGE_KEYS.files,
+    STORAGE_KEYS.managerName,
+    STORAGE_KEYS.yourName,
+    STORAGE_KEYS.nextSteps
+  ].forEach((baseKey) => {
+    localStorage.removeItem(scopedKey(baseKey, internshipId));
+  });
 }
 
 function readScopedStore(baseKey, fallback = []) {
@@ -139,26 +172,32 @@ function normalizeFile(file = {}) {
 }
 
 function getLogs() {
+  if (!hasActiveInternship()) return [];
   return readScopedStore(STORAGE_KEYS.logs, []).map(normalizeLog);
 }
 
 function saveLogs(logs) {
+  if (!hasActiveInternship()) return;
   writeScopedStore(STORAGE_KEYS.logs, logs.map(normalizeLog));
 }
 
 function getContacts() {
+  if (!hasActiveInternship()) return [];
   return readScopedStore(STORAGE_KEYS.contacts, []).map(normalizeContact);
 }
 
 function saveContacts(contacts) {
+  if (!hasActiveInternship()) return;
   writeScopedStore(STORAGE_KEYS.contacts, contacts.map(normalizeContact));
 }
 
 function getFiles() {
+  if (!hasActiveInternship()) return [];
   return readScopedStore(STORAGE_KEYS.files, []).map(normalizeFile);
 }
 
 function saveFiles(files) {
+  if (!hasActiveInternship()) return;
   writeScopedStore(STORAGE_KEYS.files, files.map(normalizeFile));
 }
 
@@ -225,21 +264,32 @@ function migrateLegacyDataIntoDefaultInternship(defaultId) {
 function ensureInternshipWorkspace() {
   let internships = getInternships();
 
-  if (!Array.isArray(internships) || internships.length === 0) {
-    internships = [
-      {
-        id: makeId(),
-        name: "Current Internship",
-        company: "",
-        createdAt: new Date().toISOString()
-      }
-    ];
+  if (!Array.isArray(internships)) {
+    internships = [];
+    writeStore(STORAGE_KEYS.internships, internships);
+  }
+
+  const cleaned = internships.filter((item) => {
+    const looksLikeLegacyDefault =
+      item.name === "Current Internship" &&
+      !item.company &&
+      !item.startDate &&
+      !item.endDate &&
+      getInternshipStats(item.id).logs === 0 &&
+      getInternshipStats(item.id).contacts === 0 &&
+      getInternshipStats(item.id).files === 0;
+    return !looksLikeLegacyDefault;
+  });
+
+  if (cleaned.length !== internships.length) {
+    internships = cleaned;
     writeStore(STORAGE_KEYS.internships, internships);
   }
 
   let activeId = getActiveInternshipId();
-  if (!internships.some((item) => item.id === activeId)) {
-    activeId = internships[0].id;
+  const activeExists = internships.some((item) => item.id === activeId);
+  if (!activeExists) {
+    activeId = internships[0]?.id || "";
     setActiveInternshipId(activeId);
   }
 
@@ -254,20 +304,39 @@ function renderInternshipPanel() {
   const internships = getInternships();
   const activeId = getActiveInternshipId();
 
-  select.innerHTML = internships
-    .map((internship) => `<option value="${internship.id}">${escapeHtml(internship.name)}</option>`)
-    .join("");
-  select.value = activeId;
+  if (!internships.length) {
+    select.innerHTML = '<option value="">No internships yet</option>';
+    select.disabled = true;
+  } else {
+    select.disabled = false;
+    select.innerHTML = internships
+      .map((internship) => `<option value="${internship.id}">${escapeHtml(internship.name)}</option>`)
+      .join("");
+    select.value = activeId;
+  }
+
+  if (!internships.length) {
+    list.innerHTML = '<li class="empty">No internships yet. Click + New Internship.</li>';
+    return;
+  }
 
   list.innerHTML = internships
     .map((internship) => {
       const stats = getInternshipStats(internship.id);
       const activeLabel = internship.id === activeId ? '<span class="badge">Active</span>' : "";
+      const duration = internship.startDate || internship.endDate
+        ? `${formatDate(internship.startDate)} → ${formatDate(internship.endDate)}`
+        : "Duration not set";
       return `
         <li class="list-item">
           <p><strong>${escapeHtml(internship.name)}</strong> ${activeLabel}</p>
           <p class="tiny">${escapeHtml(internship.company || "No company set")}</p>
+          <p class="tiny">${escapeHtml(duration)}</p>
           <p class="tiny">${stats.logs} logs · ${stats.contacts} contacts · ${stats.files} files</p>
+          <div class="row wrap internship-actions">
+            <button class="btn btn-secondary" type="button" data-internship-action="edit" data-internship-id="${internship.id}">Edit</button>
+            <button class="btn btn-secondary" type="button" data-internship-action="delete" data-internship-id="${internship.id}">Delete</button>
+          </div>
         </li>
       `;
     })
@@ -275,13 +344,21 @@ function renderInternshipPanel() {
 }
 
 function initInternshipPanel() {
-  const form = document.getElementById("internshipForm");
   const select = document.getElementById("internshipSelect");
-  if (!form || !select) return;
+  const list = document.getElementById("internshipList");
+  const addBtn = document.getElementById("addInternshipBtn");
+  if (!select || !list || !addBtn) return;
 
   const error = document.getElementById("internshipError");
-  const nameInput = document.getElementById("internshipName");
-  const companyInput = document.getElementById("internshipCompany");
+
+  const promptInternshipPayload = (seed = {}) => {
+    const name = window.prompt("Internship name", seed.name || "")?.trim() || "";
+    if (!name) return null;
+    const company = window.prompt("Company", seed.company || "")?.trim() || "";
+    const startDate = window.prompt("Start date (YYYY-MM-DD)", seed.startDate || "")?.trim() || "";
+    const endDate = window.prompt("End date (YYYY-MM-DD)", seed.endDate || "")?.trim() || "";
+    return { name, company, startDate, endDate };
+  };
 
   select.addEventListener("change", () => {
     setActiveInternshipId(select.value);
@@ -289,27 +366,72 @@ function initInternshipPanel() {
     refreshActivePageData();
   });
 
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
+  addBtn.addEventListener("click", () => {
     error.textContent = "";
 
-    const name = nameInput.value.trim();
-    const company = companyInput.value.trim();
+    const payload = promptInternshipPayload({
+      name: "",
+      company: "",
+      startDate: "",
+      endDate: ""
+    });
 
-    if (!name) {
-      error.textContent = "Internship name is required.";
-      return;
-    }
+    if (!payload) return;
 
     const internships = getInternships();
-    const next = { id: makeId(), name, company, createdAt: new Date().toISOString() };
+    const next = { id: makeId(), ...payload, createdAt: new Date().toISOString() };
     internships.push(next);
 
     writeStore(STORAGE_KEYS.internships, internships);
     setActiveInternshipId(next.id);
-    form.reset();
     renderInternshipPanel();
     refreshActivePageData();
+  });
+
+  list.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-internship-action]");
+    if (!button) return;
+
+    const internshipId = button.dataset.internshipId;
+    const action = button.dataset.internshipAction;
+    const internships = getInternships();
+    const target = internships.find((item) => item.id === internshipId);
+    if (!target) return;
+
+    if (action === "edit") {
+      const payload = promptInternshipPayload(target);
+      if (!payload) return;
+
+      const updated = internships.map((item) =>
+        item.id === internshipId
+          ? {
+              ...item,
+              ...payload
+            }
+          : item
+      );
+
+      writeStore(STORAGE_KEYS.internships, updated);
+      renderInternshipPanel();
+      refreshActivePageData();
+      return;
+    }
+
+    if (action === "delete") {
+      const confirmed = window.confirm(`Delete internship "${target.name}" and all associated logs, files, and contacts?`);
+      if (!confirmed) return;
+
+      const remaining = internships.filter((item) => item.id !== internshipId);
+      writeStore(STORAGE_KEYS.internships, remaining);
+      deleteInternshipScopedData(internshipId);
+
+      if (getActiveInternshipId() === internshipId) {
+        setActiveInternshipId(remaining[0]?.id || "");
+      }
+
+      renderInternshipPanel();
+      refreshActivePageData();
+    }
   });
 
   renderInternshipPanel();
@@ -524,13 +646,21 @@ function initDashboard() {
 
   logDate.value = todayDateString();
 
-  managerNameInput.addEventListener("input", () => writeScopedText(STORAGE_KEYS.managerName, managerNameInput.value));
-  yourNameInput.addEventListener("input", () => writeScopedText(STORAGE_KEYS.yourName, yourNameInput.value));
-  nextStepsInput.addEventListener("input", () => writeScopedText(STORAGE_KEYS.nextSteps, nextStepsInput.value));
+  managerNameInput.addEventListener("input", () => {
+    if (hasActiveInternship()) writeScopedText(STORAGE_KEYS.managerName, managerNameInput.value);
+  });
+  yourNameInput.addEventListener("input", () => {
+    if (hasActiveInternship()) writeScopedText(STORAGE_KEYS.yourName, yourNameInput.value);
+  });
+  nextStepsInput.addEventListener("input", () => {
+    if (hasActiveInternship()) writeScopedText(STORAGE_KEYS.nextSteps, nextStepsInput.value);
+  });
 
   logForm.addEventListener("submit", (event) => {
     event.preventDefault();
     logError.textContent = "";
+
+    if (!requireActiveInternship(logError)) return;
 
     const entry = normalizeLog({
       date: logDate.value,
@@ -562,6 +692,8 @@ function initDashboard() {
 
   addFileBtn.addEventListener("click", async () => {
     fileError.textContent = "";
+
+    if (!requireActiveInternship(fileError)) return;
 
     const selected = Array.from(fileInput.files || []);
     if (!selected.length) {
@@ -596,6 +728,7 @@ function initDashboard() {
   });
 
   previewBtn.addEventListener("click", () => {
+    if (!requireActiveInternship(logError, "Add/select an internship to generate a summary.")) return;
     previewArea.value = buildSummary({
       logs: getLast7DaysLogs(),
       managerName: managerNameInput.value,
@@ -611,9 +744,9 @@ function initDashboard() {
   }
 
   refreshActivePageData = async () => {
-    managerNameInput.value = readScopedText(STORAGE_KEYS.managerName, "");
-    yourNameInput.value = readScopedText(STORAGE_KEYS.yourName, "");
-    nextStepsInput.value = readScopedText(STORAGE_KEYS.nextSteps, "");
+    managerNameInput.value = hasActiveInternship() ? readScopedText(STORAGE_KEYS.managerName, "") : "";
+    yourNameInput.value = hasActiveInternship() ? readScopedText(STORAGE_KEYS.yourName, "") : "";
+    nextStepsInput.value = hasActiveInternship() ? readScopedText(STORAGE_KEYS.nextSteps, "") : "";
     previewArea.value = "";
     renderLogs();
     renderFiles();
@@ -643,7 +776,7 @@ function renderContacts() {
 
   list.innerHTML = contacts
     .map(
-      (contact, index) => `
+      (contact) => `
       <li class="list-item ${dueIds.has(contact.id) ? "due-item" : ""}">
         <p><strong>${escapeHtml(contact.name)}</strong> · ${escapeHtml(contact.email)}</p>
         <p class="tiny">${escapeHtml(contact.role || "Role not set")}</p>
@@ -651,15 +784,15 @@ function renderContacts() {
         <p><span class="label">Interests:</span> ${escapeHtml(contact.interests || "-")}</p>
         <p><span class="label">Advice:</span> ${escapeHtml(contact.adviceGiven || "-")}</p>
         <p>${escapeHtml(contact.notes || "")}</p>
-        <button class="btn btn-secondary" data-delete-index="${index}" type="button">Delete</button>
+        <button class="btn btn-secondary" data-delete-id="${contact.id}" type="button">Delete</button>
       </li>`
     )
     .join("");
 
-  list.querySelectorAll("[data-delete-index]").forEach((button) => {
+  list.querySelectorAll("[data-delete-id]").forEach((button) => {
     button.addEventListener("click", () => {
-      const idx = Number(button.dataset.deleteIndex);
-      const next = getContacts().filter((_, i) => i !== idx);
+      const id = button.dataset.deleteId;
+      const next = getContacts().filter((contact) => contact.id !== id);
       saveContacts(next);
       renderContacts();
       renderFollowUpAlerts("networkFollowUps");
@@ -686,6 +819,8 @@ function initNetworking() {
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     error.textContent = "";
+
+    if (!requireActiveInternship(error)) return;
 
     const contact = normalizeContact({
       name: name.value,
@@ -759,12 +894,19 @@ function initSummary() {
   const yourNameInput = document.getElementById("summaryYourName");
   const nextStepsInput = document.getElementById("summaryNextSteps");
 
-  managerNameInput.addEventListener("input", () => writeScopedText(STORAGE_KEYS.managerName, managerNameInput.value));
-  yourNameInput.addEventListener("input", () => writeScopedText(STORAGE_KEYS.yourName, yourNameInput.value));
-  nextStepsInput.addEventListener("input", () => writeScopedText(STORAGE_KEYS.nextSteps, nextStepsInput.value));
+  managerNameInput.addEventListener("input", () => {
+    if (hasActiveInternship()) writeScopedText(STORAGE_KEYS.managerName, managerNameInput.value);
+  });
+  yourNameInput.addEventListener("input", () => {
+    if (hasActiveInternship()) writeScopedText(STORAGE_KEYS.yourName, yourNameInput.value);
+  });
+  nextStepsInput.addEventListener("input", () => {
+    if (hasActiveInternship()) writeScopedText(STORAGE_KEYS.nextSteps, nextStepsInput.value);
+  });
 
   generateBtn.addEventListener("click", async () => {
     message.textContent = "";
+    if (!requireActiveInternship(message, "Add/select an internship first.")) return;
     const logs = renderWeeklyLogs();
     renderWeeklyConnections("weeklyConnections");
 
@@ -793,9 +935,9 @@ function initSummary() {
   });
 
   refreshActivePageData = () => {
-    managerNameInput.value = readScopedText(STORAGE_KEYS.managerName, "");
-    yourNameInput.value = readScopedText(STORAGE_KEYS.yourName, "");
-    nextStepsInput.value = readScopedText(STORAGE_KEYS.nextSteps, "");
+    managerNameInput.value = hasActiveInternship() ? readScopedText(STORAGE_KEYS.managerName, "") : "";
+    yourNameInput.value = hasActiveInternship() ? readScopedText(STORAGE_KEYS.yourName, "") : "";
+    nextStepsInput.value = hasActiveInternship() ? readScopedText(STORAGE_KEYS.nextSteps, "") : "";
     summaryArea.value = "";
     message.textContent = "";
     quoteText.textContent = 'Click "Generate Summary" to load a weekly insight.';

@@ -297,6 +297,15 @@ textarea[readonly] {
   padding: 0.55rem 0.65rem;
 }
 
+#addInternshipBtn {
+  width: 100%;
+}
+
+.internship-actions .btn {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.85rem;
+}
+
 .tiny {
   font-size: 0.85rem;
   color: var(--muted);
