@@ -20,71 +20,51 @@
       </div>
     </header>
 
-    <main class="container app-shell">
-      <aside class="card internship-panel">
-        <h2>Internships</h2>
-        <p class="muted">Switch between current and past internships.</p>
+    <main class="container network-main">
 
-        <div class="field-group">
-          <label for="internshipSelect">Active Internship</label>
-          <select id="internshipSelect"></select>
-        </div>
-
-        <ul id="internshipList" class="list compact-list"></ul>
-
-        <button id="addInternshipBtn" class="btn btn-secondary" type="button">+ New Internship</button>
-        <p id="internshipError" class="error" aria-live="polite"></p>
-      </aside>
-
-      <section class="main-content single-col">
-        <section class="card">
-          <h2>Reminders &amp; Follow-ups</h2>
-          <ul id="networkFollowUps" class="list"></ul>
-        </section>
-
+      <!-- LEFT: Add contact form -->
+      <div class="network-left">
         <section class="card">
           <h2>Add Networking Contact</h2>
           <form id="contactForm" novalidate>
             <div class="two-col">
               <div class="field-group">
-                <label for="contactName">Name</label>
+                <label for="contactName">Name <span class="required">*</span></label>
                 <input id="contactName" type="text" required />
               </div>
               <div class="field-group">
-                <label for="contactEmail">Email</label>
+                <label for="contactEmail">Email <span class="required">*</span></label>
                 <input id="contactEmail" type="email" required />
               </div>
             </div>
             <div class="two-col">
               <div class="field-group">
+                <label for="contactCompany">Company <span class="required">*</span></label>
+                <input id="contactCompany" type="text" placeholder="Google, Meta, etc." required />
+              </div>
+              <div class="field-group">
                 <label for="contactRole">Role</label>
                 <input id="contactRole" type="text" placeholder="Software Engineer" />
               </div>
-              <div class="field-group">
-                <label for="contactCompany">Company</label>
-                <input id="contactCompany" type="text" placeholder="Google, Meta, etc." />
-              </div>
             </div>
             <div class="two-col">
               <div class="field-group">
-                <label for="dateMet">Date Met</label>
+                <label for="dateMet">Date Met <span class="required">*</span></label>
                 <input id="dateMet" type="date" required />
               </div>
-            </div>
-            <div class="two-col">
               <div class="field-group">
                 <label for="lastContacted">Last Contacted</label>
                 <input id="lastContacted" type="date" />
               </div>
-              <div class="field-group">
-                <label for="followUpFrequency">Stay in touch frequency</label>
-                <select id="followUpFrequency">
-                  <option value="monthly">Monthly</option>
-                  <option value="bimonthly">Every 2 months</option>
-                  <option value="quarterly">Quarterly</option>
-                  <option value="none">No reminders</option>
-                </select>
-              </div>
+            </div>
+            <div class="field-group">
+              <label for="followUpFrequency">Stay in touch frequency</label>
+              <select id="followUpFrequency">
+                <option value="monthly">Monthly</option>
+                <option value="bimonthly">Every 2 months</option>
+                <option value="quarterly">Quarterly</option>
+                <option value="none">No reminders</option>
+              </select>
             </div>
             <div class="field-group">
               <label for="interests">Interests</label>
@@ -102,12 +82,21 @@
             <button class="btn" type="submit">Save Contact</button>
           </form>
         </section>
+      </div>
+
+      <!-- RIGHT: Reminders + Contact list -->
+      <div class="network-right">
+        <section class="card">
+          <h2>Reminders &amp; Follow-ups</h2>
+          <ul id="networkFollowUps" class="list"></ul>
+        </section>
 
         <section class="card">
           <h2>Contact List</h2>
           <ul id="contactList" class="list"></ul>
         </section>
-      </section>
+      </div>
+
     </main>
   </body>
 </html>

@@ -653,6 +653,31 @@ textarea[readonly] {
   min-width: 0;
 }
 
+/* ── Network page full-width layout ── */
+.network-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+  padding-top: 1.5rem;
+  padding-bottom: 2rem;
+}
+.network-left,
+.network-right {
+  display: grid;
+  gap: 1.25rem;
+}
+
+@media (max-width: 780px) {
+  .network-main {
+    grid-template-columns: 1fr;
+  }
+}
+
+.required {
+  color: var(--danger);
+}
+
 /* ── Contact Page (full page profile) ── */
 .contact-page-header {
   display: grid;

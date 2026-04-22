@@ -1,6 +1,7 @@
 const STORAGE_KEYS = {
   logs: "interntrack_logs",
   contacts: "interntrack_contacts",
+  globalContacts: "interntrack_global_contacts",
   files: "interntrack_files",
   tone: "interntrack_tone",
   theme: "interntrack_theme",
@@ -248,13 +249,11 @@ function saveLogs(logs) {
 }
 
 function getContacts() {
-  if (!hasActiveInternship()) return [];
-  return readScopedStore(STORAGE_KEYS.contacts, []).map(normalizeContact);
+  return readStore(STORAGE_KEYS.globalContacts, []).map(normalizeContact);
 }
 
 function saveContacts(contacts) {
-  if (!hasActiveInternship()) return;
-  writeScopedStore(STORAGE_KEYS.contacts, contacts.map(normalizeContact));
+  writeStore(STORAGE_KEYS.globalContacts, contacts.map(normalizeContact));
 }
 
 function getFiles() {
@@ -563,7 +562,9 @@ function renderFollowUpAlerts(listId, emptyText = "No follow-ups due.") {
   list.querySelectorAll(".reminder-trigger").forEach((btn) => {
     btn.addEventListener("click", () => {
       const contactId = btn.dataset.contactId;
-      if (contactId) window.location.href = `contact.html?id=${encodeURIComponent(contactId)}`;
+      if (contactId) {
+        window.location.href = `contact.html?id=${encodeURIComponent(contactId)}`;
+      }
     });
   });
 }
@@ -944,8 +945,6 @@ function initNetworking() {
     event.preventDefault();
     error.textContent = "";
 
-    if (!requireActiveInternship(error)) return;
-
     const frequency = followUpFrequencyEl?.value || "none";
     const lastContactedValue = lastContactedEl?.value || dateMetEl?.value || todayDateString();
 
@@ -964,8 +963,8 @@ function initNetworking() {
       documents: []
     });
 
-    if (!contact.name || !contact.email || !contact.dateMet) {
-      error.textContent = "Name, email, and date met are required.";
+    if (!contact.name || !contact.email || !contact.dateMet || !contact.company) {
+      error.textContent = "Name, email, company, and date met are required.";
       return;
     }
 
@@ -1699,7 +1698,6 @@ function initContactPage() {
   const params = new URLSearchParams(window.location.search);
   const contactId = params.get("id");
 
-  // Wire up internship panel refresh so contact re-resolves if active internship changes
   refreshActivePageData = () => renderPage();
 
   function freshContact() {
