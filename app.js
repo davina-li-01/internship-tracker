@@ -562,8 +562,7 @@ function renderFollowUpAlerts(listId, emptyText = "No follow-ups due.") {
   list.querySelectorAll(".reminder-trigger").forEach((btn) => {
     btn.addEventListener("click", () => {
       const contactId = btn.dataset.contactId;
-      const contact = getContacts().find((c) => c.id === contactId);
-      if (contact) showContactProfile(contact);
+      if (contactId) window.location.href = `contact.html?id=${encodeURIComponent(contactId)}`;
     });
   });
 }
@@ -917,8 +916,7 @@ function renderContacts() {
 
   list.querySelectorAll("[data-open-contact]").forEach((card) => {
     const open = () => {
-      const contact = getContacts().find((c) => c.id === card.dataset.openContact);
-      if (contact) showContactProfile(contact);
+      window.location.href = `contact.html?id=${encodeURIComponent(card.dataset.openContact)}`;
     };
     card.addEventListener("click", open);
     card.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") open(); });
@@ -1689,10 +1687,315 @@ function checkRemindersOnLoad() {
   }, 800);
 }
 
+function initContactPage() {
+  const root = document.getElementById("contactPageContent");
+  if (!root) return;
+
+  const params = new URLSearchParams(window.location.search);
+  const contactId = params.get("id");
+
+  function freshContact() {
+    return getContacts().find((c) => c.id === contactId) || null;
+  }
+
+  function save(updateFn) {
+    const updated = getContacts().map((c) => c.id !== contactId ? c : updateFn(c));
+    saveContacts(updated);
+  }
+
+  function renderPage() {
+    const c = freshContact();
+    if (!c) {
+      root.innerHTML = `<div class="card"><p class="error">Contact not found. <a href="network.html">← Back to Networking</a></p></div>`;
+      return;
+    }
+
+    const status = getReminderStatus(c);
+    const freqLabel = FREQUENCY_LABELS[c.followUpFrequency] || "No reminders";
+
+    root.innerHTML = `
+      <!-- Back + header -->
+      <div class="card contact-page-header">
+        <a href="network.html" class="btn btn-secondary back-btn">← Back to Networking</a>
+        <div class="contact-page-hero">
+          <div class="contact-page-identity">
+            <h2>${escapeHtml(c.name)}</h2>
+            <p class="muted">${escapeHtml(c.role || "Role not set")} · <a href="mailto:${escapeHtml(c.email)}">${escapeHtml(c.email)}</a></p>
+            <p class="tiny">Met: ${formatDate(c.dateMet)} · Last contacted: ${formatDate(c.lastContacted)}</p>
+          </div>
+          <div class="contact-page-badges">
+            ${reminderBadge(c)}
+            <button class="btn btn-secondary" id="cpOpenReminderBtn" type="button">${status !== "none" ? "🔔 Manage Reminder" : "📧 Send Email"}</button>
+            <button class="btn btn-secondary danger-btn" id="cpDeleteBtn" type="button">🗑 Delete Contact</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Two-column body -->
+      <div class="contact-page-body">
+
+        <!-- LEFT COLUMN -->
+        <div class="contact-page-left">
+
+          <!-- Interaction Timeline -->
+          <section class="card">
+            <h3 class="section-title">Interaction Timeline</h3>
+            <div class="timeline" id="cpTimeline">${renderInteractionTimeline(c.interactions)}</div>
+          </section>
+
+          <!-- Add Interaction -->
+          <section class="card">
+            <h3 class="section-title">Add Interaction</h3>
+            <div class="two-col">
+              <div class="field-group">
+                <label>Date</label>
+                <input type="date" id="cpIntDate" value="${todayDateString()}" />
+              </div>
+              <div class="field-group">
+                <label>Type</label>
+                <select id="cpIntType">
+                  ${INTERACTION_TYPES.map((t) => `<option value="${t}">${t.charAt(0).toUpperCase() + t.slice(1)}</option>`).join("")}
+                </select>
+              </div>
+            </div>
+            <div class="field-group">
+              <label>Notes</label>
+              <textarea id="cpIntNotes" rows="3"></textarea>
+            </div>
+            <div class="field-group">
+              <label>Outcome</label>
+              <textarea id="cpIntOutcome" rows="2"></textarea>
+            </div>
+            <p id="cpIntError" class="error" aria-live="polite"></p>
+            <button class="btn" id="cpAddIntBtn" type="button">+ Add Interaction</button>
+          </section>
+
+          <!-- Next Steps -->
+          <section class="card">
+            <div class="followup-section-header">
+              <h3 class="section-title">👉 Next Steps</h3>
+              <button class="btn btn-secondary" id="cpSuggestBtn" type="button">🤖 Suggest Follow-Ups</button>
+            </div>
+            <div id="cpFollowUpList">${renderFollowUpItems(c.followUps)}</div>
+            <div class="followup-add-row">
+              <input type="text" id="cpNewFollowUp" placeholder="Add a follow-up task…" />
+              <button class="btn" id="cpAddFollowUpBtn" type="button">Add</button>
+            </div>
+            <p id="cpFollowUpMsg" class="success" aria-live="polite"></p>
+          </section>
+
+        </div>
+
+        <!-- RIGHT COLUMN -->
+        <div class="contact-page-right">
+
+          <!-- Notes & Details -->
+          <section class="card">
+            <h3 class="section-title">Notes &amp; Details</h3>
+            <div class="field-group">
+              <label>Interests</label>
+              <input type="text" id="cpInterests" value="${escapeHtml(c.interests)}" />
+            </div>
+            <div class="field-group">
+              <label>Advice Given</label>
+              <textarea id="cpAdvice" rows="3">${escapeHtml(c.adviceGiven)}</textarea>
+            </div>
+            <div class="field-group">
+              <label>Notes</label>
+              <textarea id="cpNotes" rows="4">${escapeHtml(c.notes)}</textarea>
+            </div>
+            <button class="btn" id="cpSaveNotesBtn" type="button">Save Notes</button>
+            <p id="cpSaveNotesMsg" class="success" aria-live="polite"></p>
+          </section>
+
+          <!-- Documents -->
+          <section class="card">
+            <h3 class="section-title">Documents</h3>
+            <div id="cpDocList">${renderContactDocuments(c.documents)}</div>
+            <div class="followup-add-row" style="margin-top:0.75rem">
+              <input type="file" id="cpDocInput" accept=".pdf,application/pdf" multiple />
+              <button class="btn btn-secondary" id="cpDocUploadBtn" type="button">Upload PDF</button>
+            </div>
+            <p id="cpDocError" class="error" aria-live="polite"></p>
+          </section>
+
+          <!-- Reminder Settings -->
+          <section class="card">
+            <h3 class="section-title">Reminder Settings</h3>
+            <p class="tiny">Frequency: <strong>${escapeHtml(freqLabel)}</strong></p>
+            <p class="tiny">Next reminder: ${c.nextReminder ? formatDate(c.nextReminder.split("T")[0]) : "—"}</p>
+            <div class="field-group" style="margin-top:0.75rem">
+              <label>Stay-in-touch frequency</label>
+              <select id="cpFrequency">
+                ${Object.entries(FREQUENCY_LABELS).map(([v, l]) => `<option value="${v}" ${c.followUpFrequency === v ? "selected" : ""}>${l}</option>`).join("")}
+              </select>
+            </div>
+            <label class="row" style="margin-top:0.4rem;gap:0.5rem;cursor:pointer">
+              <input type="checkbox" id="cpReminderEnabled" ${c.reminderEnabled ? "checked" : ""} />
+              Reminders enabled
+            </label>
+            <button class="btn" id="cpSaveReminderBtn" type="button" style="margin-top:0.75rem">Save Reminder Settings</button>
+            <p id="cpSaveReminderMsg" class="success" aria-live="polite"></p>
+          </section>
+
+        </div>
+      </div>
+    `;
+
+    // ── Event listeners ──
+
+    // Back / delete / reminder popup
+    root.querySelector("#cpOpenReminderBtn").addEventListener("click", () => showReminderModal(freshContact()));
+    root.querySelector("#cpDeleteBtn").addEventListener("click", () => {
+      if (!window.confirm(`Delete ${freshContact().name} and all their data?`)) return;
+      saveContacts(getContacts().filter((c) => c.id !== contactId));
+      window.location.href = "network.html";
+    });
+
+    // Add interaction
+    root.querySelector("#cpAddIntBtn").addEventListener("click", () => {
+      const errEl = root.querySelector("#cpIntError");
+      errEl.textContent = "";
+      const date = root.querySelector("#cpIntDate").value;
+      const type = root.querySelector("#cpIntType").value;
+      const notes = root.querySelector("#cpIntNotes").value.trim();
+      const outcome = root.querySelector("#cpIntOutcome").value.trim();
+      if (!date) { errEl.textContent = "Date is required."; return; }
+      const interaction = normalizeInteraction({ date, type, notes, outcome });
+      save((c) => {
+        const newInteractions = [interaction, ...c.interactions].sort((a, b) => b.date.localeCompare(a.date));
+        const newLastContacted = newInteractions[0].date;
+        return {
+          ...c,
+          interactions: newInteractions,
+          lastContacted: newLastContacted,
+          nextReminder: calculateNextReminder(newLastContacted, c.followUpFrequency)
+        };
+      });
+      // Nudge if no open follow-ups
+      const fresh = freshContact();
+      const hasOpen = (fresh.followUps || []).some((f) => !f.completed);
+      renderPage();
+      if (!hasOpen) {
+        const msg = root.querySelector("#cpFollowUpMsg");
+        if (msg) { msg.textContent = 'Interaction saved! Click "🤖 Suggest Follow-Ups" to generate next steps.'; setTimeout(() => { if (msg) msg.textContent = ""; }, 4000); }
+      }
+    });
+
+    // Save notes
+    root.querySelector("#cpSaveNotesBtn").addEventListener("click", () => {
+      save((c) => ({
+        ...c,
+        interests: root.querySelector("#cpInterests").value.trim(),
+        adviceGiven: root.querySelector("#cpAdvice").value.trim(),
+        notes: root.querySelector("#cpNotes").value.trim()
+      }));
+      const msg = root.querySelector("#cpSaveNotesMsg");
+      msg.textContent = "Saved!";
+      setTimeout(() => { if (msg) msg.textContent = ""; }, 2000);
+    });
+
+    // Save reminder settings
+    root.querySelector("#cpSaveReminderBtn").addEventListener("click", () => {
+      const newFreq = root.querySelector("#cpFrequency").value;
+      const enabled = root.querySelector("#cpReminderEnabled").checked;
+      save((c) => ({
+        ...c,
+        followUpFrequency: newFreq,
+        reminderEnabled: enabled && newFreq !== "none",
+        nextReminder: calculateNextReminder(c.lastContacted || c.dateMet, newFreq)
+      }));
+      const msg = root.querySelector("#cpSaveReminderMsg");
+      msg.textContent = "Reminder settings saved!";
+      setTimeout(() => { if (msg) msg.textContent = ""; }, 2000);
+      renderPage();
+    });
+
+    // Document upload
+    root.querySelector("#cpDocUploadBtn").addEventListener("click", async () => {
+      const errEl = root.querySelector("#cpDocError");
+      errEl.textContent = "";
+      const files = Array.from(root.querySelector("#cpDocInput").files || []);
+      if (!files.length) { errEl.textContent = "Select at least one PDF."; return; }
+      if (files.some((f) => !f.name.toLowerCase().endsWith(".pdf"))) { errEl.textContent = "Only PDF files supported."; return; }
+      try {
+        const encoded = await Promise.all(files.map(async (f) => normalizeContactDocument({ name: f.name, data: await readPdfFile(f) })));
+        save((c) => ({ ...c, documents: [...(c.documents || []), ...encoded] }));
+        renderPage();
+      } catch {
+        errEl.textContent = "Upload failed. Try a smaller file.";
+      }
+    });
+
+    // Document remove
+    root.querySelectorAll("[data-remove-doc]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        save((c) => ({ ...c, documents: c.documents.filter((d) => d.id !== btn.dataset.removeDoc) }));
+        renderPage();
+      });
+    });
+
+    // Add manual follow-up
+    const addFollowUp = () => {
+      const input = root.querySelector("#cpNewFollowUp");
+      const text = input?.value.trim();
+      if (!text) return;
+      save((c) => ({ ...c, followUps: [normalizeFollowUpItem({ text, source: "manual" }), ...(c.followUps || [])] }));
+      input.value = "";
+      refreshFollowUpList();
+    };
+    root.querySelector("#cpAddFollowUpBtn").addEventListener("click", addFollowUp);
+    root.querySelector("#cpNewFollowUp").addEventListener("keydown", (e) => { if (e.key === "Enter") addFollowUp(); });
+
+    // Suggest follow-ups
+    root.querySelector("#cpSuggestBtn").addEventListener("click", () => {
+      const fresh = freshContact();
+      const suggestions = generateFollowUpSuggestions(fresh);
+      const existingTexts = new Set((fresh.followUps || []).map((f) => f.text.toLowerCase()));
+      const deduped = suggestions
+        .map((text) => normalizeFollowUpItem({ text, source: "ai" }))
+        .filter((f) => !existingTexts.has(f.text.toLowerCase()));
+      const msg = root.querySelector("#cpFollowUpMsg");
+      if (!deduped.length) {
+        if (msg) { msg.textContent = "All suggestions already added!"; setTimeout(() => { if (msg) msg.textContent = ""; }, 2500); }
+        return;
+      }
+      save((c) => ({ ...c, followUps: [...deduped, ...(c.followUps || [])] }));
+      refreshFollowUpList();
+      if (msg) { msg.textContent = `✨ ${deduped.length} suggestion${deduped.length !== 1 ? "s" : ""} added!`; setTimeout(() => { if (msg) msg.textContent = ""; }, 2500); }
+    });
+
+    function refreshFollowUpList() {
+      const listEl = root.querySelector("#cpFollowUpList");
+      if (listEl) listEl.innerHTML = renderFollowUpItems(freshContact().followUps);
+      attachFollowUpListeners();
+    }
+
+    function attachFollowUpListeners() {
+      root.querySelectorAll(".fu-checkbox").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          save((c) => ({ ...c, followUps: (c.followUps || []).map((f) => f.id !== cb.dataset.fuId ? f : { ...f, completed: cb.checked }) }));
+          refreshFollowUpList();
+        });
+      });
+      root.querySelectorAll(".fu-delete").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          save((c) => ({ ...c, followUps: (c.followUps || []).filter((f) => f.id !== btn.dataset.fuId) }));
+          refreshFollowUpList();
+        });
+      });
+    }
+    attachFollowUpListeners();
+  }
+
+  renderPage();
+}
+
 ensureInternshipWorkspace();
 initThemeToggle();
 initDashboard();
 initNetworking();
 initSummary();
+initContactPage();
 initInternshipPanel();
 checkRemindersOnLoad();

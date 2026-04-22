@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>InternTrack | Contact Profile</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script defer src="app.js"></script>
+  </head>
+  <body data-page="contact">
+    <header class="site-header">
+      <div class="container nav-wrap">
+        <h1 class="brand">InternTrack</h1>
+        <nav class="nav" aria-label="Main navigation">
+          <a href="index.html" class="nav-link">Dashboard</a>
+          <a href="network.html" class="nav-link">Networking</a>
+          <a href="summary.html" class="nav-link">Weekly Summary</a>
+        </nav>
+        <button id="themeToggle" class="btn btn-secondary" type="button">🌙 Dark</button>
+      </div>
+    </header>
+
+    <main class="container app-shell">
+      <!-- Sidebar: internship selector -->
+      <aside class="card internship-panel">
+        <h2>Internships</h2>
+        <p class="muted">Switch between current and past internships.</p>
+        <div class="field-group">
+          <label for="internshipSelect">Active Internship</label>
+          <select id="internshipSelect"></select>
+        </div>
+        <ul id="internshipList" class="list compact-list"></ul>
+        <button id="addInternshipBtn" class="btn btn-secondary" type="button">+ New Internship</button>
+        <p id="internshipError" class="error" aria-live="polite"></p>
+      </aside>
+
+      <!-- Contact profile content -->
+      <section class="main-content single-col" id="contactPageContent">
+        <div class="card">
+          <p class="muted">Loading contact…</p>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
