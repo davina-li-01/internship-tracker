@@ -206,6 +206,7 @@ function normalizeContact(contact = {}) {
     id: contact.id || makeId(),
     name: (contact.name || "").trim(),
     email: (contact.email || "").trim(),
+    company: (contact.company || "").trim(),
     role: (contact.role || "").trim(),
     dateMet: contact.dateMet || "",
     lastContacted,
@@ -899,7 +900,7 @@ function renderContacts() {
         <div class="contact-header">
           <div class="contact-summary">
             <p class="contact-name"><strong>${escapeHtml(contact.name)}</strong></p>
-            <p class="tiny">${escapeHtml(contact.role || "Role not set")} · ${escapeHtml(contact.email)}</p>
+            <p class="tiny">${escapeHtml(contact.role || "Role not set")}${contact.company ? ` @ ${escapeHtml(contact.company)}` : ""} · ${escapeHtml(contact.email)}</p>
           </div>
           <div class="badge-col">${reminderBadge(contact)}</div>
         </div>
@@ -930,6 +931,7 @@ function initNetworking() {
   const error = document.getElementById("contactError");
   const nameEl = document.getElementById("contactName");
   const emailEl = document.getElementById("contactEmail");
+  const companyEl = document.getElementById("contactCompany");
   const roleEl = document.getElementById("contactRole");
   const dateMetEl = document.getElementById("dateMet");
   const lastContactedEl = document.getElementById("lastContacted");
@@ -950,6 +952,7 @@ function initNetworking() {
     const contact = normalizeContact({
       name: nameEl.value,
       email: emailEl.value,
+      company: companyEl?.value || "",
       role: roleEl.value,
       dateMet: dateMetEl.value,
       lastContacted: lastContactedValue,
@@ -1678,6 +1681,8 @@ function showReminderModal(contact) {
 }
 
 function checkRemindersOnLoad() {
+  // Don't interrupt the contact page with a reminder modal
+  if (document.querySelector("[data-page='contact']")) return;
   setTimeout(() => {
     if (!hasActiveInternship()) return;
     const due = getFollowUpsDue();
@@ -1693,6 +1698,9 @@ function initContactPage() {
 
   const params = new URLSearchParams(window.location.search);
   const contactId = params.get("id");
+
+  // Wire up internship panel refresh so contact re-resolves if active internship changes
+  refreshActivePageData = () => renderPage();
 
   function freshContact() {
     return getContacts().find((c) => c.id === contactId) || null;
@@ -1720,7 +1728,7 @@ function initContactPage() {
         <div class="contact-page-hero">
           <div class="contact-page-identity">
             <h2>${escapeHtml(c.name)}</h2>
-            <p class="muted">${escapeHtml(c.role || "Role not set")} · <a href="mailto:${escapeHtml(c.email)}">${escapeHtml(c.email)}</a></p>
+            <p class="muted">${escapeHtml(c.role || "Role not set")}${c.company ? ` @ ${escapeHtml(c.company)}` : ""} · <a href="mailto:${escapeHtml(c.email)}">${escapeHtml(c.email)}</a></p>
             <p class="tiny">Met: ${formatDate(c.dateMet)} · Last contacted: ${formatDate(c.lastContacted)}</p>
           </div>
           <div class="contact-page-badges">
@@ -1792,6 +1800,16 @@ function initContactPage() {
           <!-- Notes & Details -->
           <section class="card">
             <h3 class="section-title">Notes &amp; Details</h3>
+            <div class="two-col">
+              <div class="field-group">
+                <label>Company</label>
+                <input type="text" id="cpCompany" value="${escapeHtml(c.company)}" placeholder="e.g. Google" />
+              </div>
+              <div class="field-group">
+                <label>Role</label>
+                <input type="text" id="cpRole" value="${escapeHtml(c.role)}" placeholder="e.g. Software Engineer" />
+              </div>
+            </div>
             <div class="field-group">
               <label>Interests</label>
               <input type="text" id="cpInterests" value="${escapeHtml(c.interests)}" />
@@ -1886,6 +1904,8 @@ function initContactPage() {
     root.querySelector("#cpSaveNotesBtn").addEventListener("click", () => {
       save((c) => ({
         ...c,
+        company: root.querySelector("#cpCompany").value.trim(),
+        role: root.querySelector("#cpRole").value.trim(),
         interests: root.querySelector("#cpInterests").value.trim(),
         adviceGiven: root.querySelector("#cpAdvice").value.trim(),
         notes: root.querySelector("#cpNotes").value.trim()
@@ -1893,6 +1913,7 @@ function initContactPage() {
       const msg = root.querySelector("#cpSaveNotesMsg");
       msg.textContent = "Saved!";
       setTimeout(() => { if (msg) msg.textContent = ""; }, 2000);
+      renderPage();
     });
 
     // Save reminder settings
