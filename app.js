@@ -161,10 +161,33 @@ function calculateNextReminder(lastContacted, frequency) {
   return date.toISOString();
 }
 
+function normalizeInteraction(item = {}) {
+  return {
+    id: item.id || makeId(),
+    date: item.date || todayDateString(),
+    type: item.type || "check-in",
+    notes: (item.notes || "").trim(),
+    outcome: (item.outcome || "").trim()
+  };
+}
+
+function normalizeContactDocument(doc = {}) {
+  return {
+    id: doc.id || makeId(),
+    name: doc.name || "Untitled.pdf",
+    data: doc.data || "",
+    date: doc.date || todayDateString()
+  };
+}
+
 function normalizeContact(contact = {}) {
   const frequency = contact.followUpFrequency || "none";
-  const lastContacted = contact.lastContacted || contact.dateMet || "";
-  // Auto-calculate nextReminder if not set but frequency + lastContacted exist
+  const interactions = Array.isArray(contact.interactions)
+    ? contact.interactions.map(normalizeInteraction)
+    : [];
+  const sortedInteractions = [...interactions].sort((a, b) => b.date.localeCompare(a.date));
+  const latestDate = sortedInteractions[0]?.date || "";
+  const lastContacted = contact.lastContacted || latestDate || contact.dateMet || "";
   let nextReminder = contact.nextReminder || "";
   if (!nextReminder && frequency !== "none" && lastContacted) {
     nextReminder = calculateNextReminder(lastContacted, frequency);
@@ -181,7 +204,11 @@ function normalizeContact(contact = {}) {
     reminderEnabled: frequency !== "none" ? (contact.reminderEnabled !== false) : false,
     notes: (contact.notes || "").trim(),
     interests: (contact.interests || "").trim(),
-    adviceGiven: (contact.adviceGiven || "").trim()
+    adviceGiven: (contact.adviceGiven || "").trim(),
+    interactions: sortedInteractions,
+    documents: Array.isArray(contact.documents)
+      ? contact.documents.map(normalizeContactDocument)
+      : []
   };
 }
 
@@ -523,7 +550,7 @@ function renderFollowUpAlerts(listId, emptyText = "No follow-ups due.") {
     btn.addEventListener("click", () => {
       const contactId = btn.dataset.contactId;
       const contact = getContacts().find((c) => c.id === contactId);
-      if (contact) showReminderModal(contact);
+      if (contact) showContactProfile(contact);
     });
   });
 }
@@ -846,54 +873,42 @@ function renderContacts() {
 
   const contacts = getContacts().sort((a, b) => b.dateMet.localeCompare(a.dateMet));
   if (!contacts.length) {
-    list.innerHTML = '<li class="empty">No contacts yet.</li>';
+    list.innerHTML = '<li class="empty">No contacts yet. Add your first contact above.</li>';
     return;
   }
 
   list.innerHTML = contacts
-    .map(
-      (contact) => {
-        const status = getReminderStatus(contact);
-        const freqLabel = FREQUENCY_LABELS[contact.followUpFrequency] || "No reminders";
-        return `
-      <li class="list-item ${status === "due" ? "due-item" : status === "soon" ? "soon-item" : ""}">
+    .map((contact) => {
+      const status = getReminderStatus(contact);
+      const freqLabel = FREQUENCY_LABELS[contact.followUpFrequency] || "No reminders";
+      const interactionCount = contact.interactions?.length || 0;
+      return `
+      <li class="contact-card ${status === "due" ? "due-item" : status === "soon" ? "soon-item" : ""}" data-open-contact="${contact.id}" role="button" tabindex="0">
         <div class="contact-header">
-          <div>
-            <p><strong>${escapeHtml(contact.name)}</strong> · ${escapeHtml(contact.email)}</p>
-            <p class="tiny">${escapeHtml(contact.role || "Role not set")}</p>
+          <div class="contact-summary">
+            <p class="contact-name"><strong>${escapeHtml(contact.name)}</strong></p>
+            <p class="tiny">${escapeHtml(contact.role || "Role not set")} · ${escapeHtml(contact.email)}</p>
           </div>
           <div class="badge-col">${reminderBadge(contact)}</div>
         </div>
-        <p class="tiny">Met: ${formatDate(contact.dateMet)} · Last contacted: ${formatDate(contact.lastContacted)}</p>
-        <p class="tiny"><span class="label">Frequency:</span> ${escapeHtml(freqLabel)} · Next reminder: ${contact.nextReminder ? formatDate(contact.nextReminder.split("T")[0]) : "—"}</p>
-        <p><span class="label">Interests:</span> ${escapeHtml(contact.interests || "—")}</p>
-        <p><span class="label">Advice:</span> ${escapeHtml(contact.adviceGiven || "—")}</p>
-        <p>${escapeHtml(contact.notes || "")}</p>
-        <div class="row wrap">
-          ${status !== "none" ? `<button class="btn" type="button" data-remind-id="${contact.id}">Manage Reminder</button>` : ""}
-          <button class="btn btn-secondary" data-delete-id="${contact.id}" type="button">Delete</button>
+        <div class="contact-meta">
+          <span class="tiny">Last contacted: ${formatDate(contact.lastContacted)}</span>
+          <span class="tiny">Next: ${contact.nextReminder ? formatDate(contact.nextReminder.split("T")[0]) : "—"}</span>
+          <span class="tiny">${interactionCount} interaction${interactionCount !== 1 ? "s" : ""}</span>
+          <span class="tiny">${escapeHtml(freqLabel)}</span>
         </div>
+        <p class="contact-hint tiny muted">Click to view full profile →</p>
       </li>`;
-      }
-    )
+    })
     .join("");
 
-  list.querySelectorAll("[data-remind-id]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const contact = getContacts().find((c) => c.id === btn.dataset.remindId);
-      if (contact) showReminderModal(contact);
-    });
-  });
-
-  list.querySelectorAll("[data-delete-id]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const id = button.dataset.deleteId;
-      const next = getContacts().filter((contact) => contact.id !== id);
-      saveContacts(next);
-      renderContacts();
-      renderFollowUpAlerts("networkFollowUps");
-      renderInternshipPanel();
-    });
+  list.querySelectorAll("[data-open-contact]").forEach((card) => {
+    const open = () => {
+      const contact = getContacts().find((c) => c.id === card.dataset.openContact);
+      if (contact) showContactProfile(contact);
+    };
+    card.addEventListener("click", open);
+    card.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") open(); });
   });
 }
 
@@ -902,15 +917,15 @@ function initNetworking() {
   if (!form) return;
 
   const error = document.getElementById("contactError");
-  const name = document.getElementById("contactName");
-  const email = document.getElementById("contactEmail");
-  const role = document.getElementById("contactRole");
-  const dateMet = document.getElementById("dateMet");
-  const lastContacted = document.getElementById("lastContacted");
-  const followUpFrequency = document.getElementById("followUpFrequency");
-  const interests = document.getElementById("interests");
-  const adviceGiven = document.getElementById("adviceGiven");
-  const notes = document.getElementById("contactNotes");
+  const nameEl = document.getElementById("contactName");
+  const emailEl = document.getElementById("contactEmail");
+  const roleEl = document.getElementById("contactRole");
+  const dateMetEl = document.getElementById("dateMet");
+  const lastContactedEl = document.getElementById("lastContacted");
+  const followUpFrequencyEl = document.getElementById("followUpFrequency");
+  const interestsEl = document.getElementById("interests");
+  const adviceEl = document.getElementById("adviceGiven");
+  const notesEl = document.getElementById("contactNotes");
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -918,19 +933,21 @@ function initNetworking() {
 
     if (!requireActiveInternship(error)) return;
 
-    const frequency = followUpFrequency?.value || "none";
-    const lastContactedValue = lastContacted?.value || dateMet?.value || todayDateString();
+    const frequency = followUpFrequencyEl?.value || "none";
+    const lastContactedValue = lastContactedEl?.value || dateMetEl?.value || todayDateString();
 
     const contact = normalizeContact({
-      name: name.value,
-      email: email.value,
-      role: role.value,
-      dateMet: dateMet.value,
+      name: nameEl.value,
+      email: emailEl.value,
+      role: roleEl.value,
+      dateMet: dateMetEl.value,
       lastContacted: lastContactedValue,
       followUpFrequency: frequency,
-      interests: interests.value,
-      adviceGiven: adviceGiven.value,
-      notes: notes.value
+      interests: interestsEl.value,
+      adviceGiven: adviceEl.value,
+      notes: notesEl.value,
+      interactions: [],
+      documents: []
     });
 
     if (!contact.name || !contact.email || !contact.dateMet) {
@@ -1046,6 +1063,305 @@ function initSummary() {
   };
 
   refreshActivePageData();
+}
+
+const INTERACTION_TYPES = ["coffee chat", "meeting", "check-in", "email", "phone call", "event"];
+
+function renderInteractionTimeline(interactions) {
+  if (!interactions.length) {
+    return '<p class="empty">No interactions logged yet.</p>';
+  }
+  return interactions
+    .map(
+      (item) => `
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-body">
+          <p class="timeline-date">${formatDate(item.date)} <span class="tag">${escapeHtml(item.type)}</span></p>
+          ${item.notes ? `<p>${escapeHtml(item.notes)}</p>` : ""}
+          ${item.outcome ? `<p class="tiny"><span class="label">Outcome:</span> ${escapeHtml(item.outcome)}</p>` : ""}
+        </div>
+      </div>`
+    )
+    .join("");
+}
+
+function renderContactDocuments(docs) {
+  if (!docs.length) return '<p class="empty">No documents uploaded yet.</p>';
+  return docs
+    .map(
+      (doc) => `
+      <div class="row wrap doc-row">
+        <span><strong>${escapeHtml(doc.name)}</strong> <span class="tiny">${formatDate(doc.date)}</span></span>
+        <div class="row">
+          <a class="btn btn-secondary" href="${doc.data}" target="_blank" rel="noopener">Open</a>
+          <a class="btn btn-secondary" href="${doc.data}" download="${escapeHtml(doc.name)}">Download</a>
+          <button class="btn btn-secondary" type="button" data-remove-doc="${doc.id}">Remove</button>
+        </div>
+      </div>`
+    )
+    .join("");
+}
+
+function showContactProfile(contactData) {
+  const existing = document.getElementById("contactProfileModal");
+  if (existing) existing.remove();
+
+  const freshContact = () => getContacts().find((c) => c.id === contactData.id) || contactData;
+
+  const modal = document.createElement("div");
+  modal.id = "contactProfileModal";
+  modal.className = "modal-overlay";
+  document.body.appendChild(modal);
+
+  function rerender() {
+    const c = freshContact();
+    const freqLabel = FREQUENCY_LABELS[c.followUpFrequency] || "No reminders";
+    const status = getReminderStatus(c);
+
+    modal.innerHTML = `
+      <div class="modal-card profile-modal">
+
+        <!-- Header -->
+        <div class="profile-header">
+          <div>
+            <h2 class="profile-name" id="pName">${escapeHtml(c.name)}</h2>
+            <p class="muted" id="pRole">${escapeHtml(c.role || "Role not set")} · ${escapeHtml(c.email)}</p>
+            <p class="tiny">Met: ${formatDate(c.dateMet)}</p>
+          </div>
+          <div class="profile-header-right">
+            ${reminderBadge(c)}
+            <button class="btn btn-secondary" id="profileClose" type="button">✕ Close</button>
+          </div>
+        </div>
+
+        <!-- Two-column body -->
+        <div class="profile-body">
+
+          <!-- LEFT: Timeline + Add Interaction -->
+          <div class="profile-left">
+            <section class="profile-section">
+              <h3>Interaction Timeline</h3>
+              <div class="timeline" id="profileTimeline">${renderInteractionTimeline(c.interactions)}</div>
+            </section>
+
+            <section class="profile-section">
+              <h3>Add Interaction</h3>
+              <div class="field-group">
+                <label>Date</label>
+                <input type="date" id="newIntDate" value="${todayDateString()}" />
+              </div>
+              <div class="field-group">
+                <label>Type</label>
+                <select id="newIntType">
+                  ${INTERACTION_TYPES.map((t) => `<option value="${t}">${t.charAt(0).toUpperCase() + t.slice(1)}</option>`).join("")}
+                </select>
+              </div>
+              <div class="field-group">
+                <label>Notes</label>
+                <textarea id="newIntNotes" rows="3"></textarea>
+              </div>
+              <div class="field-group">
+                <label>Outcome</label>
+                <textarea id="newIntOutcome" rows="2"></textarea>
+              </div>
+              <p id="newIntError" class="error" aria-live="polite"></p>
+              <button class="btn" id="addInteractionBtn" type="button">+ Add Interaction</button>
+            </section>
+          </div>
+
+          <!-- RIGHT: Info + Docs + Reminder -->
+          <div class="profile-right">
+            <section class="profile-section">
+              <h3>Notes &amp; Details</h3>
+              <div class="field-group">
+                <label>Interests</label>
+                <input type="text" id="editInterests" value="${escapeHtml(c.interests)}" />
+              </div>
+              <div class="field-group">
+                <label>Advice Given</label>
+                <textarea id="editAdvice" rows="2">${escapeHtml(c.adviceGiven)}</textarea>
+              </div>
+              <div class="field-group">
+                <label>Notes</label>
+                <textarea id="editNotes" rows="3">${escapeHtml(c.notes)}</textarea>
+              </div>
+              <button class="btn btn-secondary" id="saveNotesBtn" type="button">Save Notes</button>
+              <p id="saveNotesMsg" class="success" aria-live="polite"></p>
+            </section>
+
+            <section class="profile-section">
+              <h3>Documents</h3>
+              <div id="profileDocs">${renderContactDocuments(c.documents)}</div>
+              <div class="row wrap" style="margin-top:0.5rem">
+                <input type="file" id="profileDocInput" accept=".pdf,application/pdf" multiple />
+                <button class="btn btn-secondary" id="profileDocUpload" type="button">Upload PDF</button>
+              </div>
+              <p id="profileDocError" class="error" aria-live="polite"></p>
+            </section>
+
+            <section class="profile-section">
+              <h3>Reminder Settings</h3>
+              <p class="tiny">Last contacted: ${formatDate(c.lastContacted)}</p>
+              <p class="tiny">Next reminder: ${c.nextReminder ? formatDate(c.nextReminder.split("T")[0]) : "—"}</p>
+              <div class="field-group" style="margin-top:0.6rem">
+                <label>Frequency</label>
+                <select id="profileFrequency">
+                  ${Object.entries(FREQUENCY_LABELS).map(([v, l]) => `<option value="${v}" ${c.followUpFrequency === v ? "selected" : ""}>${l}</option>`).join("")}
+                </select>
+              </div>
+              <div class="row" style="margin-top:0.4rem">
+                <input type="checkbox" id="profileReminderEnabled" ${c.reminderEnabled ? "checked" : ""} />
+                <label for="profileReminderEnabled">Reminders enabled</label>
+              </div>
+              <button class="btn btn-secondary" id="saveReminderBtn" type="button" style="margin-top:0.6rem">Save Reminder Settings</button>
+              <p id="saveReminderMsg" class="success" aria-live="polite"></p>
+              <hr class="profile-divider" />
+              <button class="btn btn-secondary" id="profileOpenReminder" type="button">${status !== "none" ? "Manage Reminder Popup" : "Send Reconnect Email"}</button>
+            </section>
+
+            <section class="profile-section danger-zone">
+              <button class="btn btn-secondary" id="deleteContactBtn" type="button">🗑 Delete Contact</button>
+            </section>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Close
+    modal.querySelector("#profileClose").addEventListener("click", () => modal.remove());
+    modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
+
+    // Add interaction
+    modal.querySelector("#addInteractionBtn").addEventListener("click", () => {
+      const errEl = modal.querySelector("#newIntError");
+      errEl.textContent = "";
+      const date = modal.querySelector("#newIntDate").value;
+      const type = modal.querySelector("#newIntType").value;
+      const notes = modal.querySelector("#newIntNotes").value.trim();
+      const outcome = modal.querySelector("#newIntOutcome").value.trim();
+      if (!date) { errEl.textContent = "Date is required."; return; }
+      const interaction = normalizeInteraction({ date, type, notes, outcome });
+      const contacts = getContacts();
+      const updated = contacts.map((c) => {
+        if (c.id !== contactData.id) return c;
+        const newInteractions = [interaction, ...c.interactions].sort((a, b) => b.date.localeCompare(a.date));
+        const newLastContacted = newInteractions[0].date;
+        return {
+          ...c,
+          interactions: newInteractions,
+          lastContacted: newLastContacted,
+          nextReminder: calculateNextReminder(newLastContacted, c.followUpFrequency)
+        };
+      });
+      saveContacts(updated);
+      renderContacts();
+      renderFollowUpAlerts("networkFollowUps");
+      renderFollowUpAlerts("dashboardFollowUps");
+      renderProgressWidget();
+      rerender();
+    });
+
+    // Save notes
+    modal.querySelector("#saveNotesBtn").addEventListener("click", () => {
+      const contacts = getContacts();
+      const updated = contacts.map((c) =>
+        c.id !== contactData.id ? c : {
+          ...c,
+          interests: modal.querySelector("#editInterests").value.trim(),
+          adviceGiven: modal.querySelector("#editAdvice").value.trim(),
+          notes: modal.querySelector("#editNotes").value.trim()
+        }
+      );
+      saveContacts(updated);
+      renderContacts();
+      modal.querySelector("#saveNotesMsg").textContent = "Saved!";
+      setTimeout(() => { const m = modal.querySelector("#saveNotesMsg"); if (m) m.textContent = ""; }, 2000);
+    });
+
+    // Save reminder settings
+    modal.querySelector("#saveReminderBtn").addEventListener("click", () => {
+      const newFreq = modal.querySelector("#profileFrequency").value;
+      const enabled = modal.querySelector("#profileReminderEnabled").checked;
+      const contacts = getContacts();
+      const updated = contacts.map((c) => {
+        if (c.id !== contactData.id) return c;
+        return {
+          ...c,
+          followUpFrequency: newFreq,
+          reminderEnabled: enabled && newFreq !== "none",
+          nextReminder: calculateNextReminder(c.lastContacted || c.dateMet, newFreq)
+        };
+      });
+      saveContacts(updated);
+      renderContacts();
+      renderFollowUpAlerts("networkFollowUps");
+      renderFollowUpAlerts("dashboardFollowUps");
+      modal.querySelector("#saveReminderMsg").textContent = "Reminder settings saved!";
+      setTimeout(() => { const m = modal.querySelector("#saveReminderMsg"); if (m) m.textContent = ""; }, 2000);
+      rerender();
+    });
+
+    // Open reminder modal
+    modal.querySelector("#profileOpenReminder").addEventListener("click", () => {
+      modal.remove();
+      showReminderModal(freshContact());
+    });
+
+    // Document upload
+    modal.querySelector("#profileDocUpload").addEventListener("click", async () => {
+      const errEl = modal.querySelector("#profileDocError");
+      errEl.textContent = "";
+      const files = Array.from(modal.querySelector("#profileDocInput").files || []);
+      if (!files.length) { errEl.textContent = "Select at least one PDF."; return; }
+      if (files.some((f) => !f.name.toLowerCase().endsWith(".pdf"))) {
+        errEl.textContent = "Only PDF files supported.";
+        return;
+      }
+      try {
+        const encoded = await Promise.all(
+          files.map(async (f) => normalizeContactDocument({ name: f.name, data: await readPdfFile(f) }))
+        );
+        const contacts = getContacts();
+        const updated = contacts.map((c) =>
+          c.id !== contactData.id ? c : { ...c, documents: [...(c.documents || []), ...encoded] }
+        );
+        saveContacts(updated);
+        renderContacts();
+        rerender();
+      } catch {
+        errEl.textContent = "Upload failed. Try a smaller file.";
+      }
+    });
+
+    // Document remove
+    modal.querySelectorAll("[data-remove-doc]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const docId = btn.dataset.removeDoc;
+        const contacts = getContacts();
+        const updated = contacts.map((c) =>
+          c.id !== contactData.id ? c : { ...c, documents: c.documents.filter((d) => d.id !== docId) }
+        );
+        saveContacts(updated);
+        renderContacts();
+        rerender();
+      });
+    });
+
+    // Delete contact
+    modal.querySelector("#deleteContactBtn").addEventListener("click", () => {
+      if (!window.confirm(`Delete ${freshContact().name} and all their data?`)) return;
+      saveContacts(getContacts().filter((c) => c.id !== contactData.id));
+      renderContacts();
+      renderFollowUpAlerts("networkFollowUps");
+      renderFollowUpAlerts("dashboardFollowUps");
+      renderProgressWidget();
+      renderInternshipPanel();
+      modal.remove();
+    });
+  }
+
+  rerender();
 }
 
 function escapeHtml(value = "") {
