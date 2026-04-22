@@ -38,7 +38,7 @@
 
       <section class="main-content single-col">
         <section class="card">
-          <h2>Follow-up Reminders</h2>
+          <h2>Reminders &amp; Follow-ups</h2>
           <ul id="networkFollowUps" class="list"></ul>
         </section>
 
@@ -71,8 +71,13 @@
                 <input id="lastContacted" type="date" />
               </div>
               <div class="field-group">
-                <label for="followUpDate">Follow-up Date</label>
-                <input id="followUpDate" type="date" required />
+                <label for="followUpFrequency">Stay in touch frequency</label>
+                <select id="followUpFrequency">
+                  <option value="monthly">Monthly</option>
+                  <option value="bimonthly">Every 2 months</option>
+                  <option value="quarterly">Quarterly</option>
+                  <option value="none">No reminders</option>
+                </select>
               </div>
             </div>
             <div class="field-group">

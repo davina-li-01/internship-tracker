@@ -213,6 +213,11 @@ textarea[readonly] {
   background: color-mix(in srgb, var(--danger), transparent 95%);
 }
 
+.soon-item {
+  border-color: color-mix(in srgb, #f59e0b, var(--border) 45%);
+  background: color-mix(in srgb, #f59e0b, transparent 95%);
+}
+
 .list-item p {
   margin: 0.2rem 0;
 }
@@ -229,6 +234,77 @@ textarea[readonly] {
   border: 1px solid var(--border);
   font-size: 0.75rem;
   color: var(--muted);
+}
+
+.badge-due { border-color: var(--danger); color: var(--danger); background: color-mix(in srgb, var(--danger), transparent 90%); }
+.badge-soon { border-color: #f59e0b; color: #b45309; background: color-mix(in srgb, #f59e0b, transparent 90%); }
+.badge-ok { border-color: var(--success); color: var(--success); background: color-mix(in srgb, var(--success), transparent 90%); }
+
+.contact-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.badge-col {
+  flex-shrink: 0;
+}
+
+.reminder-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.5rem;
+  width: min(520px, 94vw);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18);
+  display: grid;
+  gap: 1rem;
+}
+
+.modal-card h3 {
+  margin: 0;
+}
+
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.modal-email {
+  display: grid;
+  gap: 0.4rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.email-draft {
+  resize: none;
+  font-size: 0.85rem;
+  background: color-mix(in srgb, var(--surface), var(--bg) 40%);
+}
+
+.modal-close {
+  width: 100%;
 }
 
 .tag-row {

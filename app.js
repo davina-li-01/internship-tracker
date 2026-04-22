@@ -145,15 +145,40 @@ function normalizeLog(log = {}) {
   };
 }
 
+const FREQUENCY_LABELS = {
+  monthly: "Monthly",
+  bimonthly: "Every 2 months",
+  quarterly: "Quarterly",
+  none: "No reminders"
+};
+
+function calculateNextReminder(lastContacted, frequency) {
+  if (!lastContacted || frequency === "none") return "";
+  const date = new Date(lastContacted);
+  if (frequency === "monthly") date.setMonth(date.getMonth() + 1);
+  if (frequency === "bimonthly") date.setMonth(date.getMonth() + 2);
+  if (frequency === "quarterly") date.setMonth(date.getMonth() + 3);
+  return date.toISOString();
+}
+
 function normalizeContact(contact = {}) {
+  const frequency = contact.followUpFrequency || "none";
+  const lastContacted = contact.lastContacted || contact.dateMet || "";
+  // Auto-calculate nextReminder if not set but frequency + lastContacted exist
+  let nextReminder = contact.nextReminder || "";
+  if (!nextReminder && frequency !== "none" && lastContacted) {
+    nextReminder = calculateNextReminder(lastContacted, frequency);
+  }
   return {
     id: contact.id || makeId(),
     name: (contact.name || "").trim(),
     email: (contact.email || "").trim(),
     role: (contact.role || "").trim(),
     dateMet: contact.dateMet || "",
-    lastContacted: contact.lastContacted || "",
-    followUpDate: contact.followUpDate || contact.followUp || "",
+    lastContacted,
+    followUpFrequency: frequency,
+    nextReminder,
+    reminderEnabled: frequency !== "none" ? (contact.reminderEnabled !== false) : false,
     notes: (contact.notes || "").trim(),
     interests: (contact.interests || "").trim(),
     adviceGiven: (contact.adviceGiven || "").trim()
@@ -225,11 +250,35 @@ function getPeopleConnectedThisWeek() {
 }
 
 function getFollowUpsDue() {
-  const today = parseDateOnly(todayDateString());
+  const now = new Date();
+  now.setHours(23, 59, 59, 999);
   return getContacts().filter((contact) => {
-    const followUp = parseDateOnly(contact.followUpDate);
-    return followUp && today && today >= followUp;
+    if (!contact.reminderEnabled || !contact.nextReminder) return false;
+    return new Date(contact.nextReminder) <= now;
   });
+}
+
+function getFollowUpsSoon() {
+  const now = new Date();
+  const soon = new Date(now.getTime() + 7 * 86400000);
+  now.setHours(23, 59, 59, 999);
+  return getContacts().filter((contact) => {
+    if (!contact.reminderEnabled || !contact.nextReminder) return false;
+    const next = new Date(contact.nextReminder);
+    return next > now && next <= soon;
+  });
+}
+
+function getReminderStatus(contact) {
+  if (!contact.reminderEnabled || contact.followUpFrequency === "none" || !contact.nextReminder) {
+    return "none";
+  }
+  const now = new Date();
+  const soon = new Date(now.getTime() + 7 * 86400000);
+  const next = new Date(contact.nextReminder);
+  if (next <= now) return "due";
+  if (next <= soon) return "soon";
+  return "ok";
 }
 
 function getInternshipStats(internshipId) {
@@ -437,25 +486,46 @@ function initInternshipPanel() {
   renderInternshipPanel();
 }
 
-function renderFollowUpAlerts(listId, emptyText = "No follow-ups due today.") {
+function renderFollowUpAlerts(listId, emptyText = "No follow-ups due.") {
   const list = document.getElementById(listId);
   if (!list) return;
 
   const due = getFollowUpsDue();
-  if (!due.length) {
+  const soon = getFollowUpsSoon();
+  const combined = [
+    ...due.map((c) => ({ contact: c, status: "due" })),
+    ...soon.map((c) => ({ contact: c, status: "soon" }))
+  ];
+
+  if (!combined.length) {
     list.innerHTML = `<li class="empty">${escapeHtml(emptyText)}</li>`;
     return;
   }
 
-  list.innerHTML = due
+  list.innerHTML = combined
     .map(
-      (contact) => `
-      <li class="list-item due-item">
-        👉 You should reach out to <strong>${escapeHtml(contact.name)}</strong>
-        <span class="tiny">(Follow-up: ${formatDate(contact.followUpDate)})</span>
+      ({ contact, status }) => `
+      <li class="list-item ${status === "due" ? "due-item" : "soon-item"}">
+        <div class="reminder-row">
+          <span>
+            ${status === "due" ? "🔴" : "🟡"}
+            ${status === "due" ? "👉 Time to reconnect with" : "Coming up:"}
+            <strong>${escapeHtml(contact.name)}</strong>
+            <span class="tiny">(${formatDate(contact.nextReminder)})</span>
+          </span>
+          <button class="btn btn-secondary reminder-trigger" type="button" data-contact-id="${contact.id}">Manage</button>
+        </div>
       </li>`
     )
     .join("");
+
+  list.querySelectorAll(".reminder-trigger").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const contactId = btn.dataset.contactId;
+      const contact = getContacts().find((c) => c.id === contactId);
+      if (contact) showReminderModal(contact);
+    });
+  });
 }
 
 function renderLogs() {
@@ -762,6 +832,14 @@ function initDashboard() {
   refreshActivePageData();
 }
 
+function reminderBadge(contact) {
+  const status = getReminderStatus(contact);
+  if (status === "due") return '<span class="badge badge-due">🔴 Due</span>';
+  if (status === "soon") return '<span class="badge badge-soon">🟡 Soon</span>';
+  if (status === "ok") return '<span class="badge badge-ok">🟢 Up to date</span>';
+  return '';
+}
+
 function renderContacts() {
   const list = document.getElementById("contactList");
   if (!list) return;
@@ -772,22 +850,40 @@ function renderContacts() {
     return;
   }
 
-  const dueIds = new Set(getFollowUpsDue().map((c) => c.id));
-
   list.innerHTML = contacts
     .map(
-      (contact) => `
-      <li class="list-item ${dueIds.has(contact.id) ? "due-item" : ""}">
-        <p><strong>${escapeHtml(contact.name)}</strong> · ${escapeHtml(contact.email)}</p>
-        <p class="tiny">${escapeHtml(contact.role || "Role not set")}</p>
-        <p>Met: ${formatDate(contact.dateMet)} | Last contacted: ${formatDate(contact.lastContacted)} | Follow-up: ${formatDate(contact.followUpDate)}</p>
-        <p><span class="label">Interests:</span> ${escapeHtml(contact.interests || "-")}</p>
-        <p><span class="label">Advice:</span> ${escapeHtml(contact.adviceGiven || "-")}</p>
+      (contact) => {
+        const status = getReminderStatus(contact);
+        const freqLabel = FREQUENCY_LABELS[contact.followUpFrequency] || "No reminders";
+        return `
+      <li class="list-item ${status === "due" ? "due-item" : status === "soon" ? "soon-item" : ""}">
+        <div class="contact-header">
+          <div>
+            <p><strong>${escapeHtml(contact.name)}</strong> · ${escapeHtml(contact.email)}</p>
+            <p class="tiny">${escapeHtml(contact.role || "Role not set")}</p>
+          </div>
+          <div class="badge-col">${reminderBadge(contact)}</div>
+        </div>
+        <p class="tiny">Met: ${formatDate(contact.dateMet)} · Last contacted: ${formatDate(contact.lastContacted)}</p>
+        <p class="tiny"><span class="label">Frequency:</span> ${escapeHtml(freqLabel)} · Next reminder: ${contact.nextReminder ? formatDate(contact.nextReminder.split("T")[0]) : "—"}</p>
+        <p><span class="label">Interests:</span> ${escapeHtml(contact.interests || "—")}</p>
+        <p><span class="label">Advice:</span> ${escapeHtml(contact.adviceGiven || "—")}</p>
         <p>${escapeHtml(contact.notes || "")}</p>
-        <button class="btn btn-secondary" data-delete-id="${contact.id}" type="button">Delete</button>
-      </li>`
+        <div class="row wrap">
+          ${status !== "none" ? `<button class="btn" type="button" data-remind-id="${contact.id}">Manage Reminder</button>` : ""}
+          <button class="btn btn-secondary" data-delete-id="${contact.id}" type="button">Delete</button>
+        </div>
+      </li>`;
+      }
     )
     .join("");
+
+  list.querySelectorAll("[data-remind-id]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const contact = getContacts().find((c) => c.id === btn.dataset.remindId);
+      if (contact) showReminderModal(contact);
+    });
+  });
 
   list.querySelectorAll("[data-delete-id]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -811,7 +907,7 @@ function initNetworking() {
   const role = document.getElementById("contactRole");
   const dateMet = document.getElementById("dateMet");
   const lastContacted = document.getElementById("lastContacted");
-  const followUpDate = document.getElementById("followUpDate");
+  const followUpFrequency = document.getElementById("followUpFrequency");
   const interests = document.getElementById("interests");
   const adviceGiven = document.getElementById("adviceGiven");
   const notes = document.getElementById("contactNotes");
@@ -822,20 +918,23 @@ function initNetworking() {
 
     if (!requireActiveInternship(error)) return;
 
+    const frequency = followUpFrequency?.value || "none";
+    const lastContactedValue = lastContacted?.value || dateMet?.value || todayDateString();
+
     const contact = normalizeContact({
       name: name.value,
       email: email.value,
       role: role.value,
       dateMet: dateMet.value,
-      lastContacted: lastContacted.value,
-      followUpDate: followUpDate.value,
+      lastContacted: lastContactedValue,
+      followUpFrequency: frequency,
       interests: interests.value,
       adviceGiven: adviceGiven.value,
       notes: notes.value
     });
 
-    if (!contact.name || !contact.email || !contact.dateMet || !contact.followUpDate) {
-      error.textContent = "Name, email, date met, and follow-up date are required.";
+    if (!contact.name || !contact.email || !contact.dateMet) {
+      error.textContent = "Name, email, and date met are required.";
       return;
     }
 
@@ -846,6 +945,7 @@ function initNetworking() {
     form.reset();
     renderContacts();
     renderFollowUpAlerts("networkFollowUps");
+    renderProgressWidget();
     renderInternshipPanel();
   });
 
@@ -957,9 +1057,112 @@ function escapeHtml(value = "") {
     .replaceAll("'", "&#39;");
 }
 
+function buildReminderEmailText(contact, yourName = "") {
+  const name = contact.name || "there";
+  const safeName = yourName.trim() || "[Your Name]";
+  return `Subject: Great catching up!\n\nHi ${name},\n\nHope you've been doing well! I wanted to reconnect and see how things have been going on your end.\n\nWould love to catch up soon.\n\nBest,\n${safeName}`;
+}
+
+function showReminderModal(contact) {
+  const existing = document.getElementById("reminderModal");
+  if (existing) existing.remove();
+
+  const yourName = readScopedText(STORAGE_KEYS.yourName, "");
+  const emailText = buildReminderEmailText(contact, yourName);
+
+  const modal = document.createElement("div");
+  modal.id = "reminderModal";
+  modal.className = "modal-overlay";
+  modal.innerHTML = `
+    <div class="modal-card">
+      <h3>Time to reconnect with <strong>${escapeHtml(contact.name)}</strong></h3>
+      <p class="muted">Frequency: ${escapeHtml(FREQUENCY_LABELS[contact.followUpFrequency] || "—")} · Next: ${contact.nextReminder ? formatDate(contact.nextReminder.split("T")[0]) : "—"}</p>
+      <div class="modal-actions">
+        <button class="btn" id="modalMarkDone" type="button">✅ Mark as done</button>
+        <button class="btn btn-secondary" id="modalLater" type="button">⏰ Remind me in 3 days</button>
+        <button class="btn btn-secondary" id="modalTurnOff" type="button">❌ Turn off reminders</button>
+      </div>
+      <div class="modal-email">
+        <p class="label">Copy reminder email draft:</p>
+        <textarea class="email-draft" readonly rows="8">${escapeHtml(emailText)}</textarea>
+        <button class="btn btn-secondary" id="modalCopyEmail" type="button">📋 Copy email</button>
+        <p id="modalCopyMsg" class="success" aria-live="polite"></p>
+      </div>
+      <button class="btn btn-secondary modal-close" id="modalClose" type="button">Close</button>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const refresh = () => {
+    renderContacts();
+    renderFollowUpAlerts("dashboardFollowUps");
+    renderFollowUpAlerts("networkFollowUps");
+    renderProgressWidget();
+    modal.remove();
+  };
+
+  modal.querySelector("#modalMarkDone").addEventListener("click", () => {
+    const contacts = getContacts();
+    const updated = contacts.map((c) =>
+      c.id !== contact.id
+        ? c
+        : {
+            ...c,
+            lastContacted: todayDateString(),
+            nextReminder: calculateNextReminder(new Date().toISOString(), c.followUpFrequency)
+          }
+    );
+    saveContacts(updated);
+    refresh();
+  });
+
+  modal.querySelector("#modalLater").addEventListener("click", () => {
+    const contacts = getContacts();
+    const updated = contacts.map((c) =>
+      c.id !== contact.id
+        ? c
+        : { ...c, nextReminder: new Date(Date.now() + 3 * 86400000).toISOString() }
+    );
+    saveContacts(updated);
+    refresh();
+  });
+
+  modal.querySelector("#modalTurnOff").addEventListener("click", () => {
+    const contacts = getContacts();
+    const updated = contacts.map((c) =>
+      c.id !== contact.id ? c : { ...c, reminderEnabled: false, followUpFrequency: "none" }
+    );
+    saveContacts(updated);
+    refresh();
+  });
+
+  modal.querySelector("#modalCopyEmail").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(emailText);
+      modal.querySelector("#modalCopyMsg").textContent = "Email copied to clipboard!";
+    } catch {
+      modal.querySelector("#modalCopyMsg").textContent = "Copy failed — please copy manually.";
+    }
+  });
+
+  modal.querySelector("#modalClose").addEventListener("click", () => modal.remove());
+  modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
+}
+
+function checkRemindersOnLoad() {
+  setTimeout(() => {
+    if (!hasActiveInternship()) return;
+    const due = getFollowUpsDue();
+    if (due.length > 0) {
+      showReminderModal(due[0]);
+    }
+  }, 800);
+}
+
 ensureInternshipWorkspace();
 initThemeToggle();
 initDashboard();
 initNetworking();
 initSummary();
 initInternshipPanel();
+checkRemindersOnLoad();
