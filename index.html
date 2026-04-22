@@ -47,53 +47,114 @@
         </form>
       </aside>
 
-      <section class="main-content grid">
+      <section class="main-content single-col">
         <section class="card">
-          <h2>Daily / Weekly Log</h2>
-          <form id="logForm" novalidate>
-            <div class="field-group">
-              <label for="logDate">Date</label>
-              <input id="logDate" type="date" required />
-            </div>
-            <div class="field-group">
-              <label for="logText">What did you work on?</label>
-              <textarea id="logText" rows="4" placeholder="Worked on onboarding docs and fixed UI bug..." required></textarea>
-            </div>
-            <p id="logError" class="error" aria-live="polite"></p>
-            <button class="btn" type="submit">Add Entry</button>
-          </form>
+          <h2>Follow-ups Due</h2>
+          <ul id="dashboardFollowUps" class="list"></ul>
         </section>
 
-        <section class="card">
-          <h2>Saved Logs</h2>
-          <ul id="logList" class="list"></ul>
-        </section>
+        <section class="dashboard-columns">
+          <div class="dashboard-center">
+            <section class="card">
+              <h2>Impact Logs</h2>
+              <form id="logForm" novalidate>
+                <div class="field-group">
+                  <label for="logDate">Date</label>
+                  <input id="logDate" type="date" required />
+                </div>
+                <div class="field-group">
+                  <label for="logTask">What did you do?</label>
+                  <textarea id="logTask" rows="3" required></textarea>
+                </div>
+                <div class="field-group">
+                  <label for="logImpact">What was the impact?</label>
+                  <textarea id="logImpact" rows="3" required></textarea>
+                </div>
+                <div class="field-group">
+                  <label for="logSkills">Skills used/learned</label>
+                  <textarea id="logSkills" rows="2" required></textarea>
+                </div>
+                <div class="field-group">
+                  <label for="logTags">Tags (optional, comma-separated)</label>
+                  <input id="logTags" type="text" placeholder="frontend, meetings, analysis" />
+                </div>
+                <p id="logError" class="error" aria-live="polite"></p>
+                <button class="btn" type="submit">Add Impact Log</button>
+              </form>
+            </section>
 
-        <section class="card">
-          <h2>Files</h2>
-          <p class="muted">For MVP, only file names are saved.</p>
-          <div class="row">
-            <input id="fileInput" type="file" multiple />
-            <button id="addFileBtn" class="btn" type="button">Save File Name(s)</button>
+            <section class="card">
+              <h2>Saved Impact Logs</h2>
+              <ul id="logList" class="list"></ul>
+            </section>
+
+            <section class="card">
+              <h2>PDF Documentation</h2>
+              <p class="muted">PDF files are stored as base64 in localStorage.</p>
+              <div class="row wrap">
+                <input id="fileInput" type="file" accept=".pdf,application/pdf" multiple />
+                <button id="addFileBtn" class="btn" type="button">Upload PDF(s)</button>
+              </div>
+              <p id="fileError" class="error" aria-live="polite"></p>
+              <ul id="fileList" class="list"></ul>
+            </section>
           </div>
-          <p id="fileError" class="error" aria-live="polite"></p>
-          <ul id="fileList" class="list"></ul>
-        </section>
 
-        <section class="card">
-          <h2>Weekly Summary Preview</h2>
-          <div class="two-col">
-            <div class="field-group">
-              <label for="managerName">Manager Name</label>
-              <input id="managerName" type="text" placeholder="Manager" />
-            </div>
-            <div class="field-group">
-              <label for="yourName">Your Name</label>
-              <input id="yourName" type="text" placeholder="Your name" />
-            </div>
+          <div class="dashboard-right">
+            <section class="card">
+              <h2>Weekly Progress</h2>
+              <div class="stat-grid">
+                <div class="stat-card">
+                  <p class="tiny">Logs</p>
+                  <p id="statLogs" class="stat-value">0</p>
+                </div>
+                <div class="stat-card">
+                  <p class="tiny">Contacts Met</p>
+                  <p id="statContacts" class="stat-value">0</p>
+                </div>
+                <div class="stat-card">
+                  <p class="tiny">Follow-ups Due</p>
+                  <p id="statFollowUps" class="stat-value">0</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="card">
+              <h2>Top Achievements</h2>
+              <ul id="topAchievements" class="list"></ul>
+            </section>
+
+            <section class="card">
+              <h2>People I Connected With This Week</h2>
+              <ul id="recentPeopleDashboard" class="list"></ul>
+            </section>
+
+            <section class="card">
+              <h2>Weekly Insight for Growth</h2>
+              <p id="dashboardQuote" class="quote">Click refresh to load an insight.</p>
+              <button id="refreshInsightBtn" class="btn btn-secondary" type="button">Refresh Insight</button>
+            </section>
+
+            <section class="card">
+              <h2>Weekly Summary Preview</h2>
+              <div class="two-col">
+                <div class="field-group">
+                  <label for="managerName">Manager Name</label>
+                  <input id="managerName" type="text" placeholder="Manager" />
+                </div>
+                <div class="field-group">
+                  <label for="yourName">Your Name</label>
+                  <input id="yourName" type="text" placeholder="Your name" />
+                </div>
+              </div>
+              <div class="field-group">
+                <label for="nextSteps">Next steps (optional)</label>
+                <textarea id="nextSteps" rows="2" placeholder="Share priorities for next week"></textarea>
+              </div>
+              <button id="generatePreviewBtn" class="btn" type="button">Generate Summary</button>
+              <textarea id="summaryPreview" rows="12" readonly></textarea>
+            </section>
           </div>
-          <button id="generatePreviewBtn" class="btn" type="button">Generate Summary</button>
-          <textarea id="summaryPreview" rows="10" readonly></textarea>
         </section>
       </section>
     </main>

@@ -61,9 +61,12 @@
             </div>
           </div>
 
+          <div class="field-group">
+            <label for="summaryNextSteps">Next steps (optional)</label>
+            <textarea id="summaryNextSteps" rows="2" placeholder="What is your focus next week?"></textarea>
+          </div>
+
           <div class="row wrap">
-            <button id="formalBtn" class="btn" type="button">Formal</button>
-            <button id="casualBtn" class="btn btn-secondary" type="button">Casual</button>
             <button id="generateSummaryBtn" class="btn" type="button">Generate Summary</button>
             <button id="copySummaryBtn" class="btn btn-secondary" type="button">Copy Summary</button>
           </div>
@@ -72,8 +75,13 @@
         </section>
 
         <section class="card">
-          <h3>Logs from Last 7 Days</h3>
+          <h3>Impact Logs from Last 7 Days</h3>
           <ul id="weeklyLogs" class="list"></ul>
+        </section>
+
+        <section class="card">
+          <h3>People I Connected With This Week</h3>
+          <ul id="weeklyConnections" class="list"></ul>
         </section>
 
         <section class="card">
@@ -82,8 +90,8 @@
         </section>
 
         <section class="card">
-          <h3>Weekly Insight</h3>
-          <p id="quoteText" class="quote">Click "Generate Summary" to load a motivation quote.</p>
+          <h3>Weekly Insight for Growth</h3>
+          <p id="quoteText" class="quote">Click "Generate Summary" to load a growth insight.</p>
         </section>
       </section>
     </main>

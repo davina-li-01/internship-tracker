@@ -49,6 +49,11 @@
 
       <section class="main-content single-col">
         <section class="card">
+          <h2>Follow-up Reminders</h2>
+          <ul id="networkFollowUps" class="list"></ul>
+        </section>
+
+        <section class="card">
           <h2>Add Networking Contact</h2>
           <form id="contactForm" novalidate>
             <div class="two-col">
@@ -63,17 +68,35 @@
             </div>
             <div class="two-col">
               <div class="field-group">
+                <label for="contactRole">Role</label>
+                <input id="contactRole" type="text" placeholder="Software Engineer" />
+              </div>
+              <div class="field-group">
                 <label for="dateMet">Date Met</label>
                 <input id="dateMet" type="date" required />
               </div>
+            </div>
+            <div class="two-col">
               <div class="field-group">
-                <label for="followUp">Follow-up Date</label>
-                <input id="followUp" type="date" required />
+                <label for="lastContacted">Last Contacted</label>
+                <input id="lastContacted" type="date" />
+              </div>
+              <div class="field-group">
+                <label for="followUpDate">Follow-up Date</label>
+                <input id="followUpDate" type="date" required />
               </div>
             </div>
             <div class="field-group">
+              <label for="interests">Interests</label>
+              <input id="interests" type="text" placeholder="AI, product, front-end" />
+            </div>
+            <div class="field-group">
+              <label for="adviceGiven">Advice Given</label>
+              <textarea id="adviceGiven" rows="2"></textarea>
+            </div>
+            <div class="field-group">
               <label for="contactNotes">Notes</label>
-              <textarea id="contactNotes" rows="3" required></textarea>
+              <textarea id="contactNotes" rows="3"></textarea>
             </div>
             <p id="contactError" class="error" aria-live="polite"></p>
             <button class="btn" type="submit">Save Contact</button>
