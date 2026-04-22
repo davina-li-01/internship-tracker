@@ -567,3 +567,90 @@ textarea[readonly] {
   font-weight: 500;
 }
 
+/* ── Follow-Up (Next Steps) ── */
+.followup-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.followup-section-header h3 {
+  margin: 0;
+}
+.followup-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.45rem 0;
+  border-top: 1px solid var(--border);
+  transition: opacity 0.2s;
+}
+.followup-item:first-child {
+  border-top: none;
+}
+.followup-done {
+  opacity: 0.42;
+}
+.followup-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  cursor: pointer;
+  flex: 1;
+}
+.followup-check input[type="checkbox"] {
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+.followup-text {
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+.followup-done .followup-text {
+  text-decoration: line-through;
+}
+.followup-right {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+.fu-tag {
+  font-size: 0.72rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.fu-tag-ai {
+  background: color-mix(in srgb, var(--accent), transparent 82%);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent), transparent 55%);
+}
+.fu-tag-manual {
+  background: color-mix(in srgb, var(--success), transparent 85%);
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success), transparent 55%);
+}
+.fu-delete {
+  padding: 0.1rem 0.35rem !important;
+  font-size: 0.75rem !important;
+  opacity: 0.55;
+}
+.fu-delete:hover {
+  opacity: 1;
+}
+.followup-add-row {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+.followup-add-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+

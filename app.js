@@ -180,6 +180,16 @@ function normalizeContactDocument(doc = {}) {
   };
 }
 
+function normalizeFollowUpItem(item = {}) {
+  return {
+    id: item.id || makeId(),
+    text: (item.text || "").trim(),
+    source: item.source === "ai" ? "ai" : "manual",
+    completed: item.completed === true,
+    createdAt: item.createdAt || new Date().toISOString()
+  };
+}
+
 function normalizeContact(contact = {}) {
   const frequency = contact.followUpFrequency || "none";
   const interactions = Array.isArray(contact.interactions)
@@ -208,6 +218,9 @@ function normalizeContact(contact = {}) {
     interactions: sortedInteractions,
     documents: Array.isArray(contact.documents)
       ? contact.documents.map(normalizeContactDocument)
+      : [],
+    followUps: Array.isArray(contact.followUps)
+      ? contact.followUps.map(normalizeFollowUpItem)
       : []
   };
 }
@@ -1067,7 +1080,98 @@ function initSummary() {
 
 const INTERACTION_TYPES = ["coffee chat", "meeting", "check-in", "email", "phone call", "event"];
 
-function renderInteractionTimeline(interactions) {
+function generateFollowUpSuggestions(contact) {
+  const suggestions = [];
+  const interests = (contact.interests || "").toLowerCase();
+  const notes = (contact.notes || "").toLowerCase();
+  const advice = (contact.adviceGiven || "").toLowerCase();
+  const role = (contact.role || "").toLowerCase();
+  const name = contact.name || "them";
+
+  // Interest-based
+  if (interests.includes("ai") || interests.includes("machine learning") || notes.includes("ai")) {
+    suggestions.push("Send an article about recent AI trends");
+  }
+  if (interests.includes("design") || interests.includes("ux") || interests.includes("product")) {
+    suggestions.push("Share a product design case study or article");
+  }
+  if (interests.includes("startup") || interests.includes("entrepreneur")) {
+    suggestions.push("Share a startup story or resource they might find interesting");
+  }
+  if (interests.includes("open source") || interests.includes("github")) {
+    suggestions.push(`Invite ${name} to collaborate on an open-source project`);
+  }
+
+  // Advice follow-up
+  if (advice) {
+    suggestions.push("Follow up on their advice — share your progress since your last talk");
+  }
+
+  // Role-based
+  if (role.includes("engineer") || role.includes("developer") || role.includes("software")) {
+    suggestions.push("Share a technical article, repo, or tool relevant to their work");
+  }
+  if (role.includes("manager") || role.includes("director") || role.includes("lead")) {
+    suggestions.push("Ask for feedback on your growth since your last conversation");
+  }
+  if (role.includes("recruiter") || role.includes("talent") || role.includes("hr")) {
+    suggestions.push("Send an updated resume or LinkedIn summary");
+  }
+
+  // Interaction-based
+  const interactionCount = contact.interactions?.length || 0;
+  if (interactionCount === 0) {
+    suggestions.push(`Send a quick intro message to break the ice with ${name}`);
+  } else if (interactionCount >= 3) {
+    suggestions.push("Consider asking to grab coffee (virtual or in-person)");
+  }
+
+  // Notes-based
+  if (notes.includes("referral") || notes.includes("refer")) {
+    suggestions.push("Follow up about the referral they mentioned");
+  }
+  if (notes.includes("project") || notes.includes("work")) {
+    suggestions.push("Ask for an update on the project they mentioned");
+  }
+  if (notes.includes("conference") || notes.includes("event") || notes.includes("meetup")) {
+    suggestions.push("Share a recap or resource from the event you both attended");
+  }
+
+  // Universal
+  suggestions.push("Schedule a quick check-in call");
+  suggestions.push(`Send ${name} a thoughtful update on what you've been working on`);
+
+  // Deduplicate and cap at 5
+  return [...new Set(suggestions)].slice(0, 5);
+}
+
+function renderFollowUpItems(followUps) {
+  if (!followUps.length) {
+    return '<p class="empty">No next steps yet. Add one manually or use Suggest.</p>';
+  }
+  // Sort: incomplete first, then by createdAt desc within each group
+  const sorted = [...followUps].sort((a, b) => {
+    if (a.completed !== b.completed) return a.completed ? 1 : -1;
+    return b.createdAt.localeCompare(a.createdAt);
+  });
+  return sorted
+    .map(
+      (item) => `
+      <div class="followup-item ${item.completed ? "followup-done" : ""}" data-fu-id="${item.id}">
+        <label class="followup-check">
+          <input type="checkbox" class="fu-checkbox" data-fu-id="${item.id}" ${item.completed ? "checked" : ""} />
+          <span class="followup-text">${escapeHtml(item.text)}</span>
+        </label>
+        <div class="followup-right">
+          <span class="fu-tag ${item.source === "ai" ? "fu-tag-ai" : "fu-tag-manual"}">${item.source === "ai" ? "🤖 AI" : "✍️ Manual"}</span>
+          <button class="btn btn-secondary fu-delete" type="button" data-fu-id="${item.id}" title="Delete">✕</button>
+        </div>
+      </div>`
+    )
+    .join("");
+}
+
+function showContactProfile(contactData) {
   if (!interactions.length) {
     return '<p class="empty">No interactions logged yet.</p>';
   }
@@ -1168,6 +1272,19 @@ function showContactProfile(contactData) {
               <p id="newIntError" class="error" aria-live="polite"></p>
               <button class="btn" id="addInteractionBtn" type="button">+ Add Interaction</button>
             </section>
+
+            <section class="profile-section">
+              <div class="followup-section-header">
+                <h3>👉 Next Steps</h3>
+                <button class="btn btn-secondary" id="suggestFollowUpsBtn" type="button">🤖 Suggest Follow-Ups</button>
+              </div>
+              <div id="followUpList">${renderFollowUpItems(c.followUps)}</div>
+              <div class="followup-add-row">
+                <input type="text" id="newFollowUpText" placeholder="Add a follow-up task…" />
+                <button class="btn" id="addFollowUpBtn" type="button">Add</button>
+              </div>
+              <p id="followUpMsg" class="success" aria-live="polite"></p>
+            </section>
           </div>
 
           <!-- RIGHT: Info + Docs + Reminder -->
@@ -1260,7 +1377,104 @@ function showContactProfile(contactData) {
       renderFollowUpAlerts("dashboardFollowUps");
       renderProgressWidget();
       rerender();
+      // After rerender, auto-suggest if contact has no incomplete follow-ups
+      setTimeout(() => {
+        const fresh = freshContact();
+        const hasOpen = (fresh.followUps || []).some((f) => !f.completed);
+        if (!hasOpen) {
+          const msgEl = modal.querySelector("#followUpMsg");
+          if (msgEl) {
+            msgEl.textContent = "Interaction saved! Click \"🤖 Suggest Follow-Ups\" to generate next steps.";
+            setTimeout(() => { if (msgEl) msgEl.textContent = ""; }, 4000);
+          }
+        }
+      }, 50);
     });
+
+    // Add manual follow-up
+    const addFollowUp = () => {
+      const input = modal.querySelector("#newFollowUpText");
+      const text = input?.value.trim();
+      if (!text) return;
+      const item = normalizeFollowUpItem({ text, source: "manual" });
+      const contacts = getContacts();
+      const updated = contacts.map((c) =>
+        c.id !== contactData.id ? c : { ...c, followUps: [item, ...(c.followUps || [])] }
+      );
+      saveContacts(updated);
+      input.value = "";
+      // Re-render just the list without full rerender
+      const listEl = modal.querySelector("#followUpList");
+      if (listEl) listEl.innerHTML = renderFollowUpItems(freshContact().followUps);
+      attachFollowUpListeners();
+    };
+    modal.querySelector("#addFollowUpBtn")?.addEventListener("click", addFollowUp);
+    modal.querySelector("#newFollowUpText")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") addFollowUp();
+    });
+
+    // Suggest follow-ups
+    modal.querySelector("#suggestFollowUpsBtn")?.addEventListener("click", () => {
+      const c = freshContact();
+      const suggestions = generateFollowUpSuggestions(c);
+      if (!suggestions.length) return;
+      const newItems = suggestions.map((text) => normalizeFollowUpItem({ text, source: "ai" }));
+      const existingTexts = new Set((c.followUps || []).map((f) => f.text.toLowerCase()));
+      const deduped = newItems.filter((f) => !existingTexts.has(f.text.toLowerCase()));
+      if (!deduped.length) {
+        const msgEl = modal.querySelector("#followUpMsg");
+        if (msgEl) { msgEl.textContent = "All suggestions already added!"; setTimeout(() => { if (msgEl) msgEl.textContent = ""; }, 2500); }
+        return;
+      }
+      const contacts = getContacts();
+      const updated = contacts.map((c2) =>
+        c2.id !== contactData.id ? c2 : { ...c2, followUps: [...deduped, ...(c2.followUps || [])] }
+      );
+      saveContacts(updated);
+      const listEl = modal.querySelector("#followUpList");
+      if (listEl) listEl.innerHTML = renderFollowUpItems(freshContact().followUps);
+      attachFollowUpListeners();
+      const msgEl = modal.querySelector("#followUpMsg");
+      if (msgEl) { msgEl.textContent = `✨ ${deduped.length} suggestion${deduped.length !== 1 ? "s" : ""} added!`; setTimeout(() => { if (msgEl) msgEl.textContent = ""; }, 2500); }
+    });
+
+    function attachFollowUpListeners() {
+      // Checkbox toggle
+      modal.querySelectorAll(".fu-checkbox").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          const id = cb.dataset.fuId;
+          const contacts = getContacts();
+          const updated = contacts.map((c) =>
+            c.id !== contactData.id ? c : {
+              ...c,
+              followUps: (c.followUps || []).map((f) =>
+                f.id !== id ? f : { ...f, completed: cb.checked }
+              )
+            }
+          );
+          saveContacts(updated);
+          const listEl = modal.querySelector("#followUpList");
+          if (listEl) listEl.innerHTML = renderFollowUpItems(freshContact().followUps);
+          attachFollowUpListeners();
+        });
+      });
+      // Delete
+      modal.querySelectorAll(".fu-delete").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const id = btn.dataset.fuId;
+          const contacts = getContacts();
+          const updated = contacts.map((c) =>
+            c.id !== contactData.id ? c : { ...c, followUps: (c.followUps || []).filter((f) => f.id !== id) }
+          );
+          saveContacts(updated);
+          const listEl = modal.querySelector("#followUpList");
+          if (listEl) listEl.innerHTML = renderFollowUpItems(freshContact().followUps);
+          attachFollowUpListeners();
+        });
+      });
+    }
+    attachFollowUpListeners();
+
 
     // Save notes
     modal.querySelector("#saveNotesBtn").addEventListener("click", () => {
