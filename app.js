@@ -1,70 +1,18 @@
-const STORAGE_KEYS = {
-  logs: "interntrack_logs",
-  contacts: "interntrack_contacts",
-  globalContacts: "interntrack_global_contacts",
-  files: "interntrack_files",
-  tone: "interntrack_tone",
-  theme: "interntrack_theme",
-  internships: "interntrack_internships",
-  activeInternshipId: "interntrack_active_internship_id",
-  managerName: "interntrack_manager_name",
-  yourName: "interntrack_your_name",
-  nextSteps: "interntrack_next_steps"
-};
+/**
+ * app.js — InternTrack main application logic
+ * ES module, uses Supabase via db.js for all data access.
+ */
+import { requireAuth, supabase } from "./supabase.js";
+import * as db from "./db.js";
 
-let refreshActivePageData = () => {};
-
-function readStore(key, fallback = []) {
-  try {
-    return JSON.parse(localStorage.getItem(key)) ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function writeStore(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
-}
-
-function readText(key, fallback = "") {
-  return localStorage.getItem(key) ?? fallback;
-}
-
-function writeText(key, value) {
-  localStorage.setItem(key, value);
-}
-
-function makeId() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `id_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function getInternships() {
-  const internships = readStore(STORAGE_KEYS.internships, []);
-  return Array.isArray(internships)
-    ? internships.map((item) => ({
-        id: item.id || makeId(),
-        name: (item.name || "").trim(),
-        company: (item.company || "").trim(),
-        startDate: item.startDate || "",
-        endDate: item.endDate || "",
-        createdAt: item.createdAt || new Date().toISOString()
-      }))
-    : [];
-}
+// ── Active internship (UI state — localStorage only) ──────────────────────────
 
 function getActiveInternshipId() {
-  return readText(STORAGE_KEYS.activeInternshipId, "");
+  return localStorage.getItem("interntrack_active_internship_id") || "";
 }
 
 function setActiveInternshipId(id) {
-  writeText(STORAGE_KEYS.activeInternshipId, id);
-}
-
-function scopedKey(baseKey, internshipId = getActiveInternshipId()) {
-  return `${baseKey}_${internshipId || "__none__"}`;
+  localStorage.setItem("interntrack_active_internship_id", id || "");
 }
 
 function hasActiveInternship() {
@@ -77,33 +25,13 @@ function requireActiveInternship(errorEl, message = "Please add or select an int
   return false;
 }
 
-function deleteInternshipScopedData(internshipId) {
-  [
-    STORAGE_KEYS.logs,
-    STORAGE_KEYS.contacts,
-    STORAGE_KEYS.files,
-    STORAGE_KEYS.managerName,
-    STORAGE_KEYS.yourName,
-    STORAGE_KEYS.nextSteps
-  ].forEach((baseKey) => {
-    localStorage.removeItem(scopedKey(baseKey, internshipId));
-  });
-}
+// ── Utilities ─────────────────────────────────────────────────────────────────
 
-function readScopedStore(baseKey, fallback = []) {
-  return readStore(scopedKey(baseKey), fallback);
-}
-
-function writeScopedStore(baseKey, value) {
-  writeStore(scopedKey(baseKey), value);
-}
-
-function readScopedText(baseKey, fallback = "") {
-  return readText(scopedKey(baseKey), fallback);
-}
-
-function writeScopedText(baseKey, value) {
-  writeText(scopedKey(baseKey), value);
+function makeId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `id_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function formatDate(value) {
@@ -123,17 +51,33 @@ function todayDateString() {
 }
 
 function splitTags(tagsValue) {
-  if (Array.isArray(tagsValue)) {
-    return tagsValue.map((tag) => String(tag).trim()).filter(Boolean);
-  }
-  if (typeof tagsValue === "string") {
-    return tagsValue
-      .split(",")
-      .map((tag) => tag.trim())
-      .filter(Boolean);
-  }
+  if (Array.isArray(tagsValue)) return tagsValue.map((t) => String(t).trim()).filter(Boolean);
+  if (typeof tagsValue === "string") return tagsValue.split(",").map((t) => t.trim()).filter(Boolean);
   return [];
 }
+
+function escapeHtml(value = "") {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function isDateWithinLastDays(value, days = 7) {
+  const date = parseDateOnly(value);
+  if (!date) return false;
+  const now = new Date();
+  const start = new Date(now);
+  start.setDate(now.getDate() - (days - 1));
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(now);
+  end.setHours(23, 59, 59, 999);
+  return date >= start && date <= end;
+}
+
+// ── Normalizers ───────────────────────────────────────────────────────────────
 
 function normalizeLog(log = {}) {
   return {
@@ -232,82 +176,11 @@ function normalizeFile(file = {}) {
     id: file.id || makeId(),
     name: file.name || "Untitled.pdf",
     data: file.data || "",
-    date: file.date || todayDateString(),
-    linkedWeek: file.linkedWeek || "",
-    linkedLogId: file.linkedLogId || ""
+    date: file.date || todayDateString()
   };
 }
 
-function getLogs() {
-  if (!hasActiveInternship()) return [];
-  return readScopedStore(STORAGE_KEYS.logs, []).map(normalizeLog);
-}
-
-function saveLogs(logs) {
-  if (!hasActiveInternship()) return;
-  writeScopedStore(STORAGE_KEYS.logs, logs.map(normalizeLog));
-}
-
-function getContacts() {
-  return readStore(STORAGE_KEYS.globalContacts, []).map(normalizeContact);
-}
-
-function saveContacts(contacts) {
-  writeStore(STORAGE_KEYS.globalContacts, contacts.map(normalizeContact));
-}
-
-function getFiles() {
-  if (!hasActiveInternship()) return [];
-  return readScopedStore(STORAGE_KEYS.files, []).map(normalizeFile);
-}
-
-function saveFiles(files) {
-  if (!hasActiveInternship()) return;
-  writeScopedStore(STORAGE_KEYS.files, files.map(normalizeFile));
-}
-
-function isDateWithinLastDays(value, days = 7) {
-  const date = parseDateOnly(value);
-  if (!date) return false;
-
-  const now = new Date();
-  const start = new Date(now);
-  start.setDate(now.getDate() - (days - 1));
-  start.setHours(0, 0, 0, 0);
-
-  const end = new Date(now);
-  end.setHours(23, 59, 59, 999);
-
-  return date >= start && date <= end;
-}
-
-function getLast7DaysLogs() {
-  return getLogs().filter((log) => isDateWithinLastDays(log.date, 7));
-}
-
-function getPeopleConnectedThisWeek() {
-  return getContacts().filter((contact) => isDateWithinLastDays(contact.dateMet, 7));
-}
-
-function getFollowUpsDue() {
-  const now = new Date();
-  now.setHours(23, 59, 59, 999);
-  return getContacts().filter((contact) => {
-    if (!contact.reminderEnabled || !contact.nextReminder) return false;
-    return new Date(contact.nextReminder) <= now;
-  });
-}
-
-function getFollowUpsSoon() {
-  const now = new Date();
-  const soon = new Date(now.getTime() + 7 * 86400000);
-  now.setHours(23, 59, 59, 999);
-  return getContacts().filter((contact) => {
-    if (!contact.reminderEnabled || !contact.nextReminder) return false;
-    const next = new Date(contact.nextReminder);
-    return next > now && next <= soon;
-  });
-}
+// ── Reminder helpers ──────────────────────────────────────────────────────────
 
 function getReminderStatus(contact) {
   if (!contact.reminderEnabled || contact.followUpFrequency === "none" || !contact.nextReminder) {
@@ -321,395 +194,21 @@ function getReminderStatus(contact) {
   return "ok";
 }
 
-function getInternshipStats(internshipId) {
-  const logs = readStore(scopedKey(STORAGE_KEYS.logs, internshipId), []).length;
-  const contacts = readStore(scopedKey(STORAGE_KEYS.contacts, internshipId), []).length;
-  const files = readStore(scopedKey(STORAGE_KEYS.files, internshipId), []).length;
-  return { logs, contacts, files };
+function reminderBadge(contact) {
+  const status = getReminderStatus(contact);
+  if (status === "due") return '<span class="badge badge-due">Due</span>';
+  if (status === "soon") return '<span class="badge badge-soon">Soon</span>';
+  if (status === "ok") return '<span class="badge badge-ok">Up to date</span>';
+  return "";
 }
 
-function migrateLegacyDataIntoDefaultInternship(defaultId) {
-  if (!defaultId) return;
-  const migrationFlag = `interntrack_migrated_${defaultId}`;
-  if (localStorage.getItem(migrationFlag) === "true") return;
-
-  [STORAGE_KEYS.logs, STORAGE_KEYS.contacts, STORAGE_KEYS.files].forEach((baseKey) => {
-    const scoped = scopedKey(baseKey, defaultId);
-    if (localStorage.getItem(scoped) === null && localStorage.getItem(baseKey) !== null) {
-      localStorage.setItem(scoped, localStorage.getItem(baseKey));
-    }
-  });
-
-  [STORAGE_KEYS.managerName, STORAGE_KEYS.yourName, STORAGE_KEYS.nextSteps].forEach((baseKey) => {
-    const scoped = scopedKey(baseKey, defaultId);
-    if (localStorage.getItem(scoped) === null && localStorage.getItem(baseKey) !== null) {
-      localStorage.setItem(scoped, localStorage.getItem(baseKey));
-    }
-  });
-
-  localStorage.setItem(migrationFlag, "true");
-}
-
-function ensureInternshipWorkspace() {
-  let internships = getInternships();
-
-  if (!Array.isArray(internships)) {
-    internships = [];
-    writeStore(STORAGE_KEYS.internships, internships);
-  }
-
-  const cleaned = internships.filter((item) => {
-    const looksLikeLegacyDefault =
-      item.name === "Current Internship" &&
-      !item.company &&
-      !item.startDate &&
-      !item.endDate &&
-      getInternshipStats(item.id).logs === 0 &&
-      getInternshipStats(item.id).contacts === 0 &&
-      getInternshipStats(item.id).files === 0;
-    return !looksLikeLegacyDefault;
-  });
-
-  if (cleaned.length !== internships.length) {
-    internships = cleaned;
-    writeStore(STORAGE_KEYS.internships, internships);
-  }
-
-  let activeId = getActiveInternshipId();
-  const activeExists = internships.some((item) => item.id === activeId);
-  if (!activeExists) {
-    activeId = internships[0]?.id || "";
-    setActiveInternshipId(activeId);
-  }
-
-  migrateLegacyDataIntoDefaultInternship(activeId);
-}
-
-function renderInternshipPanel() {
-  const select = document.getElementById("internshipSelect");
-  const list = document.getElementById("internshipList");
-  if (!select || !list) return;
-
-  const internships = getInternships();
-  const activeId = getActiveInternshipId();
-
-  if (!internships.length) {
-    select.innerHTML = '<option value="">No internships yet</option>';
-    select.disabled = true;
-  } else {
-    select.disabled = false;
-    select.innerHTML = internships
-      .map((internship) => `<option value="${internship.id}">${escapeHtml(internship.name)}</option>`)
-      .join("");
-    select.value = activeId;
-  }
-
-  if (!internships.length) {
-    list.innerHTML = '<li class="empty">No internships yet. Click + New Internship.</li>';
-    return;
-  }
-
-  list.innerHTML = internships
-    .map((internship) => {
-      const stats = getInternshipStats(internship.id);
-      const activeLabel = internship.id === activeId ? '<span class="badge">Active</span>' : "";
-      const duration = internship.startDate || internship.endDate
-        ? `${formatDate(internship.startDate)} → ${formatDate(internship.endDate)}`
-        : "Duration not set";
-      return `
-        <li class="list-item">
-          <p><strong>${escapeHtml(internship.name)}</strong> ${activeLabel}</p>
-          <p class="tiny">${escapeHtml(internship.company || "No company set")}</p>
-          <p class="tiny">${escapeHtml(duration)}</p>
-          <p class="tiny">${stats.logs} logs · ${stats.contacts} contacts · ${stats.files} files</p>
-          <div class="row wrap internship-actions">
-            <button class="btn btn-secondary" type="button" data-internship-action="edit" data-internship-id="${internship.id}">Edit</button>
-            <button class="btn btn-secondary" type="button" data-internship-action="delete" data-internship-id="${internship.id}">Delete</button>
-          </div>
-        </li>
-      `;
-    })
-    .join("");
-}
-
-function initInternshipPanel() {
-  const select = document.getElementById("internshipSelect");
-  const list = document.getElementById("internshipList");
-  const addBtn = document.getElementById("addInternshipBtn");
-  if (!select || !list || !addBtn) return;
-
-  const error = document.getElementById("internshipError");
-
-  const promptInternshipPayload = (seed = {}) => {
-    const name = window.prompt("Internship name", seed.name || "")?.trim() || "";
-    if (!name) return null;
-    const company = window.prompt("Company", seed.company || "")?.trim() || "";
-    const startDate = window.prompt("Start date (YYYY-MM-DD)", seed.startDate || "")?.trim() || "";
-    const endDate = window.prompt("End date (YYYY-MM-DD)", seed.endDate || "")?.trim() || "";
-    return { name, company, startDate, endDate };
-  };
-
-  select.addEventListener("change", () => {
-    setActiveInternshipId(select.value);
-    renderInternshipPanel();
-    refreshActivePageData();
-  });
-
-  addBtn.addEventListener("click", () => {
-    error.textContent = "";
-
-    const payload = promptInternshipPayload({
-      name: "",
-      company: "",
-      startDate: "",
-      endDate: ""
-    });
-
-    if (!payload) return;
-
-    const internships = getInternships();
-    const next = { id: makeId(), ...payload, createdAt: new Date().toISOString() };
-    internships.push(next);
-
-    writeStore(STORAGE_KEYS.internships, internships);
-    setActiveInternshipId(next.id);
-    renderInternshipPanel();
-    refreshActivePageData();
-  });
-
-  list.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-internship-action]");
-    if (!button) return;
-
-    const internshipId = button.dataset.internshipId;
-    const action = button.dataset.internshipAction;
-    const internships = getInternships();
-    const target = internships.find((item) => item.id === internshipId);
-    if (!target) return;
-
-    if (action === "edit") {
-      const payload = promptInternshipPayload(target);
-      if (!payload) return;
-
-      const updated = internships.map((item) =>
-        item.id === internshipId
-          ? {
-              ...item,
-              ...payload
-            }
-          : item
-      );
-
-      writeStore(STORAGE_KEYS.internships, updated);
-      renderInternshipPanel();
-      refreshActivePageData();
-      return;
-    }
-
-    if (action === "delete") {
-      const confirmed = window.confirm(`Delete internship "${target.name}" and all associated logs, files, and contacts?`);
-      if (!confirmed) return;
-
-      const remaining = internships.filter((item) => item.id !== internshipId);
-      writeStore(STORAGE_KEYS.internships, remaining);
-      deleteInternshipScopedData(internshipId);
-
-      if (getActiveInternshipId() === internshipId) {
-        setActiveInternshipId(remaining[0]?.id || "");
-      }
-
-      renderInternshipPanel();
-      refreshActivePageData();
-    }
-  });
-
-  renderInternshipPanel();
-}
-
-function renderFollowUpAlerts(listId, emptyText = "No follow-ups due.") {
-  const list = document.getElementById(listId);
-  if (!list) return;
-
-  const due = getFollowUpsDue();
-  const soon = getFollowUpsSoon();
-  const combined = [
-    ...due.map((c) => ({ contact: c, status: "due" })),
-    ...soon.map((c) => ({ contact: c, status: "soon" }))
-  ];
-
-  if (!combined.length) {
-    list.innerHTML = `<li class="empty">${escapeHtml(emptyText)}</li>`;
-    return;
-  }
-
-  list.innerHTML = combined
-    .map(
-      ({ contact, status }) => `
-      <li class="list-item ${status === "due" ? "due-item" : "soon-item"}">
-        <div class="reminder-row">
-          <span>
-            ${status === "due" ? "🔴" : "🟡"}
-            ${status === "due" ? "👉 Time to reconnect with" : "Coming up:"}
-            <strong>${escapeHtml(contact.name)}</strong>
-            <span class="tiny">(${formatDate(contact.nextReminder)})</span>
-          </span>
-          <button class="btn btn-secondary reminder-trigger" type="button" data-contact-id="${contact.id}">Manage</button>
-        </div>
-      </li>`
-    )
-    .join("");
-
-  list.querySelectorAll(".reminder-trigger").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const contactId = btn.dataset.contactId;
-      if (contactId) {
-        window.location.href = `contact.html?id=${encodeURIComponent(contactId)}`;
-      }
-    });
-  });
-}
-
-function renderLogs() {
-  const list = document.getElementById("logList");
-  if (!list) return;
-
-  const logs = getLogs().sort((a, b) => b.date.localeCompare(a.date));
-  if (!logs.length) {
-    list.innerHTML = '<li class="empty">No impact logs yet.</li>';
-    return;
-  }
-
-  list.innerHTML = logs
-    .map(
-      (log) => `
-      <li class="list-item">
-        <p><strong>${formatDate(log.date)}</strong></p>
-        <p><span class="label">Did:</span> ${escapeHtml(log.task)}</p>
-        <p><span class="label">Impact:</span> ${escapeHtml(log.impact)}</p>
-        <p><span class="label">Skills:</span> ${escapeHtml(log.skills)}</p>
-        <div class="tag-row">${log.tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div>
-      </li>`
-    )
-    .join("");
-}
-
-function renderFiles() {
-  const list = document.getElementById("fileList");
-  if (!list) return;
-
-  const files = getFiles().sort((a, b) => b.date.localeCompare(a.date));
-  if (!files.length) {
-    list.innerHTML = '<li class="empty">No PDFs uploaded yet.</li>';
-    return;
-  }
-
-  list.innerHTML = files
-    .map(
-      (file) => `
-      <li class="list-item">
-        <p><strong>${escapeHtml(file.name)}</strong> <span class="tiny">${formatDate(file.date)}</span></p>
-        <div class="row wrap">
-          <a class="btn btn-secondary" href="${file.data}" target="_blank" rel="noopener">Open</a>
-          <a class="btn" href="${file.data}" download="${escapeHtml(file.name)}">Download</a>
-        </div>
-      </li>`
-    )
-    .join("");
-}
-
-function scoreImpact(log) {
-  return (log.impact || "").length + (log.skills || "").length * 0.2 + log.tags.length * 3;
-}
-
-function renderTopAchievements() {
-  const list = document.getElementById("topAchievements");
-  if (!list) return;
-
-  const top = getLast7DaysLogs()
-    .sort((a, b) => scoreImpact(b) - scoreImpact(a))
-    .slice(0, 3);
-
-  if (!top.length) {
-    list.innerHTML = '<li class="empty">Add logs to surface top achievements.</li>';
-    return;
-  }
-
-  list.innerHTML = top
-    .map(
-      (log) => `
-      <li class="list-item">
-        <p><strong>${escapeHtml(log.task)}</strong></p>
-        <p>${escapeHtml(log.impact)}</p>
-      </li>`
-    )
-    .join("");
-}
-
-function renderWeeklyConnections(listId) {
-  const list = document.getElementById(listId);
-  if (!list) return;
-
-  const people = getPeopleConnectedThisWeek().sort((a, b) => b.dateMet.localeCompare(a.dateMet));
-  if (!people.length) {
-    list.innerHTML = '<li class="empty">No new contacts in the last 7 days.</li>';
-    return;
-  }
-
-  list.innerHTML = people
-    .map(
-      (person) => `
-      <li class="list-item">
-        <p><strong>${escapeHtml(person.name)}</strong> · ${escapeHtml(person.role || "Role not set")}</p>
-        <p class="tiny">Met: ${formatDate(person.dateMet)}</p>
-      </li>`
-    )
-    .join("");
-}
-
-function renderProgressWidget() {
-  const statLogs = document.getElementById("statLogs");
-  const statContacts = document.getElementById("statContacts");
-  const statFollowUps = document.getElementById("statFollowUps");
-  if (!statLogs || !statContacts || !statFollowUps) return;
-
-  statLogs.textContent = String(getLast7DaysLogs().length);
-  statContacts.textContent = String(getPeopleConnectedThisWeek().length);
-  statFollowUps.textContent = String(getFollowUpsDue().length);
-}
-
-function buildSummary({ logs, managerName, yourName, nextSteps }) {
-  const safeManager = managerName?.trim() || "Manager";
-  const safeName = yourName?.trim() || "Your Name";
-  const safeNextSteps = nextSteps?.trim();
-
-  if (!logs.length) {
-    return `Hi ${safeManager},\n\nThis week I:\n\n• Completed: No impact logs submitted.\n• Achieved: No impact details submitted.\n• Learned: No skills noted yet.\n\nKey highlight:\nNo key highlight yet.\n\nNext steps:\n${safeNextSteps || "Continue building momentum next week."}\n\nBest,\n${safeName}`;
-  }
-
-  const completed = logs.map((log) => `${log.task} (${log.date})`).join("; ");
-  const achieved = logs.map((log) => log.impact).filter(Boolean).join("; ");
-  const learned = logs.map((log) => log.skills).filter(Boolean).join("; ");
-  const best = [...logs].sort((a, b) => scoreImpact(b) - scoreImpact(a))[0];
-
-  return `Hi ${safeManager},\n\nThis week I:\n\n• Completed: ${completed}\n• Achieved: ${achieved || "No impact details recorded."}\n• Learned: ${learned || "No skills recorded."}\n\nKey highlight:\n${best?.impact || "No key highlight recorded."}\n\nNext steps:\n${safeNextSteps || "Continue progressing on current priorities."}\n\nBest,\n${safeName}`;
-}
-
-async function fetchQuote() {
-  try {
-    const response = await fetch("https://api.quotable.io/random");
-    if (!response.ok) throw new Error("Quote unavailable");
-    const data = await response.json();
-    return `“${data.content}” — ${data.author}`;
-  } catch {
-    return "Weekly Insight for Growth is unavailable right now. Keep showing up consistently.";
-  }
-}
+// ── Theme ─────────────────────────────────────────────────────────────────────
 
 function applyTheme() {
-  const theme = localStorage.getItem(STORAGE_KEYS.theme) || "light";
+  const theme = localStorage.getItem("interntrack_theme") || "light";
   document.body.classList.toggle("dark", theme === "dark");
   const toggle = document.getElementById("themeToggle");
-  if (toggle) toggle.textContent = theme === "dark" ? "☀️ Light" : "🌙 Dark";
+  if (toggle) toggle.textContent = theme === "dark" ? "Light Mode" : "Dark Mode";
 }
 
 function initThemeToggle() {
@@ -718,10 +217,12 @@ function initThemeToggle() {
   applyTheme();
   toggle.addEventListener("click", () => {
     const next = document.body.classList.contains("dark") ? "light" : "dark";
-    localStorage.setItem(STORAGE_KEYS.theme, next);
+    localStorage.setItem("interntrack_theme", next);
     applyTheme();
   });
 }
+
+// ── PDF helper ────────────────────────────────────────────────────────────────
 
 function readPdfFile(file) {
   return new Promise((resolve, reject) => {
@@ -732,21 +233,459 @@ function readPdfFile(file) {
   });
 }
 
-function initDashboard() {
+// ── Follow-up suggestions ─────────────────────────────────────────────────────
+
+const INTERACTION_TYPES = ["coffee chat", "meeting", "check-in", "email", "phone call", "event"];
+
+function generateFollowUpSuggestions(contact) {
+  const suggestions = [];
+  const interests = (contact.interests || "").toLowerCase();
+  const notes = (contact.notes || "").toLowerCase();
+  const advice = (contact.adviceGiven || "").toLowerCase();
+  const role = (contact.role || "").toLowerCase();
+  const name = contact.name || "them";
+
+  if (interests.includes("ai") || interests.includes("machine learning") || notes.includes("ai"))
+    suggestions.push("Send an article about recent AI trends");
+  if (interests.includes("design") || interests.includes("ux") || interests.includes("product"))
+    suggestions.push("Share a product design case study or article");
+  if (interests.includes("startup") || interests.includes("entrepreneur"))
+    suggestions.push("Share a startup story or resource they might find interesting");
+  if (interests.includes("open source") || interests.includes("github"))
+    suggestions.push("Invite " + name + " to collaborate on an open-source project");
+  if (advice)
+    suggestions.push("Follow up on their advice and share your progress since your last talk");
+  if (role.includes("engineer") || role.includes("developer") || role.includes("software"))
+    suggestions.push("Share a technical article, repo, or tool relevant to their work");
+  if (role.includes("manager") || role.includes("director") || role.includes("lead"))
+    suggestions.push("Ask for feedback on your growth since your last conversation");
+  if (role.includes("recruiter") || role.includes("talent") || role.includes("hr"))
+    suggestions.push("Send an updated resume or LinkedIn summary");
+  const interactionCount = contact.interactions?.length || 0;
+  if (interactionCount === 0)
+    suggestions.push("Send a quick intro message to break the ice with " + name);
+  else if (interactionCount >= 3)
+    suggestions.push("Consider asking to grab coffee (virtual or in-person)");
+  if (notes.includes("referral") || notes.includes("refer"))
+    suggestions.push("Follow up about the referral they mentioned");
+  if (notes.includes("project") || notes.includes("work"))
+    suggestions.push("Ask for an update on the project they mentioned");
+  if (notes.includes("conference") || notes.includes("event") || notes.includes("meetup"))
+    suggestions.push("Share a recap or resource from the event you both attended");
+  suggestions.push("Schedule a quick check-in call");
+  suggestions.push("Send " + name + " a thoughtful update on what you have been working on");
+  return [...new Set(suggestions)].slice(0, 5);
+}
+
+// ── Render helpers ────────────────────────────────────────────────────────────
+
+function renderFollowUpItems(followUps) {
+  if (!followUps.length) {
+    return '<p class="empty">No next steps yet. Add one manually or use Suggest.</p>';
+  }
+  const sorted = [...followUps].sort((a, b) => {
+    if (a.completed !== b.completed) return a.completed ? 1 : -1;
+    return b.createdAt.localeCompare(a.createdAt);
+  });
+  return sorted.map((item) => [
+    '<div class="followup-item ' + (item.completed ? "followup-done" : "") + '" data-fu-id="' + item.id + '">',
+    '  <label class="followup-check">',
+    '    <input type="checkbox" class="fu-checkbox" data-fu-id="' + item.id + '" ' + (item.completed ? "checked" : "") + ' />',
+    '    <span class="followup-text">' + escapeHtml(item.text) + '</span>',
+    '  </label>',
+    '  <div class="followup-right">',
+    '    <span class="fu-tag ' + (item.source === "ai" ? "fu-tag-ai" : "fu-tag-manual") + '">' + (item.source === "ai" ? "AI" : "Manual") + '</span>',
+    '    <button class="btn btn-secondary fu-delete" type="button" data-fu-id="' + item.id + '" title="Delete">X</button>',
+    '  </div>',
+    '</div>'
+  ].join("\n")).join("\n");
+}
+
+function renderContactDocuments(docs) {
+  if (!docs.length) return '<p class="empty">No documents uploaded yet.</p>';
+  return docs.map((doc) => [
+    '<div class="row wrap doc-row">',
+    '  <span><strong>' + escapeHtml(doc.name) + '</strong> <span class="tiny">' + formatDate(doc.date) + '</span></span>',
+    '  <div class="row">',
+    '    <a class="btn btn-secondary" href="' + doc.data + '" target="_blank" rel="noopener">Open</a>',
+    '    <a class="btn btn-secondary" href="' + doc.data + '" download="' + escapeHtml(doc.name) + '">Download</a>',
+    '    <button class="btn btn-secondary" type="button" data-remove-doc="' + doc.id + '">Remove</button>',
+    '  </div>',
+    '</div>'
+  ].join("\n")).join("\n");
+}
+
+function renderInteractionTimeline(interactions) {
+  if (!interactions.length) return '<p class="empty">No interactions logged yet.</p>';
+  return interactions.map((item) => [
+    '<div class="timeline-item">',
+    '  <div class="timeline-dot"></div>',
+    '  <div class="timeline-body">',
+    '    <p class="timeline-date">' + formatDate(item.date) + ' <span class="tag">' + escapeHtml(item.type) + '</span></p>',
+    item.notes ? '    <p>' + escapeHtml(item.notes) + '</p>' : '',
+    item.outcome ? '    <p class="tiny"><span class="label">Outcome:</span> ' + escapeHtml(item.outcome) + '</p>' : '',
+    '  </div>',
+    '</div>'
+  ].filter(Boolean).join("\n")).join("\n");
+}
+
+// ── Summary builder ───────────────────────────────────────────────────────────
+
+function scoreImpact(log) {
+  return (log.impact || "").length + (log.skills || "").length * 0.2 + log.tags.length * 3;
+}
+
+function buildSummary({ logs, managerName, yourName, nextSteps }) {
+  const safeManager = (managerName || "").trim() || "Manager";
+  const safeName = (yourName || "").trim() || "Your Name";
+  const safeNextSteps = (nextSteps || "").trim();
+  if (!logs.length) {
+    return "Hi " + safeManager + ",\n\nThis week I:\n\nCompleted: No impact logs submitted.\nAchieved: No impact details submitted.\nLearned: No skills noted yet.\n\nKey highlight:\nNo key highlight yet.\n\nNext steps:\n" + (safeNextSteps || "Continue building momentum next week.") + "\n\nBest,\n" + safeName;
+  }
+  const completed = logs.map((log) => log.task + " (" + log.date + ")").join("; ");
+  const achieved = logs.map((log) => log.impact).filter(Boolean).join("; ");
+  const learned = logs.map((log) => log.skills).filter(Boolean).join("; ");
+  const best = [...logs].sort((a, b) => scoreImpact(b) - scoreImpact(a))[0];
+  return "Hi " + safeManager + ",\n\nThis week I:\n\nCompleted: " + completed + "\nAchieved: " + (achieved || "No impact details recorded.") + "\nLearned: " + (learned || "No skills recorded.") + "\n\nKey highlight:\n" + (best ? best.impact || "No key highlight recorded." : "No key highlight recorded.") + "\n\nNext steps:\n" + (safeNextSteps || "Continue progressing on current priorities.") + "\n\nBest,\n" + safeName;
+}
+
+async function fetchQuote() {
+  try {
+    const response = await fetch("https://api.quotable.io/random");
+    if (!response.ok) throw new Error("Quote unavailable");
+    const data = await response.json();
+    return '"' + data.content + '" — ' + data.author;
+  } catch {
+    return "Weekly Insight for Growth is unavailable right now. Keep showing up consistently.";
+  }
+}
+
+// ── Reminder modal ────────────────────────────────────────────────────────────
+
+function buildReminderEmailText(contact, yourName) {
+  const name = contact.name || "there";
+  const safeName = (yourName || "").trim() || "[Your Name]";
+  return "Subject: Great catching up!\n\nHi " + name + ",\n\nHope you have been doing well! I wanted to reconnect and see how things have been going on your end.\n\nWould love to catch up soon.\n\nBest,\n" + safeName;
+}
+
+async function showReminderModal(contact) {
+  const existing = document.getElementById("reminderModal");
+  if (existing) existing.remove();
+  const prefs = await db.getPreferences();
+  const yourName = prefs.your_name || "";
+  const emailText = buildReminderEmailText(contact, yourName);
+  const freqLabel = FREQUENCY_LABELS[contact.followUpFrequency] || "Unknown";
+  const nextStr = contact.nextReminder ? formatDate(contact.nextReminder.split("T")[0]) : "Not set";
+  const modal = document.createElement("div");
+  modal.id = "reminderModal";
+  modal.className = "modal-overlay";
+  modal.innerHTML = '<div class="modal-card">'
+    + '<h3>Time to reconnect with <strong>' + escapeHtml(contact.name) + '</strong></h3>'
+    + '<p class="muted">Frequency: ' + escapeHtml(freqLabel) + ' · Next: ' + nextStr + '</p>'
+    + '<div class="modal-actions">'
+    + '<button class="btn" id="modalMarkDone" type="button">Mark as done</button>'
+    + '<button class="btn btn-secondary" id="modalLater" type="button">Remind me in 3 days</button>'
+    + '<button class="btn btn-secondary" id="modalTurnOff" type="button">Turn off reminders</button>'
+    + '</div>'
+    + '<div class="modal-email">'
+    + '<p class="label">Copy reminder email draft:</p>'
+    + '<textarea class="email-draft" readonly rows="8">' + escapeHtml(emailText) + '</textarea>'
+    + '<button class="btn btn-secondary" id="modalCopyEmail" type="button">Copy email</button>'
+    + '<p id="modalCopyMsg" class="success" aria-live="polite"></p>'
+    + '</div>'
+    + '<button class="btn btn-secondary modal-close" id="modalClose" type="button">Close</button>'
+    + '</div>';
+  document.body.appendChild(modal);
+
+  const refresh = async () => {
+    await renderContacts();
+    await renderFollowUpAlerts("dashboardFollowUps");
+    await renderFollowUpAlerts("networkFollowUps");
+    await renderProgressWidget();
+    modal.remove();
+  };
+
+  modal.querySelector("#modalMarkDone").addEventListener("click", async () => {
+    await db.saveContact(normalizeContact({ ...contact, lastContacted: todayDateString(), nextReminder: calculateNextReminder(new Date().toISOString(), contact.followUpFrequency) }));
+    await refresh();
+  });
+  modal.querySelector("#modalLater").addEventListener("click", async () => {
+    await db.saveContact(normalizeContact({ ...contact, nextReminder: new Date(Date.now() + 3 * 86400000).toISOString() }));
+    await refresh();
+  });
+  modal.querySelector("#modalTurnOff").addEventListener("click", async () => {
+    await db.saveContact(normalizeContact({ ...contact, reminderEnabled: false, followUpFrequency: "none" }));
+    await refresh();
+  });
+  modal.querySelector("#modalCopyEmail").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(emailText);
+      modal.querySelector("#modalCopyMsg").textContent = "Email copied to clipboard!";
+    } catch {
+      modal.querySelector("#modalCopyMsg").textContent = "Copy failed — please copy manually.";
+    }
+  });
+  modal.querySelector("#modalClose").addEventListener("click", () => modal.remove());
+  modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
+}
+
+// ── Render functions ──────────────────────────────────────────────────────────
+
+async function renderFollowUpAlerts(listId, emptyText) {
+  emptyText = emptyText || "No follow-ups due.";
+  const list = document.getElementById(listId);
+  if (!list) return;
+  const contacts = await db.getContacts();
+  const now = new Date();
+  now.setHours(23, 59, 59, 999);
+  const soon = new Date(now.getTime() + 7 * 86400000);
+  const due = contacts.filter((c) => c.reminderEnabled && c.nextReminder && new Date(c.nextReminder) <= now);
+  const soonList = contacts.filter((c) => {
+    if (!c.reminderEnabled || !c.nextReminder) return false;
+    const next = new Date(c.nextReminder);
+    return next > now && next <= soon;
+  });
+  const combined = [...due.map((c) => ({ contact: c, status: "due" })), ...soonList.map((c) => ({ contact: c, status: "soon" }))];
+  if (!combined.length) {
+    list.innerHTML = '<li class="empty">' + escapeHtml(emptyText) + '</li>';
+    return;
+  }
+  list.innerHTML = combined.map(({ contact, status }) =>
+    '<li class="list-item ' + (status === "due" ? "due-item" : "soon-item") + '">'
+    + '<div class="reminder-row">'
+    + '<span>' + (status === "due" ? "Time to reconnect with" : "Coming up:") + ' <strong>' + escapeHtml(contact.name) + '</strong> <span class="tiny">(' + formatDate(contact.nextReminder) + ')</span></span>'
+    + '<button class="btn btn-secondary reminder-trigger" type="button" data-contact-id="' + contact.id + '">Manage</button>'
+    + '</div></li>'
+  ).join("");
+  list.querySelectorAll(".reminder-trigger").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.dataset.contactId) window.location.href = "contact.html?id=" + encodeURIComponent(btn.dataset.contactId);
+    });
+  });
+}
+
+async function renderLogs() {
+  const list = document.getElementById("logList");
+  if (!list) return;
+  const activeId = getActiveInternshipId();
+  if (!activeId) { list.innerHTML = '<li class="empty">Select an internship to view logs.</li>'; return; }
+  const logs = (await db.getLogs(activeId)).sort((a, b) => b.date.localeCompare(a.date));
+  if (!logs.length) { list.innerHTML = '<li class="empty">No impact logs yet.</li>'; return; }
+  list.innerHTML = logs.map((log) =>
+    '<li class="list-item">'
+    + '<p><strong>' + formatDate(log.date) + '</strong></p>'
+    + '<p><span class="label">Did:</span> ' + escapeHtml(log.task) + '</p>'
+    + '<p><span class="label">Impact:</span> ' + escapeHtml(log.impact) + '</p>'
+    + '<p><span class="label">Skills:</span> ' + escapeHtml(log.skills) + '</p>'
+    + '<div class="tag-row">' + log.tags.map((tag) => '<span class="tag">' + escapeHtml(tag) + '</span>').join("") + '</div>'
+    + '</li>'
+  ).join("");
+}
+
+async function renderFiles() {
+  const list = document.getElementById("fileList");
+  if (!list) return;
+  const activeId = getActiveInternshipId();
+  if (!activeId) { list.innerHTML = '<li class="empty">Select an internship to view files.</li>'; return; }
+  const files = (await db.getFiles(activeId)).sort((a, b) => b.date.localeCompare(a.date));
+  if (!files.length) { list.innerHTML = '<li class="empty">No PDFs uploaded yet.</li>'; return; }
+  list.innerHTML = files.map((file) =>
+    '<li class="list-item">'
+    + '<p><strong>' + escapeHtml(file.name) + '</strong> <span class="tiny">' + formatDate(file.date) + '</span></p>'
+    + '<div class="row wrap">'
+    + '<a class="btn btn-secondary" href="' + file.data + '" target="_blank" rel="noopener">Open</a>'
+    + '<a class="btn" href="' + file.data + '" download="' + escapeHtml(file.name) + '">Download</a>'
+    + '</div></li>'
+  ).join("");
+}
+
+async function renderTopAchievements() {
+  const list = document.getElementById("topAchievements");
+  if (!list) return;
+  const activeId = getActiveInternshipId();
+  if (!activeId) { list.innerHTML = '<li class="empty">Select an internship first.</li>'; return; }
+  const allLogs = await db.getLogs(activeId);
+  const top = allLogs.filter((log) => isDateWithinLastDays(log.date, 7)).sort((a, b) => scoreImpact(b) - scoreImpact(a)).slice(0, 3);
+  if (!top.length) { list.innerHTML = '<li class="empty">Add logs to surface top achievements.</li>'; return; }
+  list.innerHTML = top.map((log) => '<li class="list-item"><p><strong>' + escapeHtml(log.task) + '</strong></p><p>' + escapeHtml(log.impact) + '</p></li>').join("");
+}
+
+async function renderWeeklyConnections(listId) {
+  const list = document.getElementById(listId);
+  if (!list) return;
+  const contacts = await db.getContacts();
+  const people = contacts.filter((c) => isDateWithinLastDays(c.dateMet, 7)).sort((a, b) => b.dateMet.localeCompare(a.dateMet));
+  if (!people.length) { list.innerHTML = '<li class="empty">No new contacts in the last 7 days.</li>'; return; }
+  list.innerHTML = people.map((person) =>
+    '<li class="list-item"><p><strong>' + escapeHtml(person.name) + '</strong> · ' + escapeHtml(person.role || "Role not set") + '</p><p class="tiny">Met: ' + formatDate(person.dateMet) + '</p></li>'
+  ).join("");
+}
+
+async function renderProgressWidget() {
+  const statLogs = document.getElementById("statLogs");
+  const statContacts = document.getElementById("statContacts");
+  const statFollowUps = document.getElementById("statFollowUps");
+  if (!statLogs || !statContacts || !statFollowUps) return;
+  const activeId = getActiveInternshipId();
+  const allLogs = activeId ? await db.getLogs(activeId) : [];
+  const allContacts = await db.getContacts();
+  const now = new Date();
+  now.setHours(23, 59, 59, 999);
+  statLogs.textContent = String(allLogs.filter((l) => isDateWithinLastDays(l.date, 7)).length);
+  statContacts.textContent = String(allContacts.filter((c) => isDateWithinLastDays(c.dateMet, 7)).length);
+  statFollowUps.textContent = String(allContacts.filter((c) => c.reminderEnabled && c.nextReminder && new Date(c.nextReminder) <= now).length);
+}
+
+async function renderContacts() {
+  const list = document.getElementById("contactList");
+  if (!list) return;
+  const contacts = (await db.getContacts()).sort((a, b) => b.dateMet.localeCompare(a.dateMet));
+  if (!contacts.length) { list.innerHTML = '<li class="empty">No contacts yet. Add your first contact above.</li>'; return; }
+  list.innerHTML = contacts.map((contact) => {
+    const status = getReminderStatus(contact);
+    const freqLabel = FREQUENCY_LABELS[contact.followUpFrequency] || "No reminders";
+    const interactionCount = contact.interactions ? contact.interactions.length : 0;
+    return '<li class="contact-card ' + (status === "due" ? "due-item" : status === "soon" ? "soon-item" : "") + '" data-open-contact="' + contact.id + '" role="button" tabindex="0">'
+      + '<div class="contact-header">'
+      + '<div class="contact-summary">'
+      + '<p class="contact-name"><strong>' + escapeHtml(contact.name) + '</strong></p>'
+      + '<p class="tiny">' + escapeHtml(contact.role || "Role not set") + (contact.company ? ' @ ' + escapeHtml(contact.company) : '') + ' · ' + escapeHtml(contact.email) + '</p>'
+      + '</div>'
+      + '<div class="badge-col">' + reminderBadge(contact) + '</div>'
+      + '</div>'
+      + '<div class="contact-meta">'
+      + '<span class="tiny">Last contacted: ' + formatDate(contact.lastContacted) + '</span>'
+      + '<span class="tiny">Next: ' + (contact.nextReminder ? formatDate(contact.nextReminder.split("T")[0]) : "Not set") + '</span>'
+      + '<span class="tiny">' + interactionCount + ' interaction' + (interactionCount !== 1 ? 's' : '') + '</span>'
+      + '<span class="tiny">' + escapeHtml(freqLabel) + '</span>'
+      + '</div>'
+      + '<p class="contact-hint tiny muted">Click to view full profile</p>'
+      + '</li>';
+  }).join("");
+  list.querySelectorAll("[data-open-contact]").forEach((card) => {
+    const open = () => { window.location.href = "contact.html?id=" + encodeURIComponent(card.dataset.openContact); };
+    card.addEventListener("click", open);
+    card.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") open(); });
+  });
+}
+
+// ── Internship panel ──────────────────────────────────────────────────────────
+
+async function renderInternshipPanel() {
+  const select = document.getElementById("internshipSelect");
+  const list = document.getElementById("internshipList");
+  if (!select || !list) return;
+  const internships = await db.getInternships();
+  const activeId = getActiveInternshipId();
+  if (!internships.length) {
+    select.innerHTML = '<option value="">No internships yet</option>';
+    select.disabled = true;
+    list.innerHTML = '<li class="empty">No internships yet. Click + New Internship.</li>';
+    return;
+  }
+  select.disabled = false;
+  select.innerHTML = internships.map((i) => '<option value="' + i.id + '">' + escapeHtml(i.name) + '</option>').join("");
+  select.value = activeId;
+  list.innerHTML = internships.map((internship) => {
+    const activeLabel = internship.id === activeId ? '<span class="badge">Active</span>' : "";
+    const duration = (internship.startDate || internship.endDate)
+      ? formatDate(internship.startDate) + " to " + formatDate(internship.endDate)
+      : "Duration not set";
+    return '<li class="list-item">'
+      + '<p><strong>' + escapeHtml(internship.name) + '</strong> ' + activeLabel + '</p>'
+      + '<p class="tiny">' + escapeHtml(internship.company || "No company set") + '</p>'
+      + '<p class="tiny">' + escapeHtml(duration) + '</p>'
+      + '<div class="row wrap internship-actions">'
+      + '<button class="btn btn-secondary" type="button" data-internship-action="edit" data-internship-id="' + internship.id + '">Edit</button>'
+      + '<button class="btn btn-secondary" type="button" data-internship-action="delete" data-internship-id="' + internship.id + '">Delete</button>'
+      + '</div></li>';
+  }).join("");
+}
+
+let refreshActivePageData = async () => {};
+
+async function initInternshipPanel() {
+  const select = document.getElementById("internshipSelect");
+  const list = document.getElementById("internshipList");
+  const addBtn = document.getElementById("addInternshipBtn");
+  if (!select || !list || !addBtn) return;
+  const error = document.getElementById("internshipError");
+
+  const promptPayload = (seed) => {
+    seed = seed || {};
+    const name = (window.prompt("Internship name", seed.name || "") || "").trim();
+    if (!name) return null;
+    const company = (window.prompt("Company", seed.company || "") || "").trim();
+    const startDate = (window.prompt("Start date (YYYY-MM-DD)", seed.startDate || "") || "").trim();
+    const endDate = (window.prompt("End date (YYYY-MM-DD)", seed.endDate || "") || "").trim();
+    return { name, company, startDate, endDate };
+  };
+
+  select.addEventListener("change", async () => {
+    setActiveInternshipId(select.value);
+    await renderInternshipPanel();
+    await refreshActivePageData();
+  });
+
+  addBtn.addEventListener("click", async () => {
+    if (error) error.textContent = "";
+    const payload = promptPayload({});
+    if (!payload) return;
+    const next = { id: makeId(), ...payload, createdAt: new Date().toISOString() };
+    await db.saveInternship(next);
+    setActiveInternshipId(next.id);
+    await renderInternshipPanel();
+    await refreshActivePageData();
+  });
+
+  list.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-internship-action]");
+    if (!button) return;
+    const internshipId = button.dataset.internshipId;
+    const action = button.dataset.internshipAction;
+    const internships = await db.getInternships();
+    const target = internships.find((i) => i.id === internshipId);
+    if (!target) return;
+    if (action === "edit") {
+      const payload = promptPayload(target);
+      if (!payload) return;
+      await db.saveInternship({ ...target, ...payload });
+      await renderInternshipPanel();
+      await refreshActivePageData();
+    } else if (action === "delete") {
+      if (!window.confirm('Delete internship "' + target.name + '" and all associated logs and files?')) return;
+      await db.deleteInternship(internshipId);
+      if (getActiveInternshipId() === internshipId) {
+        const remaining = await db.getInternships();
+        setActiveInternshipId(remaining.length ? remaining[0].id : "");
+      }
+      await renderInternshipPanel();
+      await refreshActivePageData();
+    }
+  });
+
+  const internships = await db.getInternships();
+  const activeId = getActiveInternshipId();
+  if (internships.length && !internships.some((i) => i.id === activeId)) {
+    setActiveInternshipId(internships[0].id);
+  }
+  await renderInternshipPanel();
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+
+async function initDashboard() {
   const logForm = document.getElementById("logForm");
   if (!logForm) return;
-
   const logDate = document.getElementById("logDate");
   const logTask = document.getElementById("logTask");
   const logImpact = document.getElementById("logImpact");
   const logSkills = document.getElementById("logSkills");
   const logTags = document.getElementById("logTags");
   const logError = document.getElementById("logError");
-
   const fileInput = document.getElementById("fileInput");
   const addFileBtn = document.getElementById("addFileBtn");
   const fileError = document.getElementById("fileError");
-
   const managerNameInput = document.getElementById("managerName");
   const yourNameInput = document.getElementById("yourName");
   const nextStepsInput = document.getElementById("nextSteps");
@@ -757,178 +696,79 @@ function initDashboard() {
 
   logDate.value = todayDateString();
 
-  managerNameInput.addEventListener("input", () => {
-    if (hasActiveInternship()) writeScopedText(STORAGE_KEYS.managerName, managerNameInput.value);
-  });
-  yourNameInput.addEventListener("input", () => {
-    if (hasActiveInternship()) writeScopedText(STORAGE_KEYS.yourName, yourNameInput.value);
-  });
-  nextStepsInput.addEventListener("input", () => {
-    if (hasActiveInternship()) writeScopedText(STORAGE_KEYS.nextSteps, nextStepsInput.value);
-  });
+  const prefs = await db.getPreferences();
+  if (managerNameInput) managerNameInput.value = prefs.manager_name || "";
+  if (yourNameInput) yourNameInput.value = prefs.your_name || "";
+  if (nextStepsInput) nextStepsInput.value = prefs.next_steps || "";
 
-  logForm.addEventListener("submit", (event) => {
+  if (managerNameInput) managerNameInput.addEventListener("input", () => { db.savePreferences({ manager_name: managerNameInput.value }); });
+  if (yourNameInput) yourNameInput.addEventListener("input", () => { db.savePreferences({ your_name: yourNameInput.value }); });
+  if (nextStepsInput) nextStepsInput.addEventListener("input", () => { db.savePreferences({ next_steps: nextStepsInput.value }); });
+
+  logForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     logError.textContent = "";
-
     if (!requireActiveInternship(logError)) return;
-
-    const entry = normalizeLog({
-      date: logDate.value,
-      task: logTask.value,
-      impact: logImpact.value,
-      skills: logSkills.value,
-      tags: logTags.value
-    });
-
-    if (!entry.date || !entry.task || !entry.impact || !entry.skills) {
-      logError.textContent = "Date, task, impact, and skills are required.";
-      return;
-    }
-
-    const logs = getLogs();
-    logs.push(entry);
-    saveLogs(logs);
-
-    logTask.value = "";
-    logImpact.value = "";
-    logSkills.value = "";
-    logTags.value = "";
-
-    renderLogs();
-    renderProgressWidget();
-    renderTopAchievements();
-    renderInternshipPanel();
+    const entry = normalizeLog({ date: logDate.value, task: logTask.value, impact: logImpact.value, skills: logSkills.value, tags: logTags.value });
+    if (!entry.date || !entry.task || !entry.impact || !entry.skills) { logError.textContent = "Date, task, impact, and skills are required."; return; }
+    await db.saveLog(entry, getActiveInternshipId());
+    logTask.value = ""; logImpact.value = ""; logSkills.value = ""; logTags.value = "";
+    await renderLogs();
+    await renderProgressWidget();
+    await renderTopAchievements();
+    await renderInternshipPanel();
   });
 
-  addFileBtn.addEventListener("click", async () => {
+  if (addFileBtn) addFileBtn.addEventListener("click", async () => {
     fileError.textContent = "";
-
     if (!requireActiveInternship(fileError)) return;
-
     const selected = Array.from(fileInput.files || []);
-    if (!selected.length) {
-      fileError.textContent = "Please choose at least one PDF.";
-      return;
-    }
-
-    if (selected.some((file) => !file.name.toLowerCase().endsWith(".pdf"))) {
-      fileError.textContent = "Only PDF files are supported.";
-      return;
-    }
-
+    if (!selected.length) { fileError.textContent = "Please choose at least one PDF."; return; }
+    if (selected.some((f) => !f.name.toLowerCase().endsWith(".pdf"))) { fileError.textContent = "Only PDF files are supported."; return; }
     try {
-      const existing = getFiles();
       const date = todayDateString();
-      const encoded = await Promise.all(
-        selected.map(async (file) => ({
-          id: makeId(),
-          name: file.name,
-          data: await readPdfFile(file),
-          date
-        }))
-      );
-
-      saveFiles([...existing, ...encoded]);
+      const encoded = await Promise.all(selected.map(async (file) => normalizeFile({ id: makeId(), name: file.name, data: await readPdfFile(file), date })));
+      for (const file of encoded) await db.saveFile(file, getActiveInternshipId());
       fileInput.value = "";
-      renderFiles();
-      renderInternshipPanel();
-    } catch {
-      fileError.textContent = "Upload failed. Try again with a smaller PDF.";
-    }
+      await renderFiles();
+      await renderInternshipPanel();
+    } catch { fileError.textContent = "Upload failed. Try again with a smaller PDF."; }
   });
 
-  previewBtn.addEventListener("click", () => {
+  if (previewBtn) previewBtn.addEventListener("click", async () => {
     if (!requireActiveInternship(logError, "Add/select an internship to generate a summary.")) return;
-    previewArea.value = buildSummary({
-      logs: getLast7DaysLogs(),
-      managerName: managerNameInput.value,
-      yourName: yourNameInput.value,
-      nextSteps: nextStepsInput.value
-    });
+    const allLogs = await db.getLogs(getActiveInternshipId());
+    const logs = allLogs.filter((l) => isDateWithinLastDays(l.date, 7));
+    previewArea.value = buildSummary({ logs, managerName: managerNameInput ? managerNameInput.value : "", yourName: yourNameInput ? yourNameInput.value : "", nextSteps: nextStepsInput ? nextStepsInput.value : "" });
   });
 
   if (refreshInsightBtn && dashboardQuote) {
-    refreshInsightBtn.addEventListener("click", async () => {
-      dashboardQuote.textContent = await fetchQuote();
-    });
+    refreshInsightBtn.addEventListener("click", async () => { dashboardQuote.textContent = await fetchQuote(); });
   }
 
   refreshActivePageData = async () => {
-    managerNameInput.value = hasActiveInternship() ? readScopedText(STORAGE_KEYS.managerName, "") : "";
-    yourNameInput.value = hasActiveInternship() ? readScopedText(STORAGE_KEYS.yourName, "") : "";
-    nextStepsInput.value = hasActiveInternship() ? readScopedText(STORAGE_KEYS.nextSteps, "") : "";
-    previewArea.value = "";
-    renderLogs();
-    renderFiles();
-    renderFollowUpAlerts("dashboardFollowUps");
-    renderProgressWidget();
-    renderTopAchievements();
-    renderWeeklyConnections("recentPeopleDashboard");
-    if (dashboardQuote) {
-      dashboardQuote.textContent = await fetchQuote();
-    }
+    const p = await db.getPreferences();
+    if (managerNameInput) managerNameInput.value = p.manager_name || "";
+    if (yourNameInput) yourNameInput.value = p.your_name || "";
+    if (nextStepsInput) nextStepsInput.value = p.next_steps || "";
+    if (previewArea) previewArea.value = "";
+    await renderLogs();
+    await renderFiles();
+    await renderFollowUpAlerts("dashboardFollowUps");
+    await renderProgressWidget();
+    await renderTopAchievements();
+    await renderWeeklyConnections("recentPeopleDashboard");
+    if (dashboardQuote) dashboardQuote.textContent = await fetchQuote();
   };
 
-  refreshActivePageData();
+  await refreshActivePageData();
 }
 
-function reminderBadge(contact) {
-  const status = getReminderStatus(contact);
-  if (status === "due") return '<span class="badge badge-due">🔴 Due</span>';
-  if (status === "soon") return '<span class="badge badge-soon">🟡 Soon</span>';
-  if (status === "ok") return '<span class="badge badge-ok">🟢 Up to date</span>';
-  return '';
-}
+// ── Networking ────────────────────────────────────────────────────────────────
 
-function renderContacts() {
-  const list = document.getElementById("contactList");
-  if (!list) return;
-
-  const contacts = getContacts().sort((a, b) => b.dateMet.localeCompare(a.dateMet));
-  if (!contacts.length) {
-    list.innerHTML = '<li class="empty">No contacts yet. Add your first contact above.</li>';
-    return;
-  }
-
-  list.innerHTML = contacts
-    .map((contact) => {
-      const status = getReminderStatus(contact);
-      const freqLabel = FREQUENCY_LABELS[contact.followUpFrequency] || "No reminders";
-      const interactionCount = contact.interactions?.length || 0;
-      return `
-      <li class="contact-card ${status === "due" ? "due-item" : status === "soon" ? "soon-item" : ""}" data-open-contact="${contact.id}" role="button" tabindex="0">
-        <div class="contact-header">
-          <div class="contact-summary">
-            <p class="contact-name"><strong>${escapeHtml(contact.name)}</strong></p>
-            <p class="tiny">${escapeHtml(contact.role || "Role not set")}${contact.company ? ` @ ${escapeHtml(contact.company)}` : ""} · ${escapeHtml(contact.email)}</p>
-          </div>
-          <div class="badge-col">${reminderBadge(contact)}</div>
-        </div>
-        <div class="contact-meta">
-          <span class="tiny">Last contacted: ${formatDate(contact.lastContacted)}</span>
-          <span class="tiny">Next: ${contact.nextReminder ? formatDate(contact.nextReminder.split("T")[0]) : "—"}</span>
-          <span class="tiny">${interactionCount} interaction${interactionCount !== 1 ? "s" : ""}</span>
-          <span class="tiny">${escapeHtml(freqLabel)}</span>
-        </div>
-        <p class="contact-hint tiny muted">Click to view full profile →</p>
-      </li>`;
-    })
-    .join("");
-
-  list.querySelectorAll("[data-open-contact]").forEach((card) => {
-    const open = () => {
-      window.location.href = `contact.html?id=${encodeURIComponent(card.dataset.openContact)}`;
-    };
-    card.addEventListener("click", open);
-    card.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") open(); });
-  });
-}
-
-function initNetworking() {
+async function initNetworking() {
   const form = document.getElementById("contactForm");
   if (!form) return;
-
   const error = document.getElementById("contactError");
   const nameEl = document.getElementById("contactName");
   const emailEl = document.getElementById("contactEmail");
@@ -941,81 +781,66 @@ function initNetworking() {
   const adviceEl = document.getElementById("adviceGiven");
   const notesEl = document.getElementById("contactNotes");
 
-  form.addEventListener("submit", (event) => {
+  form.addEventListener("submit", async (event) => {
     event.preventDefault();
     error.textContent = "";
-
-    const frequency = followUpFrequencyEl?.value || "none";
-    const lastContactedValue = lastContactedEl?.value || dateMetEl?.value || todayDateString();
-
+    const frequency = (followUpFrequencyEl ? followUpFrequencyEl.value : "") || "none";
+    const lastContactedValue = (lastContactedEl ? lastContactedEl.value : "") || (dateMetEl ? dateMetEl.value : "") || todayDateString();
     const contact = normalizeContact({
       name: nameEl.value,
       email: emailEl.value,
-      company: companyEl?.value || "",
+      company: companyEl ? companyEl.value : "",
       role: roleEl.value,
-      dateMet: dateMetEl.value,
+      dateMet: dateMetEl ? dateMetEl.value : "",
       lastContacted: lastContactedValue,
       followUpFrequency: frequency,
-      interests: interestsEl.value,
-      adviceGiven: adviceEl.value,
-      notes: notesEl.value,
+      interests: interestsEl ? interestsEl.value : "",
+      adviceGiven: adviceEl ? adviceEl.value : "",
+      notes: notesEl ? notesEl.value : "",
       interactions: [],
       documents: []
     });
-
-    if (!contact.name || !contact.email || !contact.dateMet || !contact.company) {
-      error.textContent = "Name, email, company, and date met are required.";
-      return;
-    }
-
-    const contacts = getContacts();
-    contacts.push(contact);
-    saveContacts(contacts);
-
+    if (!contact.name || !contact.email || !contact.dateMet || !contact.company) { error.textContent = "Name, email, company, and date met are required."; return; }
+    await db.saveContact(contact);
     form.reset();
-    renderContacts();
-    renderFollowUpAlerts("networkFollowUps");
-    renderProgressWidget();
-    renderInternshipPanel();
+    await renderContacts();
+    await renderFollowUpAlerts("networkFollowUps");
+    await renderProgressWidget();
+    await renderInternshipPanel();
   });
 
-  refreshActivePageData = () => {
-    renderContacts();
-    renderFollowUpAlerts("networkFollowUps");
+  refreshActivePageData = async () => {
+    await renderContacts();
+    await renderFollowUpAlerts("networkFollowUps");
   };
 
-  refreshActivePageData();
+  await refreshActivePageData();
 }
 
-function renderWeeklyLogs() {
+// ── Summary page ──────────────────────────────────────────────────────────────
+
+async function renderWeeklyLogs() {
   const weeklyLogsList = document.getElementById("weeklyLogs");
   if (!weeklyLogsList) return [];
-
-  const logs = getLast7DaysLogs().sort((a, b) => a.date.localeCompare(b.date));
-  if (!logs.length) {
-    weeklyLogsList.innerHTML = '<li class="empty">No impact logs from the last 7 days.</li>';
-    return [];
-  }
-
-  weeklyLogsList.innerHTML = logs
-    .map(
-      (log) => `
-      <li class="list-item">
-        <p><strong>${formatDate(log.date)}</strong></p>
-        <p><span class="label">Completed:</span> ${escapeHtml(log.task)}</p>
-        <p><span class="label">Achieved:</span> ${escapeHtml(log.impact)}</p>
-        <p><span class="label">Learned:</span> ${escapeHtml(log.skills)}</p>
-      </li>`
-    )
-    .join("");
-
+  const activeId = getActiveInternshipId();
+  if (!activeId) { weeklyLogsList.innerHTML = '<li class="empty">Select an internship to view logs.</li>'; return []; }
+  const allLogs = await db.getLogs(activeId);
+  const logs = allLogs.filter((l) => isDateWithinLastDays(l.date, 7)).sort((a, b) => a.date.localeCompare(b.date));
+  if (!logs.length) { weeklyLogsList.innerHTML = '<li class="empty">No impact logs from the last 7 days.</li>'; return []; }
+  weeklyLogsList.innerHTML = logs.map((log) =>
+    '<li class="list-item">'
+    + '<p><strong>' + formatDate(log.date) + '</strong></p>'
+    + '<p><span class="label">Completed:</span> ' + escapeHtml(log.task) + '</p>'
+    + '<p><span class="label">Achieved:</span> ' + escapeHtml(log.impact) + '</p>'
+    + '<p><span class="label">Learned:</span> ' + escapeHtml(log.skills) + '</p>'
+    + '</li>'
+  ).join("");
   return logs;
 }
 
-function initSummary() {
+async function initSummary() {
   const generateBtn = document.getElementById("generateSummaryBtn");
   if (!generateBtn) return;
-
   const copyBtn = document.getElementById("copySummaryBtn");
   const summaryArea = document.getElementById("generatedSummary");
   const quoteText = document.getElementById("quoteText");
@@ -1024,852 +849,135 @@ function initSummary() {
   const yourNameInput = document.getElementById("summaryYourName");
   const nextStepsInput = document.getElementById("summaryNextSteps");
 
-  managerNameInput.addEventListener("input", () => {
-    if (hasActiveInternship()) writeScopedText(STORAGE_KEYS.managerName, managerNameInput.value);
-  });
-  yourNameInput.addEventListener("input", () => {
-    if (hasActiveInternship()) writeScopedText(STORAGE_KEYS.yourName, yourNameInput.value);
-  });
-  nextStepsInput.addEventListener("input", () => {
-    if (hasActiveInternship()) writeScopedText(STORAGE_KEYS.nextSteps, nextStepsInput.value);
-  });
+  const prefs = await db.getPreferences();
+  if (managerNameInput) managerNameInput.value = prefs.manager_name || "";
+  if (yourNameInput) yourNameInput.value = prefs.your_name || "";
+  if (nextStepsInput) nextStepsInput.value = prefs.next_steps || "";
+
+  if (managerNameInput) managerNameInput.addEventListener("input", () => { db.savePreferences({ manager_name: managerNameInput.value }); });
+  if (yourNameInput) yourNameInput.addEventListener("input", () => { db.savePreferences({ your_name: yourNameInput.value }); });
+  if (nextStepsInput) nextStepsInput.addEventListener("input", () => { db.savePreferences({ next_steps: nextStepsInput.value }); });
 
   generateBtn.addEventListener("click", async () => {
     message.textContent = "";
     if (!requireActiveInternship(message, "Add/select an internship first.")) return;
-    const logs = renderWeeklyLogs();
-    renderWeeklyConnections("weeklyConnections");
-
-    summaryArea.value = buildSummary({
-      logs,
-      managerName: managerNameInput.value,
-      yourName: yourNameInput.value,
-      nextSteps: nextStepsInput.value
-    });
-
+    const logs = await renderWeeklyLogs();
+    await renderWeeklyConnections("weeklyConnections");
+    summaryArea.value = buildSummary({ logs, managerName: managerNameInput ? managerNameInput.value : "", yourName: yourNameInput ? yourNameInput.value : "", nextSteps: nextStepsInput ? nextStepsInput.value : "" });
     quoteText.textContent = await fetchQuote();
   });
 
-  copyBtn.addEventListener("click", async () => {
+  if (copyBtn) copyBtn.addEventListener("click", async () => {
     message.textContent = "";
-    if (!summaryArea.value.trim()) {
-      message.textContent = "Generate a summary first.";
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(summaryArea.value);
-      message.textContent = "Summary copied to clipboard.";
-    } catch {
-      message.textContent = "Copy failed. Please copy manually.";
-    }
+    if (!summaryArea.value.trim()) { message.textContent = "Generate a summary first."; return; }
+    try { await navigator.clipboard.writeText(summaryArea.value); message.textContent = "Summary copied to clipboard."; }
+    catch { message.textContent = "Copy failed. Please copy manually."; }
   });
 
-  refreshActivePageData = () => {
-    managerNameInput.value = hasActiveInternship() ? readScopedText(STORAGE_KEYS.managerName, "") : "";
-    yourNameInput.value = hasActiveInternship() ? readScopedText(STORAGE_KEYS.yourName, "") : "";
-    nextStepsInput.value = hasActiveInternship() ? readScopedText(STORAGE_KEYS.nextSteps, "") : "";
-    summaryArea.value = "";
-    message.textContent = "";
-    quoteText.textContent = 'Click "Generate Summary" to load a weekly insight.';
-    renderWeeklyLogs();
-    renderWeeklyConnections("weeklyConnections");
+  refreshActivePageData = async () => {
+    const p = await db.getPreferences();
+    if (managerNameInput) managerNameInput.value = p.manager_name || "";
+    if (yourNameInput) yourNameInput.value = p.your_name || "";
+    if (nextStepsInput) nextStepsInput.value = p.next_steps || "";
+    if (summaryArea) summaryArea.value = "";
+    if (message) message.textContent = "";
+    if (quoteText) quoteText.textContent = "Click Generate Summary to load a weekly insight.";
+    await renderWeeklyLogs();
+    await renderWeeklyConnections("weeklyConnections");
   };
 
-  refreshActivePageData();
+  await refreshActivePageData();
 }
 
-const INTERACTION_TYPES = ["coffee chat", "meeting", "check-in", "email", "phone call", "event"];
+// ── Contact page ──────────────────────────────────────────────────────────────
 
-function generateFollowUpSuggestions(contact) {
-  const suggestions = [];
-  const interests = (contact.interests || "").toLowerCase();
-  const notes = (contact.notes || "").toLowerCase();
-  const advice = (contact.adviceGiven || "").toLowerCase();
-  const role = (contact.role || "").toLowerCase();
-  const name = contact.name || "them";
-
-  // Interest-based
-  if (interests.includes("ai") || interests.includes("machine learning") || notes.includes("ai")) {
-    suggestions.push("Send an article about recent AI trends");
-  }
-  if (interests.includes("design") || interests.includes("ux") || interests.includes("product")) {
-    suggestions.push("Share a product design case study or article");
-  }
-  if (interests.includes("startup") || interests.includes("entrepreneur")) {
-    suggestions.push("Share a startup story or resource they might find interesting");
-  }
-  if (interests.includes("open source") || interests.includes("github")) {
-    suggestions.push(`Invite ${name} to collaborate on an open-source project`);
-  }
-
-  // Advice follow-up
-  if (advice) {
-    suggestions.push("Follow up on their advice — share your progress since your last talk");
-  }
-
-  // Role-based
-  if (role.includes("engineer") || role.includes("developer") || role.includes("software")) {
-    suggestions.push("Share a technical article, repo, or tool relevant to their work");
-  }
-  if (role.includes("manager") || role.includes("director") || role.includes("lead")) {
-    suggestions.push("Ask for feedback on your growth since your last conversation");
-  }
-  if (role.includes("recruiter") || role.includes("talent") || role.includes("hr")) {
-    suggestions.push("Send an updated resume or LinkedIn summary");
-  }
-
-  // Interaction-based
-  const interactionCount = contact.interactions?.length || 0;
-  if (interactionCount === 0) {
-    suggestions.push(`Send a quick intro message to break the ice with ${name}`);
-  } else if (interactionCount >= 3) {
-    suggestions.push("Consider asking to grab coffee (virtual or in-person)");
-  }
-
-  // Notes-based
-  if (notes.includes("referral") || notes.includes("refer")) {
-    suggestions.push("Follow up about the referral they mentioned");
-  }
-  if (notes.includes("project") || notes.includes("work")) {
-    suggestions.push("Ask for an update on the project they mentioned");
-  }
-  if (notes.includes("conference") || notes.includes("event") || notes.includes("meetup")) {
-    suggestions.push("Share a recap or resource from the event you both attended");
-  }
-
-  // Universal
-  suggestions.push("Schedule a quick check-in call");
-  suggestions.push(`Send ${name} a thoughtful update on what you've been working on`);
-
-  // Deduplicate and cap at 5
-  return [...new Set(suggestions)].slice(0, 5);
-}
-
-function renderFollowUpItems(followUps) {
-  if (!followUps.length) {
-    return '<p class="empty">No next steps yet. Add one manually or use Suggest.</p>';
-  }
-  // Sort: incomplete first, then by createdAt desc within each group
-  const sorted = [...followUps].sort((a, b) => {
-    if (a.completed !== b.completed) return a.completed ? 1 : -1;
-    return b.createdAt.localeCompare(a.createdAt);
-  });
-  return sorted
-    .map(
-      (item) => `
-      <div class="followup-item ${item.completed ? "followup-done" : ""}" data-fu-id="${item.id}">
-        <label class="followup-check">
-          <input type="checkbox" class="fu-checkbox" data-fu-id="${item.id}" ${item.completed ? "checked" : ""} />
-          <span class="followup-text">${escapeHtml(item.text)}</span>
-        </label>
-        <div class="followup-right">
-          <span class="fu-tag ${item.source === "ai" ? "fu-tag-ai" : "fu-tag-manual"}">${item.source === "ai" ? "🤖 AI" : "✍️ Manual"}</span>
-          <button class="btn btn-secondary fu-delete" type="button" data-fu-id="${item.id}" title="Delete">✕</button>
-        </div>
-      </div>`
-    )
-    .join("");
-}
-
-function showContactProfile(contactData) {
-  if (!interactions.length) {
-    return '<p class="empty">No interactions logged yet.</p>';
-  }
-  return interactions
-    .map(
-      (item) => `
-      <div class="timeline-item">
-        <div class="timeline-dot"></div>
-        <div class="timeline-body">
-          <p class="timeline-date">${formatDate(item.date)} <span class="tag">${escapeHtml(item.type)}</span></p>
-          ${item.notes ? `<p>${escapeHtml(item.notes)}</p>` : ""}
-          ${item.outcome ? `<p class="tiny"><span class="label">Outcome:</span> ${escapeHtml(item.outcome)}</p>` : ""}
-        </div>
-      </div>`
-    )
-    .join("");
-}
-
-function renderContactDocuments(docs) {
-  if (!docs.length) return '<p class="empty">No documents uploaded yet.</p>';
-  return docs
-    .map(
-      (doc) => `
-      <div class="row wrap doc-row">
-        <span><strong>${escapeHtml(doc.name)}</strong> <span class="tiny">${formatDate(doc.date)}</span></span>
-        <div class="row">
-          <a class="btn btn-secondary" href="${doc.data}" target="_blank" rel="noopener">Open</a>
-          <a class="btn btn-secondary" href="${doc.data}" download="${escapeHtml(doc.name)}">Download</a>
-          <button class="btn btn-secondary" type="button" data-remove-doc="${doc.id}">Remove</button>
-        </div>
-      </div>`
-    )
-    .join("");
-}
-
-function showContactProfile(contactData) {
-  const existing = document.getElementById("contactProfileModal");
-  if (existing) existing.remove();
-
-  const freshContact = () => getContacts().find((c) => c.id === contactData.id) || contactData;
-
-  const modal = document.createElement("div");
-  modal.id = "contactProfileModal";
-  modal.className = "modal-overlay";
-  document.body.appendChild(modal);
-
-  function rerender() {
-    const c = freshContact();
-    const freqLabel = FREQUENCY_LABELS[c.followUpFrequency] || "No reminders";
-    const status = getReminderStatus(c);
-
-    modal.innerHTML = `
-      <div class="modal-card profile-modal">
-
-        <!-- Header -->
-        <div class="profile-header">
-          <div>
-            <h2 class="profile-name" id="pName">${escapeHtml(c.name)}</h2>
-            <p class="muted" id="pRole">${escapeHtml(c.role || "Role not set")} · ${escapeHtml(c.email)}</p>
-            <p class="tiny">Met: ${formatDate(c.dateMet)}</p>
-          </div>
-          <div class="profile-header-right">
-            ${reminderBadge(c)}
-            <button class="btn btn-secondary" id="profileClose" type="button">✕ Close</button>
-          </div>
-        </div>
-
-        <!-- Two-column body -->
-        <div class="profile-body">
-
-          <!-- LEFT: Timeline + Add Interaction -->
-          <div class="profile-left">
-            <section class="profile-section">
-              <h3>Interaction Timeline</h3>
-              <div class="timeline" id="profileTimeline">${renderInteractionTimeline(c.interactions)}</div>
-            </section>
-
-            <section class="profile-section">
-              <h3>Add Interaction</h3>
-              <div class="field-group">
-                <label>Date</label>
-                <input type="date" id="newIntDate" value="${todayDateString()}" />
-              </div>
-              <div class="field-group">
-                <label>Type</label>
-                <select id="newIntType">
-                  ${INTERACTION_TYPES.map((t) => `<option value="${t}">${t.charAt(0).toUpperCase() + t.slice(1)}</option>`).join("")}
-                </select>
-              </div>
-              <div class="field-group">
-                <label>Notes</label>
-                <textarea id="newIntNotes" rows="3"></textarea>
-              </div>
-              <div class="field-group">
-                <label>Outcome</label>
-                <textarea id="newIntOutcome" rows="2"></textarea>
-              </div>
-              <p id="newIntError" class="error" aria-live="polite"></p>
-              <button class="btn" id="addInteractionBtn" type="button">+ Add Interaction</button>
-            </section>
-
-            <section class="profile-section">
-              <div class="followup-section-header">
-                <h3>👉 Next Steps</h3>
-                <button class="btn btn-secondary" id="suggestFollowUpsBtn" type="button">🤖 Suggest Follow-Ups</button>
-              </div>
-              <div id="followUpList">${renderFollowUpItems(c.followUps)}</div>
-              <div class="followup-add-row">
-                <input type="text" id="newFollowUpText" placeholder="Add a follow-up task…" />
-                <button class="btn" id="addFollowUpBtn" type="button">Add</button>
-              </div>
-              <p id="followUpMsg" class="success" aria-live="polite"></p>
-            </section>
-          </div>
-
-          <!-- RIGHT: Info + Docs + Reminder -->
-          <div class="profile-right">
-            <section class="profile-section">
-              <h3>Notes &amp; Details</h3>
-              <div class="field-group">
-                <label>Interests</label>
-                <input type="text" id="editInterests" value="${escapeHtml(c.interests)}" />
-              </div>
-              <div class="field-group">
-                <label>Advice Given</label>
-                <textarea id="editAdvice" rows="2">${escapeHtml(c.adviceGiven)}</textarea>
-              </div>
-              <div class="field-group">
-                <label>Notes</label>
-                <textarea id="editNotes" rows="3">${escapeHtml(c.notes)}</textarea>
-              </div>
-              <button class="btn btn-secondary" id="saveNotesBtn" type="button">Save Notes</button>
-              <p id="saveNotesMsg" class="success" aria-live="polite"></p>
-            </section>
-
-            <section class="profile-section">
-              <h3>Documents</h3>
-              <div id="profileDocs">${renderContactDocuments(c.documents)}</div>
-              <div class="row wrap" style="margin-top:0.5rem">
-                <input type="file" id="profileDocInput" accept=".pdf,application/pdf" multiple />
-                <button class="btn btn-secondary" id="profileDocUpload" type="button">Upload PDF</button>
-              </div>
-              <p id="profileDocError" class="error" aria-live="polite"></p>
-            </section>
-
-            <section class="profile-section">
-              <h3>Reminder Settings</h3>
-              <p class="tiny">Last contacted: ${formatDate(c.lastContacted)}</p>
-              <p class="tiny">Next reminder: ${c.nextReminder ? formatDate(c.nextReminder.split("T")[0]) : "—"}</p>
-              <div class="field-group" style="margin-top:0.6rem">
-                <label>Frequency</label>
-                <select id="profileFrequency">
-                  ${Object.entries(FREQUENCY_LABELS).map(([v, l]) => `<option value="${v}" ${c.followUpFrequency === v ? "selected" : ""}>${l}</option>`).join("")}
-                </select>
-              </div>
-              <div class="row" style="margin-top:0.4rem">
-                <input type="checkbox" id="profileReminderEnabled" ${c.reminderEnabled ? "checked" : ""} />
-                <label for="profileReminderEnabled">Reminders enabled</label>
-              </div>
-              <button class="btn btn-secondary" id="saveReminderBtn" type="button" style="margin-top:0.6rem">Save Reminder Settings</button>
-              <p id="saveReminderMsg" class="success" aria-live="polite"></p>
-              <hr class="profile-divider" />
-              <button class="btn btn-secondary" id="profileOpenReminder" type="button">${status !== "none" ? "Manage Reminder Popup" : "Send Reconnect Email"}</button>
-            </section>
-
-            <section class="profile-section danger-zone">
-              <button class="btn btn-secondary" id="deleteContactBtn" type="button">🗑 Delete Contact</button>
-            </section>
-          </div>
-        </div>
-      </div>
-    `;
-
-    // Close
-    modal.querySelector("#profileClose").addEventListener("click", () => modal.remove());
-    modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
-
-    // Add interaction
-    modal.querySelector("#addInteractionBtn").addEventListener("click", () => {
-      const errEl = modal.querySelector("#newIntError");
-      errEl.textContent = "";
-      const date = modal.querySelector("#newIntDate").value;
-      const type = modal.querySelector("#newIntType").value;
-      const notes = modal.querySelector("#newIntNotes").value.trim();
-      const outcome = modal.querySelector("#newIntOutcome").value.trim();
-      if (!date) { errEl.textContent = "Date is required."; return; }
-      const interaction = normalizeInteraction({ date, type, notes, outcome });
-      const contacts = getContacts();
-      const updated = contacts.map((c) => {
-        if (c.id !== contactData.id) return c;
-        const newInteractions = [interaction, ...c.interactions].sort((a, b) => b.date.localeCompare(a.date));
-        const newLastContacted = newInteractions[0].date;
-        return {
-          ...c,
-          interactions: newInteractions,
-          lastContacted: newLastContacted,
-          nextReminder: calculateNextReminder(newLastContacted, c.followUpFrequency)
-        };
-      });
-      saveContacts(updated);
-      renderContacts();
-      renderFollowUpAlerts("networkFollowUps");
-      renderFollowUpAlerts("dashboardFollowUps");
-      renderProgressWidget();
-      rerender();
-      // After rerender, auto-suggest if contact has no incomplete follow-ups
-      setTimeout(() => {
-        const fresh = freshContact();
-        const hasOpen = (fresh.followUps || []).some((f) => !f.completed);
-        if (!hasOpen) {
-          const msgEl = modal.querySelector("#followUpMsg");
-          if (msgEl) {
-            msgEl.textContent = "Interaction saved! Click \"🤖 Suggest Follow-Ups\" to generate next steps.";
-            setTimeout(() => { if (msgEl) msgEl.textContent = ""; }, 4000);
-          }
-        }
-      }, 50);
-    });
-
-    // Add manual follow-up
-    const addFollowUp = () => {
-      const input = modal.querySelector("#newFollowUpText");
-      const text = input?.value.trim();
-      if (!text) return;
-      const item = normalizeFollowUpItem({ text, source: "manual" });
-      const contacts = getContacts();
-      const updated = contacts.map((c) =>
-        c.id !== contactData.id ? c : { ...c, followUps: [item, ...(c.followUps || [])] }
-      );
-      saveContacts(updated);
-      input.value = "";
-      // Re-render just the list without full rerender
-      const listEl = modal.querySelector("#followUpList");
-      if (listEl) listEl.innerHTML = renderFollowUpItems(freshContact().followUps);
-      attachFollowUpListeners();
-    };
-    modal.querySelector("#addFollowUpBtn")?.addEventListener("click", addFollowUp);
-    modal.querySelector("#newFollowUpText")?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") addFollowUp();
-    });
-
-    // Suggest follow-ups
-    modal.querySelector("#suggestFollowUpsBtn")?.addEventListener("click", () => {
-      const c = freshContact();
-      const suggestions = generateFollowUpSuggestions(c);
-      if (!suggestions.length) return;
-      const newItems = suggestions.map((text) => normalizeFollowUpItem({ text, source: "ai" }));
-      const existingTexts = new Set((c.followUps || []).map((f) => f.text.toLowerCase()));
-      const deduped = newItems.filter((f) => !existingTexts.has(f.text.toLowerCase()));
-      if (!deduped.length) {
-        const msgEl = modal.querySelector("#followUpMsg");
-        if (msgEl) { msgEl.textContent = "All suggestions already added!"; setTimeout(() => { if (msgEl) msgEl.textContent = ""; }, 2500); }
-        return;
-      }
-      const contacts = getContacts();
-      const updated = contacts.map((c2) =>
-        c2.id !== contactData.id ? c2 : { ...c2, followUps: [...deduped, ...(c2.followUps || [])] }
-      );
-      saveContacts(updated);
-      const listEl = modal.querySelector("#followUpList");
-      if (listEl) listEl.innerHTML = renderFollowUpItems(freshContact().followUps);
-      attachFollowUpListeners();
-      const msgEl = modal.querySelector("#followUpMsg");
-      if (msgEl) { msgEl.textContent = `✨ ${deduped.length} suggestion${deduped.length !== 1 ? "s" : ""} added!`; setTimeout(() => { if (msgEl) msgEl.textContent = ""; }, 2500); }
-    });
-
-    function attachFollowUpListeners() {
-      // Checkbox toggle
-      modal.querySelectorAll(".fu-checkbox").forEach((cb) => {
-        cb.addEventListener("change", () => {
-          const id = cb.dataset.fuId;
-          const contacts = getContacts();
-          const updated = contacts.map((c) =>
-            c.id !== contactData.id ? c : {
-              ...c,
-              followUps: (c.followUps || []).map((f) =>
-                f.id !== id ? f : { ...f, completed: cb.checked }
-              )
-            }
-          );
-          saveContacts(updated);
-          const listEl = modal.querySelector("#followUpList");
-          if (listEl) listEl.innerHTML = renderFollowUpItems(freshContact().followUps);
-          attachFollowUpListeners();
-        });
-      });
-      // Delete
-      modal.querySelectorAll(".fu-delete").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const id = btn.dataset.fuId;
-          const contacts = getContacts();
-          const updated = contacts.map((c) =>
-            c.id !== contactData.id ? c : { ...c, followUps: (c.followUps || []).filter((f) => f.id !== id) }
-          );
-          saveContacts(updated);
-          const listEl = modal.querySelector("#followUpList");
-          if (listEl) listEl.innerHTML = renderFollowUpItems(freshContact().followUps);
-          attachFollowUpListeners();
-        });
-      });
-    }
-    attachFollowUpListeners();
-
-
-    // Save notes
-    modal.querySelector("#saveNotesBtn").addEventListener("click", () => {
-      const contacts = getContacts();
-      const updated = contacts.map((c) =>
-        c.id !== contactData.id ? c : {
-          ...c,
-          interests: modal.querySelector("#editInterests").value.trim(),
-          adviceGiven: modal.querySelector("#editAdvice").value.trim(),
-          notes: modal.querySelector("#editNotes").value.trim()
-        }
-      );
-      saveContacts(updated);
-      renderContacts();
-      modal.querySelector("#saveNotesMsg").textContent = "Saved!";
-      setTimeout(() => { const m = modal.querySelector("#saveNotesMsg"); if (m) m.textContent = ""; }, 2000);
-    });
-
-    // Save reminder settings
-    modal.querySelector("#saveReminderBtn").addEventListener("click", () => {
-      const newFreq = modal.querySelector("#profileFrequency").value;
-      const enabled = modal.querySelector("#profileReminderEnabled").checked;
-      const contacts = getContacts();
-      const updated = contacts.map((c) => {
-        if (c.id !== contactData.id) return c;
-        return {
-          ...c,
-          followUpFrequency: newFreq,
-          reminderEnabled: enabled && newFreq !== "none",
-          nextReminder: calculateNextReminder(c.lastContacted || c.dateMet, newFreq)
-        };
-      });
-      saveContacts(updated);
-      renderContacts();
-      renderFollowUpAlerts("networkFollowUps");
-      renderFollowUpAlerts("dashboardFollowUps");
-      modal.querySelector("#saveReminderMsg").textContent = "Reminder settings saved!";
-      setTimeout(() => { const m = modal.querySelector("#saveReminderMsg"); if (m) m.textContent = ""; }, 2000);
-      rerender();
-    });
-
-    // Open reminder modal
-    modal.querySelector("#profileOpenReminder").addEventListener("click", () => {
-      modal.remove();
-      showReminderModal(freshContact());
-    });
-
-    // Document upload
-    modal.querySelector("#profileDocUpload").addEventListener("click", async () => {
-      const errEl = modal.querySelector("#profileDocError");
-      errEl.textContent = "";
-      const files = Array.from(modal.querySelector("#profileDocInput").files || []);
-      if (!files.length) { errEl.textContent = "Select at least one PDF."; return; }
-      if (files.some((f) => !f.name.toLowerCase().endsWith(".pdf"))) {
-        errEl.textContent = "Only PDF files supported.";
-        return;
-      }
-      try {
-        const encoded = await Promise.all(
-          files.map(async (f) => normalizeContactDocument({ name: f.name, data: await readPdfFile(f) }))
-        );
-        const contacts = getContacts();
-        const updated = contacts.map((c) =>
-          c.id !== contactData.id ? c : { ...c, documents: [...(c.documents || []), ...encoded] }
-        );
-        saveContacts(updated);
-        renderContacts();
-        rerender();
-      } catch {
-        errEl.textContent = "Upload failed. Try a smaller file.";
-      }
-    });
-
-    // Document remove
-    modal.querySelectorAll("[data-remove-doc]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const docId = btn.dataset.removeDoc;
-        const contacts = getContacts();
-        const updated = contacts.map((c) =>
-          c.id !== contactData.id ? c : { ...c, documents: c.documents.filter((d) => d.id !== docId) }
-        );
-        saveContacts(updated);
-        renderContacts();
-        rerender();
-      });
-    });
-
-    // Delete contact
-    modal.querySelector("#deleteContactBtn").addEventListener("click", () => {
-      if (!window.confirm(`Delete ${freshContact().name} and all their data?`)) return;
-      saveContacts(getContacts().filter((c) => c.id !== contactData.id));
-      renderContacts();
-      renderFollowUpAlerts("networkFollowUps");
-      renderFollowUpAlerts("dashboardFollowUps");
-      renderProgressWidget();
-      renderInternshipPanel();
-      modal.remove();
-    });
-  }
-
-  rerender();
-}
-
-function escapeHtml(value = "") {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function buildReminderEmailText(contact, yourName = "") {
-  const name = contact.name || "there";
-  const safeName = yourName.trim() || "[Your Name]";
-  return `Subject: Great catching up!\n\nHi ${name},\n\nHope you've been doing well! I wanted to reconnect and see how things have been going on your end.\n\nWould love to catch up soon.\n\nBest,\n${safeName}`;
-}
-
-function showReminderModal(contact) {
-  const existing = document.getElementById("reminderModal");
-  if (existing) existing.remove();
-
-  const yourName = readScopedText(STORAGE_KEYS.yourName, "");
-  const emailText = buildReminderEmailText(contact, yourName);
-
-  const modal = document.createElement("div");
-  modal.id = "reminderModal";
-  modal.className = "modal-overlay";
-  modal.innerHTML = `
-    <div class="modal-card">
-      <h3>Time to reconnect with <strong>${escapeHtml(contact.name)}</strong></h3>
-      <p class="muted">Frequency: ${escapeHtml(FREQUENCY_LABELS[contact.followUpFrequency] || "—")} · Next: ${contact.nextReminder ? formatDate(contact.nextReminder.split("T")[0]) : "—"}</p>
-      <div class="modal-actions">
-        <button class="btn" id="modalMarkDone" type="button">✅ Mark as done</button>
-        <button class="btn btn-secondary" id="modalLater" type="button">⏰ Remind me in 3 days</button>
-        <button class="btn btn-secondary" id="modalTurnOff" type="button">❌ Turn off reminders</button>
-      </div>
-      <div class="modal-email">
-        <p class="label">Copy reminder email draft:</p>
-        <textarea class="email-draft" readonly rows="8">${escapeHtml(emailText)}</textarea>
-        <button class="btn btn-secondary" id="modalCopyEmail" type="button">📋 Copy email</button>
-        <p id="modalCopyMsg" class="success" aria-live="polite"></p>
-      </div>
-      <button class="btn btn-secondary modal-close" id="modalClose" type="button">Close</button>
-    </div>
-  `;
-  document.body.appendChild(modal);
-
-  const refresh = () => {
-    renderContacts();
-    renderFollowUpAlerts("dashboardFollowUps");
-    renderFollowUpAlerts("networkFollowUps");
-    renderProgressWidget();
-    modal.remove();
-  };
-
-  modal.querySelector("#modalMarkDone").addEventListener("click", () => {
-    const contacts = getContacts();
-    const updated = contacts.map((c) =>
-      c.id !== contact.id
-        ? c
-        : {
-            ...c,
-            lastContacted: todayDateString(),
-            nextReminder: calculateNextReminder(new Date().toISOString(), c.followUpFrequency)
-          }
-    );
-    saveContacts(updated);
-    refresh();
-  });
-
-  modal.querySelector("#modalLater").addEventListener("click", () => {
-    const contacts = getContacts();
-    const updated = contacts.map((c) =>
-      c.id !== contact.id
-        ? c
-        : { ...c, nextReminder: new Date(Date.now() + 3 * 86400000).toISOString() }
-    );
-    saveContacts(updated);
-    refresh();
-  });
-
-  modal.querySelector("#modalTurnOff").addEventListener("click", () => {
-    const contacts = getContacts();
-    const updated = contacts.map((c) =>
-      c.id !== contact.id ? c : { ...c, reminderEnabled: false, followUpFrequency: "none" }
-    );
-    saveContacts(updated);
-    refresh();
-  });
-
-  modal.querySelector("#modalCopyEmail").addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(emailText);
-      modal.querySelector("#modalCopyMsg").textContent = "Email copied to clipboard!";
-    } catch {
-      modal.querySelector("#modalCopyMsg").textContent = "Copy failed — please copy manually.";
-    }
-  });
-
-  modal.querySelector("#modalClose").addEventListener("click", () => modal.remove());
-  modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
-}
-
-function checkRemindersOnLoad() {
-  // Don't interrupt the contact page with a reminder modal
-  if (document.querySelector("[data-page='contact']")) return;
-  setTimeout(() => {
-    if (!hasActiveInternship()) return;
-    const due = getFollowUpsDue();
-    if (due.length > 0) {
-      showReminderModal(due[0]);
-    }
-  }, 800);
-}
-
-function initContactPage() {
+async function initContactPage() {
   const root = document.getElementById("contactPageContent");
   if (!root) return;
-
   const params = new URLSearchParams(window.location.search);
   const contactId = params.get("id");
+  refreshActivePageData = renderPage;
 
-  refreshActivePageData = () => renderPage();
-
-  function freshContact() {
-    return getContacts().find((c) => c.id === contactId) || null;
+  async function freshContact() {
+    const contacts = await db.getContacts();
+    return contacts.find((c) => c.id === contactId) || null;
   }
 
-  function save(updateFn) {
-    const updated = getContacts().map((c) => c.id !== contactId ? c : updateFn(c));
-    saveContacts(updated);
+  async function save(updateFn) {
+    const c = await freshContact();
+    if (!c) return;
+    await db.saveContact(normalizeContact(updateFn(c)));
   }
 
-  function renderPage() {
-    const c = freshContact();
+  async function renderPage() {
+    const c = await freshContact();
     if (!c) {
-      root.innerHTML = `<div class="card"><p class="error">Contact not found. <a href="network.html">← Back to Networking</a></p></div>`;
+      root.innerHTML = '<div class="card"><p class="error">Contact not found. <a href="network.html">Back to Networking</a></p></div>';
       return;
     }
-
     const status = getReminderStatus(c);
     const freqLabel = FREQUENCY_LABELS[c.followUpFrequency] || "No reminders";
+    const interactionTypeOptions = INTERACTION_TYPES.map((t) => '<option value="' + t + '">' + t.charAt(0).toUpperCase() + t.slice(1) + '</option>').join("");
+    const freqOptions = Object.entries(FREQUENCY_LABELS).map(([v, l]) => '<option value="' + v + '"' + (c.followUpFrequency === v ? ' selected' : '') + '>' + l + '</option>').join("");
 
-    root.innerHTML = `
-      <!-- Back + header -->
-      <div class="card contact-page-header">
-        <a href="network.html" class="btn btn-secondary back-btn">← Back to Networking</a>
-        <div class="contact-page-hero">
-          <div class="contact-page-identity">
-            <h2>${escapeHtml(c.name)}</h2>
-            <p class="muted">${escapeHtml(c.role || "Role not set")}${c.company ? ` @ ${escapeHtml(c.company)}` : ""} · <a href="mailto:${escapeHtml(c.email)}">${escapeHtml(c.email)}</a></p>
-            <p class="tiny">Met: ${formatDate(c.dateMet)} · Last contacted: ${formatDate(c.lastContacted)}</p>
-          </div>
-          <div class="contact-page-badges">
-            ${reminderBadge(c)}
-            <button class="btn btn-secondary" id="cpOpenReminderBtn" type="button">${status !== "none" ? "🔔 Manage Reminder" : "📧 Send Email"}</button>
-            <button class="btn btn-secondary danger-btn" id="cpDeleteBtn" type="button">🗑 Delete Contact</button>
-          </div>
-        </div>
-      </div>
+    root.innerHTML = '<div class="card contact-page-header">'
+      + '<a href="network.html" class="btn btn-secondary back-btn">Back to Networking</a>'
+      + '<div class="contact-page-hero">'
+      + '<div class="contact-page-identity">'
+      + '<h2>' + escapeHtml(c.name) + '</h2>'
+      + '<p class="muted">' + escapeHtml(c.role || "Role not set") + (c.company ? ' @ ' + escapeHtml(c.company) : '') + ' &middot; <a href="mailto:' + escapeHtml(c.email) + '">' + escapeHtml(c.email) + '</a></p>'
+      + '<p class="tiny">Met: ' + formatDate(c.dateMet) + ' &middot; Last contacted: ' + formatDate(c.lastContacted) + '</p>'
+      + '</div>'
+      + '<div class="contact-page-badges">'
+      + reminderBadge(c)
+      + '<button class="btn btn-secondary" id="cpOpenReminderBtn" type="button">' + (status !== "none" ? "Manage Reminder" : "Send Email") + '</button>'
+      + '<button class="btn btn-secondary danger-btn" id="cpDeleteBtn" type="button">Delete Contact</button>'
+      + '</div></div></div>'
+      + '<div class="contact-page-body">'
+      + '<div class="contact-page-left">'
+      + '<section class="card"><h3 class="section-title">Interaction Timeline</h3><div class="timeline" id="cpTimeline">' + renderInteractionTimeline(c.interactions) + '</div></section>'
+      + '<section class="card"><h3 class="section-title">Add Interaction</h3>'
+      + '<div class="two-col"><div class="field-group"><label>Date</label><input type="date" id="cpIntDate" value="' + todayDateString() + '" /></div>'
+      + '<div class="field-group"><label>Type</label><select id="cpIntType">' + interactionTypeOptions + '</select></div></div>'
+      + '<div class="field-group"><label>Notes</label><textarea id="cpIntNotes" rows="3"></textarea></div>'
+      + '<div class="field-group"><label>Outcome</label><textarea id="cpIntOutcome" rows="2"></textarea></div>'
+      + '<p id="cpIntError" class="error" aria-live="polite"></p>'
+      + '<button class="btn" id="cpAddIntBtn" type="button">Add Interaction</button></section>'
+      + '<section class="card"><div class="followup-section-header"><h3 class="section-title">Next Steps</h3><button class="btn btn-secondary" id="cpSuggestBtn" type="button">Suggest Follow-Ups</button></div>'
+      + '<div id="cpFollowUpList">' + renderFollowUpItems(c.followUps) + '</div>'
+      + '<div class="followup-add-row"><input type="text" id="cpNewFollowUp" placeholder="Add a follow-up task" /><button class="btn" id="cpAddFollowUpBtn" type="button">Add</button></div>'
+      + '<p id="cpFollowUpMsg" class="success" aria-live="polite"></p></section>'
+      + '</div>'
+      + '<div class="contact-page-right">'
+      + '<section class="card"><h3 class="section-title">Notes and Details</h3>'
+      + '<div class="two-col"><div class="field-group"><label>Company</label><input type="text" id="cpCompany" value="' + escapeHtml(c.company) + '" placeholder="e.g. Google" /></div>'
+      + '<div class="field-group"><label>Role</label><input type="text" id="cpRole" value="' + escapeHtml(c.role) + '" placeholder="e.g. Software Engineer" /></div></div>'
+      + '<div class="field-group"><label>Interests</label><input type="text" id="cpInterests" value="' + escapeHtml(c.interests) + '" /></div>'
+      + '<div class="field-group"><label>Advice Given</label><textarea id="cpAdvice" rows="3">' + escapeHtml(c.adviceGiven) + '</textarea></div>'
+      + '<div class="field-group"><label>Notes</label><textarea id="cpNotes" rows="4">' + escapeHtml(c.notes) + '</textarea></div>'
+      + '<button class="btn" id="cpSaveNotesBtn" type="button">Save Notes</button>'
+      + '<p id="cpSaveNotesMsg" class="success" aria-live="polite"></p></section>'
+      + '<section class="card"><h3 class="section-title">Documents</h3>'
+      + '<div id="cpDocList">' + renderContactDocuments(c.documents) + '</div>'
+      + '<div class="followup-add-row" style="margin-top:0.75rem"><input type="file" id="cpDocInput" accept=".pdf,application/pdf" multiple /><button class="btn btn-secondary" id="cpDocUploadBtn" type="button">Upload PDF</button></div>'
+      + '<p id="cpDocError" class="error" aria-live="polite"></p></section>'
+      + '<section class="card"><h3 class="section-title">Reminder Settings</h3>'
+      + '<p class="tiny">Frequency: <strong>' + escapeHtml(freqLabel) + '</strong></p>'
+      + '<p class="tiny">Next reminder: ' + (c.nextReminder ? formatDate(c.nextReminder.split("T")[0]) : "Not set") + '</p>'
+      + '<div class="field-group" style="margin-top:0.75rem"><label>Stay-in-touch frequency</label><select id="cpFrequency">' + freqOptions + '</select></div>'
+      + '<label class="row" style="margin-top:0.4rem;gap:0.5rem;cursor:pointer"><input type="checkbox" id="cpReminderEnabled"' + (c.reminderEnabled ? ' checked' : '') + ' /> Reminders enabled</label>'
+      + '<button class="btn" id="cpSaveReminderBtn" type="button" style="margin-top:0.75rem">Save Reminder Settings</button>'
+      + '<p id="cpSaveReminderMsg" class="success" aria-live="polite"></p></section>'
+      + '</div></div>';
 
-      <!-- Two-column body -->
-      <div class="contact-page-body">
-
-        <!-- LEFT COLUMN -->
-        <div class="contact-page-left">
-
-          <!-- Interaction Timeline -->
-          <section class="card">
-            <h3 class="section-title">Interaction Timeline</h3>
-            <div class="timeline" id="cpTimeline">${renderInteractionTimeline(c.interactions)}</div>
-          </section>
-
-          <!-- Add Interaction -->
-          <section class="card">
-            <h3 class="section-title">Add Interaction</h3>
-            <div class="two-col">
-              <div class="field-group">
-                <label>Date</label>
-                <input type="date" id="cpIntDate" value="${todayDateString()}" />
-              </div>
-              <div class="field-group">
-                <label>Type</label>
-                <select id="cpIntType">
-                  ${INTERACTION_TYPES.map((t) => `<option value="${t}">${t.charAt(0).toUpperCase() + t.slice(1)}</option>`).join("")}
-                </select>
-              </div>
-            </div>
-            <div class="field-group">
-              <label>Notes</label>
-              <textarea id="cpIntNotes" rows="3"></textarea>
-            </div>
-            <div class="field-group">
-              <label>Outcome</label>
-              <textarea id="cpIntOutcome" rows="2"></textarea>
-            </div>
-            <p id="cpIntError" class="error" aria-live="polite"></p>
-            <button class="btn" id="cpAddIntBtn" type="button">+ Add Interaction</button>
-          </section>
-
-          <!-- Next Steps -->
-          <section class="card">
-            <div class="followup-section-header">
-              <h3 class="section-title">👉 Next Steps</h3>
-              <button class="btn btn-secondary" id="cpSuggestBtn" type="button">🤖 Suggest Follow-Ups</button>
-            </div>
-            <div id="cpFollowUpList">${renderFollowUpItems(c.followUps)}</div>
-            <div class="followup-add-row">
-              <input type="text" id="cpNewFollowUp" placeholder="Add a follow-up task…" />
-              <button class="btn" id="cpAddFollowUpBtn" type="button">Add</button>
-            </div>
-            <p id="cpFollowUpMsg" class="success" aria-live="polite"></p>
-          </section>
-
-        </div>
-
-        <!-- RIGHT COLUMN -->
-        <div class="contact-page-right">
-
-          <!-- Notes & Details -->
-          <section class="card">
-            <h3 class="section-title">Notes &amp; Details</h3>
-            <div class="two-col">
-              <div class="field-group">
-                <label>Company</label>
-                <input type="text" id="cpCompany" value="${escapeHtml(c.company)}" placeholder="e.g. Google" />
-              </div>
-              <div class="field-group">
-                <label>Role</label>
-                <input type="text" id="cpRole" value="${escapeHtml(c.role)}" placeholder="e.g. Software Engineer" />
-              </div>
-            </div>
-            <div class="field-group">
-              <label>Interests</label>
-              <input type="text" id="cpInterests" value="${escapeHtml(c.interests)}" />
-            </div>
-            <div class="field-group">
-              <label>Advice Given</label>
-              <textarea id="cpAdvice" rows="3">${escapeHtml(c.adviceGiven)}</textarea>
-            </div>
-            <div class="field-group">
-              <label>Notes</label>
-              <textarea id="cpNotes" rows="4">${escapeHtml(c.notes)}</textarea>
-            </div>
-            <button class="btn" id="cpSaveNotesBtn" type="button">Save Notes</button>
-            <p id="cpSaveNotesMsg" class="success" aria-live="polite"></p>
-          </section>
-
-          <!-- Documents -->
-          <section class="card">
-            <h3 class="section-title">Documents</h3>
-            <div id="cpDocList">${renderContactDocuments(c.documents)}</div>
-            <div class="followup-add-row" style="margin-top:0.75rem">
-              <input type="file" id="cpDocInput" accept=".pdf,application/pdf" multiple />
-              <button class="btn btn-secondary" id="cpDocUploadBtn" type="button">Upload PDF</button>
-            </div>
-            <p id="cpDocError" class="error" aria-live="polite"></p>
-          </section>
-
-          <!-- Reminder Settings -->
-          <section class="card">
-            <h3 class="section-title">Reminder Settings</h3>
-            <p class="tiny">Frequency: <strong>${escapeHtml(freqLabel)}</strong></p>
-            <p class="tiny">Next reminder: ${c.nextReminder ? formatDate(c.nextReminder.split("T")[0]) : "—"}</p>
-            <div class="field-group" style="margin-top:0.75rem">
-              <label>Stay-in-touch frequency</label>
-              <select id="cpFrequency">
-                ${Object.entries(FREQUENCY_LABELS).map(([v, l]) => `<option value="${v}" ${c.followUpFrequency === v ? "selected" : ""}>${l}</option>`).join("")}
-              </select>
-            </div>
-            <label class="row" style="margin-top:0.4rem;gap:0.5rem;cursor:pointer">
-              <input type="checkbox" id="cpReminderEnabled" ${c.reminderEnabled ? "checked" : ""} />
-              Reminders enabled
-            </label>
-            <button class="btn" id="cpSaveReminderBtn" type="button" style="margin-top:0.75rem">Save Reminder Settings</button>
-            <p id="cpSaveReminderMsg" class="success" aria-live="polite"></p>
-          </section>
-
-        </div>
-      </div>
-    `;
-
-    // ── Event listeners ──
-
-    // Back / delete / reminder popup
-    root.querySelector("#cpOpenReminderBtn").addEventListener("click", () => showReminderModal(freshContact()));
-    root.querySelector("#cpDeleteBtn").addEventListener("click", () => {
-      if (!window.confirm(`Delete ${freshContact().name} and all their data?`)) return;
-      saveContacts(getContacts().filter((c) => c.id !== contactId));
+    root.querySelector("#cpOpenReminderBtn").addEventListener("click", async () => { showReminderModal(await freshContact()); });
+    root.querySelector("#cpDeleteBtn").addEventListener("click", async () => {
+      const contact = await freshContact();
+      if (!contact || !window.confirm("Delete " + contact.name + " and all their data?")) return;
+      await db.deleteContact(contactId);
       window.location.href = "network.html";
     });
-
-    // Add interaction
-    root.querySelector("#cpAddIntBtn").addEventListener("click", () => {
+    root.querySelector("#cpAddIntBtn").addEventListener("click", async () => {
       const errEl = root.querySelector("#cpIntError");
       errEl.textContent = "";
       const date = root.querySelector("#cpIntDate").value;
@@ -1878,59 +986,34 @@ function initContactPage() {
       const outcome = root.querySelector("#cpIntOutcome").value.trim();
       if (!date) { errEl.textContent = "Date is required."; return; }
       const interaction = normalizeInteraction({ date, type, notes, outcome });
-      save((c) => {
+      await save((c) => {
         const newInteractions = [interaction, ...c.interactions].sort((a, b) => b.date.localeCompare(a.date));
-        const newLastContacted = newInteractions[0].date;
-        return {
-          ...c,
-          interactions: newInteractions,
-          lastContacted: newLastContacted,
-          nextReminder: calculateNextReminder(newLastContacted, c.followUpFrequency)
-        };
+        return { ...c, interactions: newInteractions, lastContacted: newInteractions[0].date, nextReminder: calculateNextReminder(newInteractions[0].date, c.followUpFrequency) };
       });
-      // Nudge if no open follow-ups
-      const fresh = freshContact();
-      const hasOpen = (fresh.followUps || []).some((f) => !f.completed);
-      renderPage();
+      const fresh = await freshContact();
+      const hasOpen = (fresh ? fresh.followUps || [] : []).some((f) => !f.completed);
+      await renderPage();
       if (!hasOpen) {
         const msg = root.querySelector("#cpFollowUpMsg");
-        if (msg) { msg.textContent = 'Interaction saved! Click "🤖 Suggest Follow-Ups" to generate next steps.'; setTimeout(() => { if (msg) msg.textContent = ""; }, 4000); }
+        if (msg) { msg.textContent = "Interaction saved! Use Suggest Follow-Ups to generate next steps."; setTimeout(() => { if (msg) msg.textContent = ""; }, 4000); }
       }
     });
-
-    // Save notes
-    root.querySelector("#cpSaveNotesBtn").addEventListener("click", () => {
-      save((c) => ({
-        ...c,
-        company: root.querySelector("#cpCompany").value.trim(),
-        role: root.querySelector("#cpRole").value.trim(),
-        interests: root.querySelector("#cpInterests").value.trim(),
-        adviceGiven: root.querySelector("#cpAdvice").value.trim(),
-        notes: root.querySelector("#cpNotes").value.trim()
-      }));
+    root.querySelector("#cpSaveNotesBtn").addEventListener("click", async () => {
+      await save((c) => ({ ...c, company: root.querySelector("#cpCompany").value.trim(), role: root.querySelector("#cpRole").value.trim(), interests: root.querySelector("#cpInterests").value.trim(), adviceGiven: root.querySelector("#cpAdvice").value.trim(), notes: root.querySelector("#cpNotes").value.trim() }));
       const msg = root.querySelector("#cpSaveNotesMsg");
       msg.textContent = "Saved!";
       setTimeout(() => { if (msg) msg.textContent = ""; }, 2000);
-      renderPage();
+      await renderPage();
     });
-
-    // Save reminder settings
-    root.querySelector("#cpSaveReminderBtn").addEventListener("click", () => {
+    root.querySelector("#cpSaveReminderBtn").addEventListener("click", async () => {
       const newFreq = root.querySelector("#cpFrequency").value;
       const enabled = root.querySelector("#cpReminderEnabled").checked;
-      save((c) => ({
-        ...c,
-        followUpFrequency: newFreq,
-        reminderEnabled: enabled && newFreq !== "none",
-        nextReminder: calculateNextReminder(c.lastContacted || c.dateMet, newFreq)
-      }));
+      await save((c) => ({ ...c, followUpFrequency: newFreq, reminderEnabled: enabled && newFreq !== "none", nextReminder: calculateNextReminder(c.lastContacted || c.dateMet, newFreq) }));
       const msg = root.querySelector("#cpSaveReminderMsg");
       msg.textContent = "Reminder settings saved!";
       setTimeout(() => { if (msg) msg.textContent = ""; }, 2000);
-      renderPage();
+      await renderPage();
     });
-
-    // Document upload
     root.querySelector("#cpDocUploadBtn").addEventListener("click", async () => {
       const errEl = root.querySelector("#cpDocError");
       errEl.textContent = "";
@@ -1939,82 +1022,100 @@ function initContactPage() {
       if (files.some((f) => !f.name.toLowerCase().endsWith(".pdf"))) { errEl.textContent = "Only PDF files supported."; return; }
       try {
         const encoded = await Promise.all(files.map(async (f) => normalizeContactDocument({ name: f.name, data: await readPdfFile(f) })));
-        save((c) => ({ ...c, documents: [...(c.documents || []), ...encoded] }));
-        renderPage();
-      } catch {
-        errEl.textContent = "Upload failed. Try a smaller file.";
-      }
+        await save((c) => ({ ...c, documents: [...(c.documents || []), ...encoded] }));
+        await renderPage();
+      } catch { errEl.textContent = "Upload failed. Try a smaller file."; }
     });
-
-    // Document remove
     root.querySelectorAll("[data-remove-doc]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        save((c) => ({ ...c, documents: c.documents.filter((d) => d.id !== btn.dataset.removeDoc) }));
-        renderPage();
+      btn.addEventListener("click", async () => {
+        await save((c) => ({ ...c, documents: c.documents.filter((d) => d.id !== btn.dataset.removeDoc) }));
+        await renderPage();
       });
     });
-
-    // Add manual follow-up
-    const addFollowUp = () => {
+    const addFollowUp = async () => {
       const input = root.querySelector("#cpNewFollowUp");
-      const text = input?.value.trim();
+      const text = input ? input.value.trim() : "";
       if (!text) return;
-      save((c) => ({ ...c, followUps: [normalizeFollowUpItem({ text, source: "manual" }), ...(c.followUps || [])] }));
-      input.value = "";
-      refreshFollowUpList();
+      await save((c) => ({ ...c, followUps: [normalizeFollowUpItem({ text, source: "manual" }), ...(c.followUps || [])] }));
+      if (input) input.value = "";
+      await refreshFollowUpList();
     };
     root.querySelector("#cpAddFollowUpBtn").addEventListener("click", addFollowUp);
     root.querySelector("#cpNewFollowUp").addEventListener("keydown", (e) => { if (e.key === "Enter") addFollowUp(); });
-
-    // Suggest follow-ups
-    root.querySelector("#cpSuggestBtn").addEventListener("click", () => {
-      const fresh = freshContact();
+    root.querySelector("#cpSuggestBtn").addEventListener("click", async () => {
+      const fresh = await freshContact();
+      if (!fresh) return;
       const suggestions = generateFollowUpSuggestions(fresh);
       const existingTexts = new Set((fresh.followUps || []).map((f) => f.text.toLowerCase()));
-      const deduped = suggestions
-        .map((text) => normalizeFollowUpItem({ text, source: "ai" }))
-        .filter((f) => !existingTexts.has(f.text.toLowerCase()));
+      const deduped = suggestions.map((text) => normalizeFollowUpItem({ text, source: "ai" })).filter((f) => !existingTexts.has(f.text.toLowerCase()));
       const msg = root.querySelector("#cpFollowUpMsg");
-      if (!deduped.length) {
-        if (msg) { msg.textContent = "All suggestions already added!"; setTimeout(() => { if (msg) msg.textContent = ""; }, 2500); }
-        return;
-      }
-      save((c) => ({ ...c, followUps: [...deduped, ...(c.followUps || [])] }));
-      refreshFollowUpList();
-      if (msg) { msg.textContent = `✨ ${deduped.length} suggestion${deduped.length !== 1 ? "s" : ""} added!`; setTimeout(() => { if (msg) msg.textContent = ""; }, 2500); }
+      if (!deduped.length) { if (msg) { msg.textContent = "All suggestions already added!"; setTimeout(() => { if (msg) msg.textContent = ""; }, 2500); } return; }
+      await save((c) => ({ ...c, followUps: [...deduped, ...(c.followUps || [])] }));
+      await refreshFollowUpList();
+      if (msg) { msg.textContent = deduped.length + " suggestion" + (deduped.length !== 1 ? "s" : "") + " added!"; setTimeout(() => { if (msg) msg.textContent = ""; }, 2500); }
     });
 
-    function refreshFollowUpList() {
+    async function refreshFollowUpList() {
+      const fresh = await freshContact();
       const listEl = root.querySelector("#cpFollowUpList");
-      if (listEl) listEl.innerHTML = renderFollowUpItems(freshContact().followUps);
+      if (listEl && fresh) listEl.innerHTML = renderFollowUpItems(fresh.followUps);
       attachFollowUpListeners();
     }
-
     function attachFollowUpListeners() {
       root.querySelectorAll(".fu-checkbox").forEach((cb) => {
-        cb.addEventListener("change", () => {
-          save((c) => ({ ...c, followUps: (c.followUps || []).map((f) => f.id !== cb.dataset.fuId ? f : { ...f, completed: cb.checked }) }));
-          refreshFollowUpList();
+        cb.addEventListener("change", async () => {
+          await save((c) => ({ ...c, followUps: (c.followUps || []).map((f) => f.id !== cb.dataset.fuId ? f : { ...f, completed: cb.checked }) }));
+          await refreshFollowUpList();
         });
       });
       root.querySelectorAll(".fu-delete").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          save((c) => ({ ...c, followUps: (c.followUps || []).filter((f) => f.id !== btn.dataset.fuId) }));
-          refreshFollowUpList();
+        btn.addEventListener("click", async () => {
+          await save((c) => ({ ...c, followUps: (c.followUps || []).filter((f) => f.id !== btn.dataset.fuId) }));
+          await refreshFollowUpList();
         });
       });
     }
     attachFollowUpListeners();
   }
 
-  renderPage();
+  await renderPage();
 }
 
-ensureInternshipWorkspace();
-initThemeToggle();
-initDashboard();
-initNetworking();
-initSummary();
-initContactPage();
-initInternshipPanel();
-checkRemindersOnLoad();
+// ── Sign out ──────────────────────────────────────────────────────────────────
+
+function initSignOut() {
+  const btn = document.getElementById("signOutBtn");
+  if (!btn) return;
+  btn.addEventListener("click", async () => {
+    await supabase.auth.signOut();
+    window.location.href = "auth.html";
+  });
+}
+
+// ── Check reminders on load ───────────────────────────────────────────────────
+
+async function checkRemindersOnLoad() {
+  if (document.querySelector("[data-page='contact']")) return;
+  setTimeout(async () => {
+    const contacts = await db.getContacts();
+    const now = new Date();
+    now.setHours(23, 59, 59, 999);
+    const due = contacts.filter((c) => c.reminderEnabled && c.nextReminder && new Date(c.nextReminder) <= now);
+    if (due.length > 0) showReminderModal(due[0]);
+  }, 800);
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  initThemeToggle();
+  initSignOut();
+  await initDashboard();
+  await initNetworking();
+  await initSummary();
+  await initContactPage();
+  await initInternshipPanel();
+  await checkRemindersOnLoad();
+})();

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>InternTrack | Sign In</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body data-page="auth">
+    <header class="site-header">
+      <div class="container nav-wrap">
+        <h1 class="brand">InternTrack</h1>
+      </div>
+    </header>
+
+    <main class="container auth-main">
+      <div class="auth-card card">
+
+        <div class="auth-tabs" role="tablist">
+          <button class="auth-tab active" id="tabSignIn" role="tab" aria-selected="true" type="button">Sign In</button>
+          <button class="auth-tab" id="tabSignUp" role="tab" aria-selected="false" type="button">Create Account</button>
+        </div>
+
+        <!-- Sign In -->
+        <form id="signInForm" class="auth-form" novalidate>
+          <h2 class="auth-title">Welcome back</h2>
+          <div class="field-group">
+            <label for="siEmail">Email</label>
+            <input id="siEmail" type="email" autocomplete="email" required placeholder="you@example.com" />
+          </div>
+          <div class="field-group">
+            <label for="siPassword">Password</label>
+            <input id="siPassword" type="password" autocomplete="current-password" required placeholder="••••••••" />
+          </div>
+          <p id="siError" class="error" aria-live="polite"></p>
+          <button class="btn" type="submit" id="siBtn">Sign In</button>
+          <button class="btn btn-secondary" type="button" id="forgotBtn">Forgot password?</button>
+        </form>
+
+        <!-- Sign Up -->
+        <form id="signUpForm" class="auth-form hidden" novalidate>
+          <h2 class="auth-title">Create your account</h2>
+          <div class="field-group">
+            <label for="suName">Your Name</label>
+            <input id="suName" type="text" autocomplete="name" required placeholder="Jane Smith" />
+          </div>
+          <div class="field-group">
+            <label for="suEmail">Email</label>
+            <input id="suEmail" type="email" autocomplete="email" required placeholder="you@example.com" />
+          </div>
+          <div class="field-group">
+            <label for="suPassword">Password <span class="muted" style="font-weight:400">(min 6 characters)</span></label>
+            <input id="suPassword" type="password" autocomplete="new-password" required placeholder="••••••••" />
+          </div>
+          <p id="suError" class="error" aria-live="polite"></p>
+          <p id="suSuccess" class="success" aria-live="polite"></p>
+          <button class="btn" type="submit" id="suBtn">Create Account</button>
+        </form>
+
+        <!-- Reset password panel (shown after forgot click) -->
+        <div id="resetPanel" class="auth-form hidden">
+          <h2 class="auth-title">Reset password</h2>
+          <p class="muted">Enter your email and we'll send a reset link.</p>
+          <div class="field-group">
+            <label for="resetEmail">Email</label>
+            <input id="resetEmail" type="email" placeholder="you@example.com" />
+          </div>
+          <p id="resetError" class="error" aria-live="polite"></p>
+          <p id="resetSuccess" class="success" aria-live="polite"></p>
+          <div class="row" style="gap:0.5rem">
+            <button class="btn" type="button" id="sendResetBtn">Send Reset Link</button>
+            <button class="btn btn-secondary" type="button" id="cancelResetBtn">Cancel</button>
+          </div>
+        </div>
+
+      </div>
+    </main>
+
+    <script type="module">
+      import { supabase } from "./supabase.js";
+      import { getUser } from "./supabase.js";
+
+      // If already logged in, go straight to dashboard
+      getUser().then((user) => {
+        if (user) window.location.href = "index.html";
+      });
+
+      const tabSignIn = document.getElementById("tabSignIn");
+      const tabSignUp = document.getElementById("tabSignUp");
+      const signInForm = document.getElementById("signInForm");
+      const signUpForm = document.getElementById("signUpForm");
+      const resetPanel = document.getElementById("resetPanel");
+
+      function showTab(tab) {
+        const isSignIn = tab === "signin";
+        tabSignIn.classList.toggle("active", isSignIn);
+        tabSignUp.classList.toggle("active", !isSignIn);
+        tabSignIn.setAttribute("aria-selected", isSignIn);
+        tabSignUp.setAttribute("aria-selected", !isSignIn);
+        signInForm.classList.toggle("hidden", !isSignIn);
+        signUpForm.classList.toggle("hidden", isSignIn);
+        resetPanel.classList.add("hidden");
+      }
+
+      tabSignIn.addEventListener("click", () => showTab("signin"));
+      tabSignUp.addEventListener("click", () => showTab("signup"));
+
+      // Sign In
+      signInForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById("siBtn");
+        const errEl = document.getElementById("siError");
+        errEl.textContent = "";
+        btn.disabled = true;
+        btn.textContent = "Signing in…";
+
+        const { error } = await supabase.auth.signInWithPassword({
+          email: document.getElementById("siEmail").value.trim(),
+          password: document.getElementById("siPassword").value
+        });
+
+        if (error) {
+          errEl.textContent = error.message;
+          btn.disabled = false;
+          btn.textContent = "Sign In";
+        } else {
+          window.location.href = "index.html";
+        }
+      });
+
+      // Sign Up
+      signUpForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById("suBtn");
+        const errEl = document.getElementById("suError");
+        const successEl = document.getElementById("suSuccess");
+        errEl.textContent = "";
+        successEl.textContent = "";
+        btn.disabled = true;
+        btn.textContent = "Creating account…";
+
+        const name = document.getElementById("suName").value.trim();
+        const email = document.getElementById("suEmail").value.trim();
+        const password = document.getElementById("suPassword").value;
+
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { full_name: name } }
+        });
+
+        if (error) {
+          errEl.textContent = error.message;
+          btn.disabled = false;
+          btn.textContent = "Create Account";
+        } else if (data.session) {
+          // Auto-confirmed (email confirm disabled)
+          window.location.href = "index.html";
+        } else {
+          successEl.textContent = "Account created! Check your email to confirm, then sign in.";
+          btn.disabled = false;
+          btn.textContent = "Create Account";
+        }
+      });
+
+      // Forgot password
+      document.getElementById("forgotBtn").addEventListener("click", () => {
+        signInForm.classList.add("hidden");
+        resetPanel.classList.remove("hidden");
+      });
+
+      document.getElementById("cancelResetBtn").addEventListener("click", () => {
+        resetPanel.classList.add("hidden");
+        signInForm.classList.remove("hidden");
+      });
+
+      document.getElementById("sendResetBtn").addEventListener("click", async () => {
+        const email = document.getElementById("resetEmail").value.trim();
+        const errEl = document.getElementById("resetError");
+        const successEl = document.getElementById("resetSuccess");
+        errEl.textContent = "";
+        successEl.textContent = "";
+        if (!email) { errEl.textContent = "Enter your email."; return; }
+
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin + "/auth.html"
+        });
+        if (error) {
+          errEl.textContent = error.message;
+        } else {
+          successEl.textContent = "Reset link sent! Check your email.";
+        }
+      });
+    </script>
+  </body>
+</html>
