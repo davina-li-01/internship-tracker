@@ -1,11 +1,21 @@
 /**
  * app.js — InternTrack main application logic
- * ES module, uses Supabase via db.js for all data access.
+ *
+ * ES module. All data access goes through db.js (Supabase).
+ * UI state (active internship, theme) is kept in localStorage only.
+ *
+ * Page-level init functions are guarded by requireAuth() at boot.
+ * Each page calls only the init functions relevant to its DOM.
+ *
+ * AI-assisted: architecture, async refactor, follow-up suggestion logic,
+ * reminder modal, contact page dynamic render. See README for details.
  */
 import { requireAuth, supabase } from "./supabase.js";
 import * as db from "./db.js";
 
 // ── Active internship (UI state — localStorage only) ──────────────────────────
+// Only the selected internship ID is kept in localStorage.
+// All actual internship data lives in Supabase.
 
 function getActiveInternshipId() {
   return localStorage.getItem("interntrack_active_internship_id") || "";
@@ -26,7 +36,9 @@ function requireActiveInternship(errorEl, message = "Please add or select an int
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
+// Pure helper functions — no side effects, no async.
 
+/** Generate a unique ID using crypto.randomUUID when available. */
 function makeId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -78,6 +90,8 @@ function isDateWithinLastDays(value, days = 7) {
 }
 
 // ── Normalizers ───────────────────────────────────────────────────────────────
+// Each normalizer fills in defaults and ensures consistent shape before
+// saving to Supabase. Called on both read (db.js) and write paths.
 
 function normalizeLog(log = {}) {
   return {
@@ -90,6 +104,7 @@ function normalizeLog(log = {}) {
   };
 }
 
+/** Human-readable labels for follow-up reminder frequencies. */
 const FREQUENCY_LABELS = {
   monthly: "Monthly",
   bimonthly: "Every 2 months",
@@ -235,8 +250,14 @@ function readPdfFile(file) {
 
 // ── Follow-up suggestions ─────────────────────────────────────────────────────
 
+/** Supported interaction types for the timeline log form. */
 const INTERACTION_TYPES = ["coffee chat", "meeting", "check-in", "email", "phone call", "event"];
 
+/**
+ * AI-assisted: Generate personalised follow-up suggestions based on
+ * contact interests, role, notes, and interaction history.
+ * Returns up to 5 de-duplicated suggestion strings.
+ */
 function generateFollowUpSuggestions(contact) {
   const suggestions = [];
   const interests = (contact.interests || "").toLowerCase();
@@ -330,7 +351,10 @@ function renderInteractionTimeline(interactions) {
 }
 
 // ── Summary builder ───────────────────────────────────────────────────────────
+// Builds a plain-text weekly manager update from impact logs.
+// AI-assisted: email template structure and scoring heuristic.
 
+/** Score a log entry by richness — used to pick the "key highlight". */
 function scoreImpact(log) {
   return (log.impact || "").length + (log.skills || "").length * 0.2 + log.tags.length * 3;
 }
@@ -349,6 +373,11 @@ function buildSummary({ logs, managerName, yourName, nextSteps }) {
   return "Hi " + safeManager + ",\n\nThis week I:\n\nCompleted: " + completed + "\nAchieved: " + (achieved || "No impact details recorded.") + "\nLearned: " + (learned || "No skills recorded.") + "\n\nKey highlight:\n" + (best ? best.impact || "No key highlight recorded." : "No key highlight recorded.") + "\n\nNext steps:\n" + (safeNextSteps || "Continue progressing on current priorities.") + "\n\nBest,\n" + safeName;
 }
 
+/**
+ * Fetch a random motivational quote from the Quotable public API.
+ * Falls back to a static string on error so the UI never breaks.
+ * API integration requirement — external fetch (api.quotable.io).
+ */
 async function fetchQuote() {
   try {
     const response = await fetch("https://api.quotable.io/random");
@@ -361,6 +390,7 @@ async function fetchQuote() {
 }
 
 // ── Reminder modal ────────────────────────────────────────────────────────────
+// AI-assisted: modal structure and email draft template.
 
 function buildReminderEmailText(contact, yourName) {
   const name = contact.name || "there";
@@ -536,6 +566,11 @@ async function renderProgressWidget() {
   statFollowUps.textContent = String(allContacts.filter((c) => c.reminderEnabled && c.nextReminder && new Date(c.nextReminder) <= now).length);
 }
 
+/**
+ * Render the contact list on network.html.
+ * Contacts sorted by dateMet descending; cards link to contact.html.
+ * Reminder badge (due / soon / up to date) shown per contact.
+ */
 async function renderContacts() {
   const list = document.getElementById("contactList");
   if (!list) return;
@@ -1106,6 +1141,9 @@ async function checkRemindersOnLoad() {
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
+// requireAuth() redirects to auth.html if the user is not signed in.
+// All init functions are no-ops on pages where their root element is absent,
+// so this single boot sequence works across all four app pages.
 
 (async () => {
   const user = await requireAuth();

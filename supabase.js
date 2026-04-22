@@ -1,3 +1,12 @@
+/**
+ * supabase.js — Supabase client singleton and auth helpers
+ *
+ * Exports the shared `supabase` client used by db.js and auth.html.
+ * requireAuth() is called at the top of the boot IIFE in app.js to
+ * redirect unauthenticated users to auth.html before any data loads.
+ *
+ * AI-assisted: overall structure and requireAuth pattern.
+ */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
 const SUPABASE_URL = "https://kctmclcjqpytswwyewti.supabase.co";

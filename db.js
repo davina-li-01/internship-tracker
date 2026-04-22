@@ -1,6 +1,14 @@
 /**
- * db.js — All Supabase data access for InternTrack
- * Replaces all localStorage read/write calls.
+ * db.js — Supabase data access layer for InternTrack
+ *
+ * Replaces all localStorage read/write calls from the original app.
+ * Every exported function is async and scoped to the authenticated user
+ * via Supabase Row Level Security (user_id = auth.uid()).
+ *
+ * Tables: preferences, internships, logs, files, contacts
+ * Contacts store interactions, documents, and followUps as JSONB columns.
+ *
+ * AI-assisted: schema design, upsert patterns, JSONB handling.
  */
 import { supabase } from "./supabase.js";
 
