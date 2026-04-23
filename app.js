@@ -664,25 +664,21 @@ async function renderWorkspaceTimeline() {
 // ── Internship panel ──────────────────────────────────────────────────────────
 
 async function renderInternshipPanel() {
-  const select = document.getElementById("internshipSelect");
   const list = document.getElementById("internshipList");
-  if (!select || !list) return;
+  if (!list) return;
   const internships = await db.getInternships();
   const activeId = getActiveInternshipId();
   if (!internships.length) {
-    select.innerHTML = '<option value="">No internships yet</option>';
-    select.disabled = true;
-    list.innerHTML = '<li class="empty">No internships yet. Click + New Internship.</li>';
+    list.innerHTML = '<li class="empty" style="font-size:0.78rem;padding:0.4rem 0.5rem">No internships yet.</li>';
     return;
   }
-  select.disabled = false;
-  select.innerHTML = internships.map((i) => '<option value="' + i.id + '">' + escapeHtml(i.name) + '</option>').join("");
-  select.value = activeId;
   list.innerHTML = internships.map((internship) => {
     const isActive = internship.id === activeId;
     return '<li class="intern-item' + (isActive ? ' intern-item-active' : '') + '">'
+      + '<button class="intern-name-btn" type="button" data-internship-action="switch" data-internship-id="' + internship.id + '">'
       + '<span class="intern-name">' + escapeHtml(internship.name) + '</span>'
-      + (internship.company ? '<span class="tiny">' + escapeHtml(internship.company) + '</span>' : '')
+      + (internship.company ? '<span class="intern-co">' + escapeHtml(internship.company) + '</span>' : '')
+      + '</button>'
       + '<div class="intern-item-actions">'
       + '<button class="intern-action-btn" type="button" data-internship-action="edit" data-internship-id="' + internship.id + '">Edit</button>'
       + '<button class="intern-action-btn" type="button" data-internship-action="delete" data-internship-id="' + internship.id + '">Delete</button>'
@@ -693,35 +689,58 @@ async function renderInternshipPanel() {
 let refreshActivePageData = async () => {};
 
 async function initInternshipPanel() {
-  const select = document.getElementById("internshipSelect");
   const list = document.getElementById("internshipList");
   const addBtn = document.getElementById("addInternshipBtn");
-  if (!select || !list || !addBtn) return;
-  const error = document.getElementById("internshipError");
+  if (!list || !addBtn) return;
 
-  const promptPayload = (seed) => {
+  const form       = document.getElementById("internshipForm");
+  const editIdEl   = document.getElementById("internshipEditId");
+  const nameEl     = document.getElementById("internshipName");
+  const companyEl  = document.getElementById("internshipCompany");
+  const startEl    = document.getElementById("internshipStart");
+  const endEl      = document.getElementById("internshipEnd");
+  const cancelBtn  = document.getElementById("internshipCancelBtn");
+  const error      = document.getElementById("internshipError");
+
+  function openForm(seed) {
     seed = seed || {};
-    const name = (window.prompt("Internship name", seed.name || "") || "").trim();
-    if (!name) return null;
-    const company = (window.prompt("Company", seed.company || "") || "").trim();
-    const startDate = (window.prompt("Start date (YYYY-MM-DD)", seed.startDate || "") || "").trim();
-    const endDate = (window.prompt("End date (YYYY-MM-DD)", seed.endDate || "") || "").trim();
-    return { name, company, startDate, endDate };
-  };
-
-  select.addEventListener("change", async () => {
-    setActiveInternshipId(select.value);
-    await renderInternshipPanel();
-    await refreshActivePageData();
-  });
-
-  addBtn.addEventListener("click", async () => {
+    editIdEl.value   = seed.id || "";
+    nameEl.value     = seed.name || "";
+    companyEl.value  = seed.company || "";
+    startEl.value    = seed.startDate || "";
+    endEl.value      = seed.endDate || "";
     if (error) error.textContent = "";
-    const payload = promptPayload({});
-    if (!payload) return;
-    const next = { id: makeId(), ...payload, createdAt: new Date().toISOString() };
-    await db.saveInternship(next);
-    setActiveInternshipId(next.id);
+    form.classList.remove("hidden");
+    addBtn.classList.add("hidden");
+    nameEl.focus();
+  }
+
+  function closeForm() {
+    form.classList.add("hidden");
+    addBtn.classList.remove("hidden");
+    form.reset();
+  }
+
+  addBtn.addEventListener("click", () => openForm());
+  cancelBtn.addEventListener("click", closeForm);
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (error) error.textContent = "";
+    const name = nameEl.value.trim();
+    if (!name) { if (error) error.textContent = "Name is required."; return; }
+    const payload = { name, company: companyEl.value.trim(), startDate: startEl.value, endDate: endEl.value };
+    const existingId = editIdEl.value;
+    if (existingId) {
+      const internships = await db.getInternships();
+      const target = internships.find((i) => i.id === existingId);
+      if (target) await db.saveInternship({ ...target, ...payload });
+    } else {
+      const next = { id: makeId(), ...payload, createdAt: new Date().toISOString() };
+      await db.saveInternship(next);
+      setActiveInternshipId(next.id);
+    }
+    closeForm();
     await renderInternshipPanel();
     await refreshActivePageData();
   });
@@ -734,14 +753,15 @@ async function initInternshipPanel() {
     const internships = await db.getInternships();
     const target = internships.find((i) => i.id === internshipId);
     if (!target) return;
-    if (action === "edit") {
-      const payload = promptPayload(target);
-      if (!payload) return;
-      await db.saveInternship({ ...target, ...payload });
+    if (action === "switch") {
+      setActiveInternshipId(internshipId);
       await renderInternshipPanel();
       await refreshActivePageData();
+    } else if (action === "edit") {
+      openForm(target);
     } else if (action === "delete") {
-      if (!window.confirm('Delete internship "' + target.name + '" and all associated logs and files?')) return;
+      const confirmed = window.confirm('Delete "' + target.name + '" and all its logs? This cannot be undone.');
+      if (!confirmed) return;
       await db.deleteInternship(internshipId);
       if (getActiveInternshipId() === internshipId) {
         const remaining = await db.getInternships();
@@ -807,41 +827,36 @@ async function initNetworking() {
   const companyEl = document.getElementById("contactCompany");
   const roleEl = document.getElementById("contactRole");
   const dateMetEl = document.getElementById("dateMet");
-  const lastContactedEl = document.getElementById("lastContacted");
   const followUpFrequencyEl = document.getElementById("followUpFrequency");
-  const interestsEl = document.getElementById("interests");
-  const adviceEl = document.getElementById("adviceGiven");
   const notesEl = document.getElementById("contactNotes");
 
-  // Default hidden dateMet to today so normalizeContact always has a value
+  // Pre-fill date to today
   if (dateMetEl && !dateMetEl.value) dateMetEl.value = todayDateString();
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     error.textContent = "";
     const frequency = (followUpFrequencyEl ? followUpFrequencyEl.value : "") || "none";
-    const lastContactedValue = (lastContactedEl ? lastContactedEl.value : "") || (dateMetEl ? dateMetEl.value : "") || todayDateString();
+    const dateMet = (dateMetEl ? dateMetEl.value : "") || todayDateString();
     const contact = normalizeContact({
       name: nameEl.value,
       email: emailEl.value,
       company: companyEl ? companyEl.value : "",
       role: roleEl ? roleEl.value : "",
-      dateMet: dateMetEl ? dateMetEl.value : todayDateString(),
-      lastContacted: lastContactedValue,
+      dateMet,
+      lastContacted: dateMet,
       followUpFrequency: frequency,
-      interests: interestsEl ? interestsEl.value : "",
-      adviceGiven: adviceEl ? adviceEl.value : "",
+      reminderEnabled: frequency !== "none",
       notes: notesEl ? notesEl.value : "",
       interactions: [],
       documents: []
     });
-    if (!contact.name || !contact.email || !contact.dateMet || !contact.company) { error.textContent = "Name, email, company, and date met are required."; return; }
+    if (!contact.name || !contact.email || !contact.dateMet || !contact.company) { error.textContent = "Name, email, company, and date last met are required."; return; }
     await db.saveContact(contact);
     form.reset();
+    if (dateMetEl) dateMetEl.value = todayDateString();
     await renderContacts();
     await renderFollowUpAlerts("networkFollowUps");
-    await renderProgressWidget();
-    await renderInternshipPanel();
   });
 
   refreshActivePageData = async () => {

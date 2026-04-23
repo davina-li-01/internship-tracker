@@ -18,12 +18,35 @@
       <div class="sidebar-brand">InternTrack</div>
 
       <p class="sidebar-label">Internships</p>
-      <div class="sidebar-select-wrap">
-        <select id="internshipSelect" title="Switch internship"></select>
-      </div>
       <ul id="internshipList" class="intern-list"></ul>
+
+      <!-- Inline add / edit form -->
+      <form id="internshipForm" class="intern-inline-form hidden" autocomplete="off">
+        <input type="hidden" id="internshipEditId" />
+        <div class="field-group" style="margin:0 0 0.4rem">
+          <label for="internshipName">Name <span class="required">*</span></label>
+          <input type="text" id="internshipName" placeholder="e.g. Meta SWE Internship" required />
+        </div>
+        <div class="field-group" style="margin:0 0 0.4rem">
+          <label for="internshipCompany">Company</label>
+          <input type="text" id="internshipCompany" placeholder="e.g. Meta" />
+        </div>
+        <div class="field-group" style="margin:0 0 0.4rem">
+          <label for="internshipStart">Start date</label>
+          <input type="date" id="internshipStart" />
+        </div>
+        <div class="field-group" style="margin:0 0 0.5rem">
+          <label for="internshipEnd">End date</label>
+          <input type="date" id="internshipEnd" />
+        </div>
+        <p id="internshipError" class="error" style="font-size:0.72rem;margin:0 0 0.3rem"></p>
+        <div style="display:flex;gap:0.35rem">
+          <button type="submit" class="sidebar-save-btn">Save</button>
+          <button type="button" id="internshipCancelBtn" class="sidebar-cancel-btn">Cancel</button>
+        </div>
+      </form>
+
       <button id="addInternshipBtn" class="sidebar-add-btn" type="button">+ New Internship</button>
-      <p id="internshipError" class="error" style="font-size:0.72rem;margin:0.2rem 0 0"></p>
 
       <nav class="sidebar-nav">
         <a href="index.html" class="s-link active">Workspace</a>
