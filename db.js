@@ -290,3 +290,119 @@ function contactToRow(contact, userId) {
     follow_ups: contact.followUps || []
   };
 }
+
+// ─── Storage Files (Supabase Storage + storage_files table) ──────────────────
+
+/**
+ * Upload a file to the 'interntrack-files' Supabase Storage bucket,
+ * then insert a row into the 'storage_files' table with metadata.
+ *
+ * Requires Supabase bucket: interntrack-files (public access enabled).
+ * Requires table: storage_files (id, user_id, internship_id, contact_id,
+ *   name, file_url, storage_path, category, created_at)
+ */
+export async function uploadFileToStorage(file, metadata = {}) {
+  const userId = await uid();
+  if (!userId) return null;
+
+  const safeName = file.name.replace(/\s+/g, "_");
+  const filePath = `${userId}/${Date.now()}-${safeName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from("interntrack-files")
+    .upload(filePath, file);
+  if (uploadError) { dbErr("uploadFileToStorage upload", uploadError); return null; }
+
+  const { data: urlData } = supabase.storage
+    .from("interntrack-files")
+    .getPublicUrl(filePath);
+
+  const id = (typeof crypto !== "undefined" && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : `id_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+  const row = {
+    id,
+    user_id: userId,
+    internship_id: metadata.internshipId || null,
+    contact_id: metadata.contactId || null,
+    name: file.name,
+    file_url: urlData.publicUrl,
+    storage_path: filePath,
+    category: metadata.category || "general"
+  };
+
+  const { data, error } = await supabase
+    .from("storage_files")
+    .insert([row])
+    .select()
+    .single();
+  if (error) { dbErr("uploadFileToStorage insert", error); return null; }
+  return rowToStorageFile(data);
+}
+
+/** Fetch all storage files for the current user, newest first. */
+export async function fetchAllStorageFiles() {
+  const userId = await uid();
+  if (!userId) return [];
+  const { data, error } = await supabase
+    .from("storage_files")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  if (error) { dbErr("fetchAllStorageFiles", error); return []; }
+  return (data || []).map(rowToStorageFile);
+}
+
+/** Fetch storage files linked to a specific internship. */
+export async function fetchStorageFilesByInternship(internshipId) {
+  const userId = await uid();
+  if (!userId || !internshipId) return [];
+  const { data, error } = await supabase
+    .from("storage_files")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("internship_id", internshipId)
+    .order("created_at", { ascending: false });
+  if (error) { dbErr("fetchStorageFilesByInternship", error); return []; }
+  return (data || []).map(rowToStorageFile);
+}
+
+/** Fetch storage files linked to a specific contact. */
+export async function fetchStorageFilesByContact(contactId) {
+  const userId = await uid();
+  if (!userId || !contactId) return [];
+  const { data, error } = await supabase
+    .from("storage_files")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("contact_id", contactId)
+    .order("created_at", { ascending: false });
+  if (error) { dbErr("fetchStorageFilesByContact", error); return []; }
+  return (data || []).map(rowToStorageFile);
+}
+
+/** Delete a storage file from both the bucket and the database. */
+export async function deleteStorageFile(fileId, storagePath) {
+  if (storagePath) {
+    const { error: storageErr } = await supabase.storage
+      .from("interntrack-files")
+      .remove([storagePath]);
+    if (storageErr) dbErr("deleteStorageFile bucket", storageErr);
+  }
+  const { error } = await supabase.from("storage_files").delete().eq("id", fileId);
+  if (error) dbErr("deleteStorageFile db", error);
+}
+
+function rowToStorageFile(row) {
+  return {
+    id: row.id,
+    name: row.name || "",
+    fileUrl: row.file_url || "",
+    storagePath: row.storage_path || "",
+    category: row.category || "general",
+    internshipId: row.internship_id || null,
+    contactId: row.contact_id || null,
+    createdAt: row.created_at || ""
+  };
+}

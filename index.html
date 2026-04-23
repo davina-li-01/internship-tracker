@@ -51,6 +51,7 @@
       <nav class="sidebar-nav">
         <a href="index.html" class="s-link active">Workspace</a>
         <a href="network.html" class="s-link">Networking</a>
+        <a href="files.html" class="s-link">Files</a>
       </nav>
 
       <div class="sidebar-footer">
@@ -61,6 +62,10 @@
 
     <!-- ── Main Scroll ───────────────────────────────── -->
     <div class="main-scroll">
+
+      <!-- Active internship context banner -->
+      <div id="activeInternshipBanner" class="active-internship-banner"></div>
+
       <div class="workspace-content">
 
         <!-- Page header -->
@@ -150,6 +155,17 @@
           <div class="update-actions">
             <button id="generateSummaryBtn" class="btn" type="button">Generate Update →</button>
             <button id="copySummaryBtn" class="btn btn-secondary" type="button">Copy</button>
+          </div>
+        </div>
+
+        <!-- ④ Project Files -->
+        <div class="card" id="projectFilesCard">
+          <p class="section-eyebrow">④ Project Files</p>
+          <h2 class="focus-heading">📁 Linked Files</h2>
+          <p class="page-subheading focus-sub">PDFs and documents associated with this internship.</p>
+          <div id="projectFileGrid"></div>
+          <div style="margin-top:0.85rem">
+            <a href="files.html" class="btn btn-secondary">Manage All Files →</a>
           </div>
         </div>
 

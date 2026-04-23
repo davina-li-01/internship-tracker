@@ -1368,3 +1368,420 @@ body.dark .log-blocker-badge {
   padding: 1.25rem 1.5rem 1.35rem;
   box-shadow: var(--glass-shadow);
 }
+
+
+/* ── Active internship banner ─────────────────────────────────── */
+.active-internship-banner {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  background: linear-gradient(135deg, rgba(249,115,22,0.12) 0%, rgba(251,146,60,0.07) 100%);
+  border-bottom: 1px solid rgba(249,115,22,0.2);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 0.6rem 1.75rem;
+  min-height: 48px;
+}
+body.dark .active-internship-banner {
+  background: linear-gradient(135deg, rgba(249,115,22,0.15) 0%, rgba(251,146,60,0.08) 100%);
+  border-bottom-color: rgba(249,115,22,0.25);
+}
+.active-internship-banner.aib-empty {
+  background: rgba(100,100,100,0.06);
+  border-bottom-color: rgba(100,100,100,0.12);
+}
+.aib-inner {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+}
+.aib-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.aib-text {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  flex: 1;
+  min-width: 0;
+}
+.aib-name {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.aib-company {
+  font-size: 0.8rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.aib-no-intern {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.aib-switcher {
+  position: relative;
+  flex-shrink: 0;
+}
+.aib-switch-btn {
+  background: rgba(249,115,22,0.1);
+  border: 1px solid rgba(249,115,22,0.25);
+  border-radius: 8px;
+  color: var(--primary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.28rem 0.7rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.aib-switch-btn:hover { background: rgba(249,115,22,0.18); }
+body.dark .aib-switch-btn {
+  background: rgba(249,115,22,0.15);
+  border-color: rgba(249,115,22,0.3);
+}
+.aib-dropdown {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+  list-style: none;
+  padding: 0.35rem;
+  margin: 0;
+  min-width: 200px;
+  z-index: 200;
+}
+.aib-dropdown.aib-open { display: block; }
+body.dark .aib-dropdown {
+  background: rgba(22,16,10,0.97);
+  border-color: rgba(255,255,255,0.1);
+}
+.aib-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0.5rem 0.7rem;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.aib-option:hover { background: rgba(249,115,22,0.1); }
+body.dark .aib-option:hover { background: rgba(249,115,22,0.15); }
+.aib-option-co { color: var(--muted); font-weight: 400; }
+
+/* ── Contact calendar ─────────────────────────────────────────── */
+.calendar-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.85rem;
+  gap: 0.5rem;
+}
+.calendar-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.cal-nav-btn {
+  padding: 0.28rem 0.6rem !important;
+  font-size: 1rem !important;
+  line-height: 1;
+  font-weight: 700;
+}
+.cal-month-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  min-width: 112px;
+  text-align: center;
+  color: var(--text);
+}
+.calendar-grid { user-select: none; }
+.cal-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 2px;
+}
+.cal-header .cal-dow {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-align: center;
+  padding: 0.2rem 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.cal-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border-radius: 7px;
+  font-size: 0.8rem;
+  color: var(--text);
+  cursor: default;
+  transition: background 0.12s;
+}
+.cal-cell.cal-empty { color: transparent; }
+.cal-today {
+  background: rgba(249,115,22,0.13);
+  font-weight: 700;
+  color: var(--primary);
+}
+body.dark .cal-today { background: rgba(249,115,22,0.18); }
+.cal-has-contact {
+  cursor: pointer;
+  background: rgba(249,115,22,0.07);
+}
+.cal-has-contact:hover { background: rgba(249,115,22,0.18); }
+.cal-dot {
+  display: block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--primary);
+  margin-top: 1px;
+}
+.cal-tooltip {
+  font-size: 0.78rem;
+  color: var(--muted);
+  min-height: 1.2em;
+  margin-top: 0.5rem;
+  text-align: center;
+  font-style: italic;
+}
+
+/* ── Files page layout ───────────────────────────────────── */
+.files-content {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+.files-upload-card { padding-bottom: 0.85rem; }
+.files-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+/* ── Drag & drop zone ────────────────────────────────────── */
+.file-drop-zone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 1.75rem 1rem;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  text-align: center;
+  background: transparent;
+  margin-bottom: 0;
+}
+.file-drop-zone:hover,
+.file-drop-zone-hover {
+  border-color: var(--primary);
+  background: rgba(249,115,22,0.04);
+}
+.file-drop-zone-ready {
+  border-color: var(--primary);
+  border-style: solid;
+  background: rgba(249,115,22,0.06);
+}
+body.dark .file-drop-zone:hover,
+body.dark .file-drop-zone-hover { background: rgba(249,115,22,0.08); }
+.file-drop-icon { font-size: 2rem; margin: 0; line-height: 1; }
+.file-drop-text {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0;
+}
+.file-drop-link {
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.file-drop-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+}
+.file-drop-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+  padding: 0.5rem 0.85rem;
+  background: rgba(249,115,22,0.08);
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--primary);
+}
+
+/* ── Filter tabs ─────────────────────────────────────────── */
+.filter-tabs {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+.filter-tab {
+  padding: 0.32rem 0.85rem;
+  border-radius: 20px;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.13s;
+  line-height: 1.4;
+}
+.filter-tab:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.filter-tab-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff !important;
+}
+
+/* ── File grid ───────────────────────────────────────────── */
+.file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+.file-grid-compact {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.6rem;
+}
+
+/* ── File card ───────────────────────────────────────────── */
+.file-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.9rem 0.85rem 0.75rem;
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  transition: border-color 0.13s, box-shadow 0.13s;
+  position: relative;
+  overflow: hidden;
+}
+.file-card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 2px 12px rgba(249,115,22,0.1);
+}
+body.dark .file-card:hover { box-shadow: 0 2px 12px rgba(249,115,22,0.14); }
+.file-card-icon {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+.file-card-body { flex: 1; min-width: 0; }
+.file-card-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 0.15rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-card-date {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin: 0;
+}
+.file-card-meta {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin: 0.1rem 0 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  margin-top: 0.2rem;
+}
+.file-card-actions {
+  display: flex;
+  gap: 0.3rem;
+  opacity: 0;
+  transition: opacity 0.13s;
+}
+.file-card:hover .file-card-actions { opacity: 1; }
+.file-action-btn {
+  padding: 0.22rem 0.55rem;
+  border-radius: 6px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.12s;
+  line-height: 1.4;
+}
+.file-action-btn:hover { border-color: var(--primary); color: var(--primary); }
+.file-delete-btn:hover { border-color: #ef4444; color: #ef4444; }
+
+/* ── Category tags ───────────────────────────────────────── */
+.file-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.6rem;
+  border-radius: 20px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.file-tag-project      { background: rgba(59,130,246,0.12);  color: #2563eb; }
+.file-tag-conversation { background: rgba(16,185,129,0.12);  color: #059669; }
+.file-tag-general      { background: rgba(107,114,128,0.12); color: #6b7280; }
+body.dark .file-tag-project      { background: rgba(59,130,246,0.18);  color: #60a5fa; }
+body.dark .file-tag-conversation { background: rgba(16,185,129,0.18);  color: #34d399; }
+body.dark .file-tag-general      { background: rgba(107,114,128,0.18); color: #9ca3af; }
+
+/* ── Project Files workspace panel ───────────────────────── */
+#projectFilesCard .file-grid { margin-top: 0.1rem; }

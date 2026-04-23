@@ -20,6 +20,7 @@
       <nav class="sidebar-nav">
         <a href="index.html" class="s-link">Workspace</a>
         <a href="network.html" class="s-link active">Networking</a>
+        <a href="files.html" class="s-link">Files</a>
       </nav>
 
       <div class="sidebar-footer">
@@ -30,6 +31,10 @@
 
     <!-- ── Main Scroll ───────────────────────────────── -->
     <div class="main-scroll">
+
+      <!-- Active internship context banner -->
+      <div id="activeInternshipBanner" class="active-internship-banner"></div>
+
       <div class="network-content">
 
         <!-- Left: Add contact + contacts list -->
@@ -116,6 +121,19 @@
           <div class="card">
             <h2>Weekly Connections</h2>
             <div id="weeklyConnections"></div>
+          </div>
+
+          <div class="card">
+            <div class="calendar-header-row">
+              <h2 style="margin:0">Contact Calendar</h2>
+              <div class="calendar-nav">
+                <button class="btn btn-secondary cal-nav-btn" id="calPrevBtn" type="button">‹</button>
+                <span id="calMonthLabel" class="cal-month-label"></span>
+                <button class="btn btn-secondary cal-nav-btn" id="calNextBtn" type="button">›</button>
+              </div>
+            </div>
+            <div id="calendarGrid" class="calendar-grid"></div>
+            <p id="calTooltip" class="cal-tooltip"></p>
           </div>
 
         </div><!-- /.network-right -->

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InternTrack — Files</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="files">
+
+  <div class="app-layout">
+
+    <!-- ── Sidebar ───────────────────────────────────── -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">InternTrack</div>
+
+      <nav class="sidebar-nav">
+        <a href="index.html" class="s-link">Workspace</a>
+        <a href="network.html" class="s-link">Networking</a>
+        <a href="files.html" class="s-link active">Files</a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button id="themeToggle" class="s-btn" type="button">Dark Mode</button>
+        <button id="signOutBtn" class="s-btn" type="button">Sign Out</button>
+      </div>
+    </aside>
+
+    <!-- ── Main Scroll ───────────────────────────────── -->
+    <div class="main-scroll">
+      <div class="files-content">
+
+        <!-- Page header -->
+        <div class="ws-page-header">
+          <h1 class="page-heading">📁 Files</h1>
+          <p class="page-subheading">Upload, organize, and access PDFs linked to your internships and contacts.</p>
+        </div>
+
+        <!-- Upload card -->
+        <div class="card files-upload-card">
+          <h2>Upload File</h2>
+
+          <div id="fileDropZone" class="file-drop-zone" role="button" tabindex="0" aria-label="Drop PDF here or click to browse">
+            <p class="file-drop-icon">📄</p>
+            <p class="file-drop-text">Drag &amp; drop a PDF here, or <span class="file-drop-link">click to browse</span></p>
+            <input type="file" id="fileInput" accept=".pdf,application/pdf" class="file-drop-input" aria-label="Select PDF file" />
+          </div>
+
+          <div id="fileDropPreview" class="file-drop-preview hidden"></div>
+
+          <div class="two-col" style="margin-top:0.85rem">
+            <div class="field-group" style="margin:0">
+              <label for="fileCategory">Category</label>
+              <select id="fileCategory">
+                <option value="project">Project</option>
+                <option value="conversation">Conversation</option>
+                <option value="general" selected>General</option>
+              </select>
+            </div>
+            <div class="field-group" style="margin:0">
+              <label for="fileInternship">Assign to Internship</label>
+              <select id="fileInternship">
+                <option value="">— None —</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field-group" style="margin-top:0.65rem">
+            <label for="fileContact">Assign to Contact <span class="opt-label">(optional)</span></label>
+            <select id="fileContact">
+              <option value="">— None —</option>
+            </select>
+          </div>
+
+          <p id="fileUploadError" class="error" aria-live="polite"></p>
+          <p id="fileUploadMsg" class="success" aria-live="polite"></p>
+          <button id="fileUploadBtn" class="btn" type="button" style="margin-top:0.35rem">Upload PDF →</button>
+        </div>
+
+        <!-- Filter tabs + file grid -->
+        <div class="card">
+          <div class="files-list-header">
+            <h2 style="margin:0">Your Files</h2>
+            <div class="filter-tabs" id="fileFilterTabs">
+              <button class="filter-tab filter-tab-active" data-filter="all" type="button">All</button>
+              <button class="filter-tab" data-filter="project" type="button">Projects</button>
+              <button class="filter-tab" data-filter="conversation" type="button">Conversations</button>
+              <button class="filter-tab" data-filter="general" type="button">General</button>
+            </div>
+          </div>
+          <div id="fileGrid" class="file-grid"></div>
+        </div>
+
+      </div><!-- /.files-content -->
+    </div><!-- /.main-scroll -->
+
+  </div><!-- /.app-layout -->
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

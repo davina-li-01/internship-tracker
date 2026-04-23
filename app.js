@@ -338,6 +338,61 @@ function renderContactDocuments(docs) {
   ].join("\n")).join("\n");
 }
 
+// ── Storage file card helpers ─────────────────────────────────────────────────
+// Shared by the Files page, Contact profile docs section, and workspace panel.
+
+const FILE_CATEGORY_META = {
+  project:      { label: "Project",      cls: "file-tag-project" },
+  conversation: { label: "Conversation", cls: "file-tag-conversation" },
+  general:      { label: "General",      cls: "file-tag-general" }
+};
+
+function renderStorageFileCard(file) {
+  const meta = FILE_CATEGORY_META[file.category] || FILE_CATEGORY_META.general;
+  const dateStr = file.createdAt
+    ? new Date(file.createdAt).toLocaleDateString()
+    : "";
+  return '<div class="file-card"'
+    + ' data-file-id="' + escapeHtml(file.id) + '"'
+    + ' data-storage-path="' + escapeHtml(file.storagePath) + '">'
+    + '<div class="file-card-icon">📄</div>'
+    + '<div class="file-card-body">'
+    + '<p class="file-card-name" title="' + escapeHtml(file.name) + '">' + escapeHtml(file.name) + '</p>'
+    + (dateStr ? '<p class="file-card-date">' + dateStr + '</p>' : '')
+    + '</div>'
+    + '<div class="file-card-footer">'
+    + '<span class="file-tag ' + meta.cls + '">' + meta.label + '</span>'
+    + '<div class="file-card-actions">'
+    + '<button class="file-action-btn file-open-btn" type="button"'
+    + ' data-file-url="' + escapeHtml(file.fileUrl) + '" title="Open file">Open</button>'
+    + '<button class="file-action-btn file-delete-btn" type="button"'
+    + ' data-file-id="' + escapeHtml(file.id) + '"'
+    + ' data-storage-path="' + escapeHtml(file.storagePath) + '" title="Delete file">✕</button>'
+    + '</div>'
+    + '</div>'
+    + '</div>';
+}
+
+/**
+ * Attach open/delete listeners to .file-card elements inside `container`.
+ * `onDelete` is called (async) after a successful delete so the caller can
+ * re-render the list without a full page reload.
+ */
+function attachStorageFileCardListeners(container, onDelete) {
+  container.querySelectorAll(".file-open-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.dataset.fileUrl) window.open(btn.dataset.fileUrl, "_blank");
+    });
+  });
+  container.querySelectorAll(".file-delete-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!window.confirm("Delete this file? This cannot be undone.")) return;
+      await db.deleteStorageFile(btn.dataset.fileId, btn.dataset.storagePath);
+      if (onDelete) await onDelete();
+    });
+  });
+}
+
 function renderInteractionTimeline(interactions) {
   if (!interactions.length) return '<p class="empty">No interactions logged yet.</p>';
   return interactions.map((item) => [
@@ -796,6 +851,183 @@ async function renderWorkspaceTimeline() {
   container.innerHTML = html;
 }
 
+// ── Active internship banner ──────────────────────────────────────────────────
+// Shows a persistent top-of-page strip so you always know which internship
+// you are working in. Includes a dropdown switcher for quick context switching.
+
+async function renderActiveInternshipBanner() {
+  const banner = document.getElementById("activeInternshipBanner");
+  if (!banner) return;
+
+  const internships = await db.getInternships();
+  const activeId    = getActiveInternshipId();
+  const active      = internships.find((i) => i.id === activeId);
+
+  if (!active) {
+    banner.className = "active-internship-banner aib-empty";
+    banner.innerHTML =
+      '<span class="aib-icon">📋</span>'
+      + '<span class="aib-no-intern">No internship selected — add one in the sidebar to get started.</span>';
+    return;
+  }
+
+  const others = internships.filter((i) => i.id !== activeId);
+  const companySpan = active.company
+    ? '<span class="aib-company">@ ' + escapeHtml(active.company) + '</span>'
+    : "";
+
+  let switcherHtml = "";
+  if (others.length) {
+    switcherHtml =
+      '<div class="aib-switcher">'
+      + '<button class="aib-switch-btn" type="button" id="aibSwitchBtn">'
+      + 'Switch ▾'
+      + '</button>'
+      + '<ul class="aib-dropdown" id="aibDropdown">'
+      + others.map((i) =>
+          '<li><button type="button" class="aib-option" data-switch-to="' + i.id + '">'
+          + escapeHtml(i.name)
+          + (i.company ? ' <span class="aib-option-co">@ ' + escapeHtml(i.company) + '</span>' : '')
+          + '</button></li>'
+        ).join("")
+      + '</ul>'
+      + '</div>';
+  }
+
+  banner.className = "active-internship-banner";
+  banner.innerHTML =
+    '<div class="aib-inner">'
+    + '<span class="aib-icon">👉</span>'
+    + '<div class="aib-text">'
+    + '<span class="aib-name">' + escapeHtml(active.name) + '</span>'
+    + companySpan
+    + '</div>'
+    + switcherHtml
+    + '</div>';
+
+  if (others.length) {
+    const switchBtn = banner.querySelector("#aibSwitchBtn");
+    const dropdown  = banner.querySelector("#aibDropdown");
+
+    switchBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const isOpen = dropdown.classList.contains("aib-open");
+      dropdown.classList.toggle("aib-open", !isOpen);
+    });
+
+    const closeDropdown = () => dropdown.classList.remove("aib-open");
+    document.addEventListener("click", closeDropdown, { once: true });
+
+    banner.querySelectorAll(".aib-option").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        setActiveInternshipId(btn.dataset.switchTo);
+        await renderActiveInternshipBanner();
+        await renderInternshipPanel();
+        await refreshActivePageData();
+      });
+    });
+  }
+}
+
+// ── Contact calendar ──────────────────────────────────────────────────────────
+// Renders a simple month grid (Sun→Sat) with orange dots on days where
+// contacts were first met. Allows month navigation.
+
+let calendarYear  = new Date().getFullYear();
+let calendarMonth = new Date().getMonth(); // 0-indexed
+
+async function renderCalendarView() {
+  const grid     = document.getElementById("calendarGrid");
+  const label    = document.getElementById("calMonthLabel");
+  const tooltip  = document.getElementById("calTooltip");
+  if (!grid) return;
+
+  const contacts = await db.getContacts();
+
+  // Build a map: "YYYY-MM-DD" → [contact names]
+  const dayMap = new Map();
+  contacts.forEach((c) => {
+    const d = c.dateMet || c.lastContacted;
+    if (!d) return;
+    const key = d.slice(0, 10); // normalise to YYYY-MM-DD
+    if (!dayMap.has(key)) dayMap.set(key, []);
+    dayMap.get(key).push(c.name);
+  });
+
+  const year  = calendarYear;
+  const month = calendarMonth;
+
+  if (label) {
+    label.textContent = new Date(year, month, 1)
+      .toLocaleString("default", { month: "long", year: "numeric" });
+  }
+
+  // Day-of-week headers
+  const DOW_LABELS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+  let html = '<div class="cal-row cal-header">'
+    + DOW_LABELS.map((d) => '<span class="cal-cell cal-dow">' + d + '</span>').join("")
+    + '</div>';
+
+  const firstDow   = new Date(year, month, 1).getDay(); // 0=Sun
+  const daysInMon  = new Date(year, month + 1, 0).getDate();
+
+  // Weeks
+  let dayNum = 1;
+  for (let week = 0; week < 6; week++) {
+    if (dayNum > daysInMon) break;
+    html += '<div class="cal-row">';
+    for (let dow = 0; dow < 7; dow++) {
+      const cellDay = week * 7 + dow - firstDow + 1;
+      if (cellDay < 1 || cellDay > daysInMon) {
+        html += '<span class="cal-cell cal-empty"></span>';
+      } else {
+        const key  = year + "-" + String(month + 1).padStart(2, "0") + "-" + String(cellDay).padStart(2, "0");
+        const has  = dayMap.has(key);
+        const names = has ? dayMap.get(key) : [];
+        const isToday = key === todayDateString();
+        html += '<span class="cal-cell'
+          + (isToday ? " cal-today" : "")
+          + (has ? " cal-has-contact" : "")
+          + '" data-cal-key="' + key + '" data-cal-names="' + escapeHtml(names.join(", ")) + '">'
+          + cellDay
+          + (has ? '<span class="cal-dot"></span>' : "")
+          + '</span>';
+        dayNum = cellDay;
+      }
+    }
+    html += '</div>';
+    dayNum++;
+  }
+
+  grid.innerHTML = html;
+
+  // Hover tooltip
+  grid.querySelectorAll(".cal-has-contact").forEach((cell) => {
+    cell.addEventListener("mouseenter", () => {
+      if (tooltip) tooltip.textContent = formatDate(cell.dataset.calKey) + ": " + cell.dataset.calNames;
+    });
+    cell.addEventListener("mouseleave", () => {
+      if (tooltip) tooltip.textContent = "";
+    });
+  });
+}
+
+function initCalendarNav() {
+  const prev = document.getElementById("calPrevBtn");
+  const next = document.getElementById("calNextBtn");
+  if (!prev || !next) return;
+  prev.addEventListener("click", () => {
+    calendarMonth--;
+    if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; }
+    renderCalendarView();
+  });
+  next.addEventListener("click", () => {
+    calendarMonth++;
+    if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; }
+    renderCalendarView();
+  });
+}
+
 // ── Internship panel ──────────────────────────────────────────────────────────
 
 async function renderInternshipPanel() {
@@ -877,6 +1109,7 @@ async function initInternshipPanel() {
     }
     closeForm();
     await renderInternshipPanel();
+    await renderActiveInternshipBanner();
     await refreshActivePageData();
   });
 
@@ -891,6 +1124,7 @@ async function initInternshipPanel() {
     if (action === "switch") {
       setActiveInternshipId(internshipId);
       await renderInternshipPanel();
+      await renderActiveInternshipBanner();
       await refreshActivePageData();
     } else if (action === "edit") {
       openForm(target);
@@ -903,6 +1137,7 @@ async function initInternshipPanel() {
         setActiveInternshipId(remaining.length ? remaining[0].id : "");
       }
       await renderInternshipPanel();
+      await renderActiveInternshipBanner();
       await refreshActivePageData();
     }
   });
@@ -913,6 +1148,7 @@ async function initInternshipPanel() {
     setActiveInternshipId(internships[0].id);
   }
   await renderInternshipPanel();
+  await renderActiveInternshipBanner();
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -998,12 +1234,14 @@ async function initNetworking() {
     await renderContacts();
     await renderWeeklyConnections("weeklyConnections");
     await renderFollowUpAlerts("networkFollowUps");
+    await renderCalendarView();
   });
 
   refreshActivePageData = async () => {
     await renderContacts(filterEl ? filterEl.value : "");
     await renderWeeklyConnections("weeklyConnections");
     await renderFollowUpAlerts("networkFollowUps");
+    await renderCalendarView();
   };
 
   await refreshActivePageData();
@@ -1128,6 +1366,7 @@ async function initSummary() {
     if (message) message.textContent = "";
     await renderWorkspaceTimeline();
     await renderWeeklyFocus();
+    await renderProjectFiles();
   };
 
   await refreshActivePageData();
@@ -1202,8 +1441,8 @@ async function initContactPage() {
       + '<button class="btn" id="cpSaveNotesBtn" type="button">Save Notes</button>'
       + '<p id="cpSaveNotesMsg" class="success" aria-live="polite"></p></section>'
       + '<section class="card"><h3 class="section-title">Documents</h3>'
-      + '<div id="cpDocList">' + renderContactDocuments(c.documents) + '</div>'
-      + '<div class="followup-add-row" style="margin-top:0.75rem"><input type="file" id="cpDocInput" accept=".pdf,application/pdf" multiple /><button class="btn btn-secondary" id="cpDocUploadBtn" type="button">Upload PDF</button></div>'
+      + '<div id="cpDocList"><p class="muted" style="font-size:0.82rem">Loading…</p></div>'
+      + '<div class="followup-add-row" style="margin-top:0.75rem"><input type="file" id="cpDocInput" accept=".pdf,application/pdf" /><button class="btn btn-secondary" id="cpDocUploadBtn" type="button">Upload PDF</button></div>'
       + '<p id="cpDocError" class="error" aria-live="polite"></p></section>'
       + '<section class="card"><h3 class="section-title">Reminder Settings</h3>'
       + '<p class="tiny">Frequency: <strong>' + escapeHtml(freqLabel) + '</strong></p>'
@@ -1213,6 +1452,22 @@ async function initContactPage() {
       + '<button class="btn" id="cpSaveReminderBtn" type="button" style="margin-top:0.75rem">Save Reminder Settings</button>'
       + '<p id="cpSaveReminderMsg" class="success" aria-live="polite"></p></section>'
       + '</div></div>';
+
+    // ── Storage documents for this contact ─────────────────────────────────
+    async function refreshCpDocList() {
+      const cpDocListEl = root.querySelector("#cpDocList");
+      if (!cpDocListEl) return;
+      const storageDocs = await db.fetchStorageFilesByContact(contactId);
+      if (!storageDocs.length) {
+        cpDocListEl.innerHTML = '<p class="empty">No documents uploaded yet.</p>';
+        return;
+      }
+      cpDocListEl.innerHTML = '<div class="file-grid file-grid-compact">'
+        + storageDocs.map((f) => renderStorageFileCard(f)).join("")
+        + '</div>';
+      attachStorageFileCardListeners(cpDocListEl, refreshCpDocList);
+    }
+    await refreshCpDocList();
 
     root.querySelector("#cpOpenReminderBtn").addEventListener("click", async () => { showReminderModal(await freshContact()); });
     root.querySelector("#cpDeleteBtn").addEventListener("click", async () => {
@@ -1259,22 +1514,21 @@ async function initContactPage() {
       await renderPage();
     });
     root.querySelector("#cpDocUploadBtn").addEventListener("click", async () => {
-      const errEl = root.querySelector("#cpDocError");
+      const errEl    = root.querySelector("#cpDocError");
+      const inputEl  = root.querySelector("#cpDocInput");
+      const uploadEl = root.querySelector("#cpDocUploadBtn");
       errEl.textContent = "";
-      const files = Array.from(root.querySelector("#cpDocInput").files || []);
-      if (!files.length) { errEl.textContent = "Select at least one PDF."; return; }
-      if (files.some((f) => !f.name.toLowerCase().endsWith(".pdf"))) { errEl.textContent = "Only PDF files supported."; return; }
-      try {
-        const encoded = await Promise.all(files.map(async (f) => normalizeContactDocument({ name: f.name, data: await readPdfFile(f) })));
-        await save((c) => ({ ...c, documents: [...(c.documents || []), ...encoded] }));
-        await renderPage();
-      } catch { errEl.textContent = "Upload failed. Try a smaller file."; }
-    });
-    root.querySelectorAll("[data-remove-doc]").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        await save((c) => ({ ...c, documents: c.documents.filter((d) => d.id !== btn.dataset.removeDoc) }));
-        await renderPage();
-      });
+      const file = inputEl?.files?.[0];
+      if (!file) { errEl.textContent = "Select a PDF file."; return; }
+      if (file.type !== "application/pdf") { errEl.textContent = "Only PDF files are allowed."; return; }
+      if (inputEl) inputEl.disabled = true;
+      if (uploadEl) { uploadEl.disabled = true; uploadEl.textContent = "Uploading…"; }
+      const result = await db.uploadFileToStorage(file, { contactId, category: "conversation" });
+      if (inputEl) inputEl.disabled = false;
+      if (uploadEl) { uploadEl.disabled = false; uploadEl.textContent = "Upload PDF"; }
+      if (!result) { errEl.textContent = "Upload failed. Check the bucket exists and try again."; return; }
+      if (inputEl) inputEl.value = "";
+      await refreshCpDocList();
     });
     const addFollowUp = async () => {
       const input = root.querySelector("#cpNewFollowUp");
@@ -1325,6 +1579,194 @@ async function initContactPage() {
   await renderPage();
 }
 
+// ── Project Files (workspace panel) ──────────────────────────────────────────
+
+async function renderProjectFiles() {
+  const grid = document.getElementById("projectFileGrid");
+  if (!grid) return;
+  const activeId = getActiveInternshipId();
+  if (!activeId) {
+    grid.innerHTML = '<p class="empty">Select an internship to view linked files.</p>';
+    return;
+  }
+  const files = await db.fetchStorageFilesByInternship(activeId);
+  if (!files.length) {
+    grid.innerHTML = '<p class="empty">No files linked to this internship yet. <a href="files.html">Upload one →</a></p>';
+    return;
+  }
+  grid.innerHTML = '<div class="file-grid file-grid-compact">'
+    + files.map((f) => renderStorageFileCard(f)).join("")
+    + '</div>';
+  attachStorageFileCardListeners(grid, renderProjectFiles);
+}
+
+// ── Files page ────────────────────────────────────────────────────────────────
+
+async function initFilesPage() {
+  const fileGrid = document.getElementById("fileGrid");
+  if (!fileGrid) return;
+
+  let activeFilter = "all";
+  let allFiles = [];
+
+  // ── Populate dropdowns ───────────────────────────────────────────────────
+  const internshipSelect = document.getElementById("fileInternship");
+  const contactSelect    = document.getElementById("fileContact");
+
+  const [internships, contacts] = await Promise.all([db.getInternships(), db.getContacts()]);
+
+  if (internshipSelect) {
+    internships.forEach((i) => {
+      const opt = document.createElement("option");
+      opt.value = i.id;
+      opt.textContent = i.name + (i.company ? " @ " + i.company : "");
+      internshipSelect.appendChild(opt);
+    });
+    const activeId = getActiveInternshipId();
+    if (activeId) internshipSelect.value = activeId;
+  }
+
+  if (contactSelect) {
+    contacts.forEach((c) => {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = c.name + (c.company ? " @ " + c.company : "");
+      contactSelect.appendChild(opt);
+    });
+  }
+
+  // ── Drag & drop ──────────────────────────────────────────────────────────
+  const dropZone  = document.getElementById("fileDropZone");
+  const fileInput = document.getElementById("fileInput");
+  const preview   = document.getElementById("fileDropPreview");
+  const errEl     = document.getElementById("fileUploadError");
+  const msgEl     = document.getElementById("fileUploadMsg");
+  let pendingFile = null;
+
+  function validateAndPreview(file) {
+    if (!file) return;
+    if (file.type !== "application/pdf") {
+      if (errEl) errEl.textContent = "Only PDF files are allowed.";
+      return;
+    }
+    if (errEl) errEl.textContent = "";
+    pendingFile = file;
+    if (preview) {
+      preview.textContent = "📄 " + file.name + " (" + (file.size / 1024).toFixed(1) + " KB)";
+      preview.classList.remove("hidden");
+    }
+    if (dropZone) dropZone.classList.add("file-drop-zone-ready");
+  }
+
+  if (dropZone) {
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropZone.classList.add("file-drop-zone-hover");
+    });
+    dropZone.addEventListener("dragleave", () => {
+      dropZone.classList.remove("file-drop-zone-hover");
+    });
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("file-drop-zone-hover");
+      validateAndPreview(e.dataTransfer.files[0]);
+    });
+    dropZone.addEventListener("click", () => {
+      if (fileInput) fileInput.click();
+    });
+    dropZone.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (fileInput) fileInput.click(); }
+    });
+  }
+
+  if (fileInput) {
+    fileInput.addEventListener("change", () => validateAndPreview(fileInput.files[0]));
+  }
+
+  // ── Upload ───────────────────────────────────────────────────────────────
+  const uploadBtn = document.getElementById("fileUploadBtn");
+  if (uploadBtn) {
+    uploadBtn.addEventListener("click", async () => {
+      if (errEl) errEl.textContent = "";
+      if (msgEl) msgEl.textContent = "";
+
+      const file = pendingFile || (fileInput && fileInput.files[0]);
+      if (!file) { if (errEl) errEl.textContent = "Please select a PDF file first."; return; }
+      if (file.type !== "application/pdf") { if (errEl) errEl.textContent = "Only PDF files are allowed."; return; }
+
+      const category     = document.getElementById("fileCategory")?.value || "general";
+      const internshipId = internshipSelect?.value || null;
+      const contactId    = contactSelect?.value || null;
+
+      uploadBtn.disabled    = true;
+      uploadBtn.textContent = "Uploading…";
+
+      const result = await db.uploadFileToStorage(file, {
+        category,
+        internshipId: internshipId || null,
+        contactId:    contactId    || null
+      });
+
+      uploadBtn.disabled    = false;
+      uploadBtn.textContent = "Upload PDF →";
+
+      if (!result) {
+        if (errEl) errEl.textContent = "Upload failed. Check the bucket exists and try again.";
+        return;
+      }
+
+      pendingFile = null;
+      if (fileInput) fileInput.value = "";
+      if (preview)  { preview.classList.add("hidden"); preview.textContent = ""; }
+      if (dropZone) dropZone.classList.remove("file-drop-zone-ready");
+      if (msgEl)    {
+        msgEl.textContent = "✅ File uploaded successfully!";
+        setTimeout(() => { if (msgEl) msgEl.textContent = ""; }, 3000);
+      }
+      await loadAndRenderFiles();
+    });
+  }
+
+  // ── Filter tabs ──────────────────────────────────────────────────────────
+  const filterTabsEl = document.getElementById("fileFilterTabs");
+  if (filterTabsEl) {
+    filterTabsEl.addEventListener("click", (e) => {
+      const tab = e.target.closest(".filter-tab");
+      if (!tab) return;
+      activeFilter = tab.dataset.filter;
+      filterTabsEl.querySelectorAll(".filter-tab").forEach((t) =>
+        t.classList.toggle("filter-tab-active", t === tab)
+      );
+      renderGrid();
+    });
+  }
+
+  // ── Render grid ──────────────────────────────────────────────────────────
+  function renderGrid() {
+    const filtered = activeFilter === "all"
+      ? allFiles
+      : allFiles.filter((f) => f.category === activeFilter);
+
+    if (!filtered.length) {
+      const msg = activeFilter === "all"
+        ? "No files uploaded yet."
+        : "No " + activeFilter + " files yet.";
+      fileGrid.innerHTML = '<p class="empty" style="padding:1rem 0">' + msg + '</p>';
+      return;
+    }
+    fileGrid.innerHTML = filtered.map((f) => renderStorageFileCard(f)).join("");
+    attachStorageFileCardListeners(fileGrid, loadAndRenderFiles);
+  }
+
+  async function loadAndRenderFiles() {
+    allFiles = await db.fetchAllStorageFiles();
+    renderGrid();
+  }
+
+  await loadAndRenderFiles();
+  refreshActivePageData = loadAndRenderFiles;
+}
+
 // ── Sign out ──────────────────────────────────────────────────────────────────
 
 function initSignOut() {
@@ -1364,6 +1806,9 @@ async function checkRemindersOnLoad() {
   await initNetworking();
   await initSummary();
   await initContactPage();
+  await initFilesPage();
   await initInternshipPanel();
+  initCalendarNav();
+  await renderCalendarView();
   await checkRemindersOnLoad();
 })();
