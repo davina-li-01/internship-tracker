@@ -115,14 +115,26 @@ const FREQUENCY_LABELS = {
   none: "No reminders"
 };
 
+function getFreqLabel(freq) {
+  if (freq && freq.startsWith("custom:")) {
+    const days = parseInt(freq.slice(7), 10);
+    return "Every " + days + " day" + (days !== 1 ? "s" : "");
+  }
+  return FREQUENCY_LABELS[freq] || "No reminders";
+}
+
 function calculateNextReminder(lastContacted, frequency) {
   if (!lastContacted || frequency === "none") return "";
   const date = new Date(lastContacted);
   if (frequency === "weekly") date.setDate(date.getDate() + 7);
-  if (frequency === "biweekly") date.setDate(date.getDate() + 14);
-  if (frequency === "monthly") date.setMonth(date.getMonth() + 1);
-  if (frequency === "bimonthly") date.setMonth(date.getMonth() + 2);
-  if (frequency === "quarterly") date.setMonth(date.getMonth() + 3);
+  else if (frequency === "biweekly") date.setDate(date.getDate() + 14);
+  else if (frequency === "monthly") date.setMonth(date.getMonth() + 1);
+  else if (frequency === "bimonthly") date.setMonth(date.getMonth() + 2);
+  else if (frequency === "quarterly") date.setMonth(date.getMonth() + 3);
+  else if (frequency.startsWith("custom:")) {
+    const days = parseInt(frequency.slice(7), 10);
+    if (!isNaN(days) && days > 0) date.setDate(date.getDate() + days);
+  }
   return date.toISOString();
 }
 
@@ -402,16 +414,22 @@ function attachStorageFileCardListeners(container, onDelete) {
 
 function renderInteractionTimeline(interactions) {
   if (!interactions || !interactions.length) return '<p class="empty">No interactions logged yet.</p>';
-  return interactions.map((item) => [
-    '<div class="timeline-item">',
-    '  <div class="timeline-dot"></div>',
-    '  <div class="timeline-body">',
-    '    <p class="timeline-date">' + formatDate(item.date) + ' <span class="tag">' + escapeHtml(item.type) + '</span></p>',
-    item.notes ? '    <p>' + escapeHtml(item.notes) + '</p>' : '',
-    item.outcome ? '    <p class="tiny"><span class="label">Outcome:</span> ' + escapeHtml(item.outcome) + '</p>' : '',
-    '  </div>',
-    '</div>'
-  ].filter(Boolean).join("\n")).join("\n");
+  return interactions.map((item) => {
+    const hasNotes = item.notes || item.outcome;
+    const notesBody = [
+      item.notes ? '<p>' + escapeHtml(item.notes) + '</p>' : '',
+      item.outcome ? '<p class="tiny"><span class="label">Outcome:</span> ' + escapeHtml(item.outcome) + '</p>' : ''
+    ].filter(Boolean).join('');
+    return [
+      '<div class="timeline-item">',
+      '  <div class="timeline-dot"></div>',
+      '  <div class="timeline-body">',
+      '    <p class="timeline-date">' + formatDate(item.date) + ' <span class="tag">' + escapeHtml(item.type) + '</span></p>',
+      hasNotes ? '    <details class="timeline-notes"><summary>Meeting notes</summary>' + notesBody + '</details>' : '',
+      '  </div>',
+      '</div>'
+    ].filter(Boolean).join("\n");
+  }).join("\n");
 }
 
 // ── Summary builder ───────────────────────────────────────────────────────────
@@ -468,7 +486,7 @@ async function showReminderModal(contact) {
   const prefs = await db.getPreferences();
   const yourName = prefs.your_name || "";
   const emailText = buildReminderEmailText(contact, yourName);
-  const freqLabel = FREQUENCY_LABELS[contact.followUpFrequency] || "Unknown";
+  const freqLabel = getFreqLabel(contact.followUpFrequency);
   const nextStr = contact.nextReminder ? formatDate(contact.nextReminder.split("T")[0]) : "Not set";
   const modal = document.createElement("div");
   modal.id = "reminderModal";
@@ -686,7 +704,7 @@ async function renderContacts(filterText) {
     html += '<li class="contact-alpha-header">' + letter + '</li>';
     group.forEach((contact) => {
       const status = getReminderStatus(contact);
-      const freqLabel = FREQUENCY_LABELS[contact.followUpFrequency] || 'No reminders';
+      const freqLabel = getFreqLabel(contact.followUpFrequency);
       html += '<li class="contact-card ' + (status === 'due' ? 'due-item' : status === 'soon' ? 'soon-item' : '') + '" data-open-contact="' + contact.id + '" role="button" tabindex="0">'
         + '<div class="contact-header">'
         + '<div class="contact-summary">'
@@ -1416,9 +1434,13 @@ async function initContactPage() {
       return;
     }
     const status = getReminderStatus(c);
-    const freqLabel = FREQUENCY_LABELS[c.followUpFrequency] || "No reminders";
+    const freqLabel = getFreqLabel(c.followUpFrequency);
     const interactionTypeOptions = INTERACTION_TYPES.map((t) => '<option value="' + t + '">' + t.charAt(0).toUpperCase() + t.slice(1) + '</option>').join("");
-    const freqOptions = Object.entries(FREQUENCY_LABELS).map(([v, l]) => '<option value="' + v + '"' + (c.followUpFrequency === v ? ' selected' : '') + '>' + l + '</option>').join("");
+    const isCustomFreq = c.followUpFrequency && c.followUpFrequency.startsWith("custom:");
+    const customFreqDays = isCustomFreq ? c.followUpFrequency.slice(7) : "";
+    const freqSelectValue = isCustomFreq ? "custom" : (c.followUpFrequency || "none");
+    const freqOptions = Object.entries(FREQUENCY_LABELS).map(([v, l]) => '<option value="' + v + '"' + (freqSelectValue === v ? ' selected' : '') + '>' + l + '</option>').join("")
+      + '<option value="custom"' + (isCustomFreq ? ' selected' : '') + '>Custom…</option>';
 
     // ── Avatar initials ──────────────────────────────────────────
     const nameParts = (c.name || "?").trim().split(/\s+/);
@@ -1437,8 +1459,6 @@ async function initContactPage() {
 
     // ── Company pills (current + history) ───────────────────────
     const pastCompanies = (c.companyHistory || []).filter((co) => co !== c.company);
-    const companiesHtml = (c.company ? '<span class="cp-company-pill current">' + escapeHtml(c.company) + '</span>' : '')
-      + pastCompanies.map((co) => '<span class="cp-company-pill past">' + escapeHtml(co) + ' <span class="cp-pill-tag">prev</span></span>').join("");
 
     root.innerHTML =
       // ── Profile hero card ──────────────────────────────────────
@@ -1452,7 +1472,8 @@ async function initContactPage() {
       + '<div class="cp-hero-badges">' + reminderBadge(c) + '<span class="cp-freq-badge">' + escapeHtml(freqLabel) + '</span></div>'
       + '</div>'
       + (c.role ? '<p class="cp-role">' + escapeHtml(c.role) + '</p>' : '')
-      + '<div class="cp-companies">' + (companiesHtml || '<span class="muted" style="font-size:0.82rem">No company set</span>') + '</div>'
+      + '<div class="cp-companies">' + (c.company ? '<span class="cp-company-pill current">' + escapeHtml(c.company) + '</span>' : '<span class="muted" style="font-size:0.82rem">No company set</span>') + '</div>'
+      + (pastCompanies.length ? '<div class="cp-prev-companies-row"><span class="cp-dates-label">Previous:</span><div class="cp-companies">' + pastCompanies.map((co) => '<span class="cp-company-pill past">' + escapeHtml(co) + '</span>').join("") + '</div></div>' : '')
       + (c.email ? '<a href="mailto:' + escapeHtml(c.email) + '" class="cp-email">✉ ' + escapeHtml(c.email) + '</a>' : '')
       + '<div class="cp-dates-row">'
       + '<span class="cp-dates-label">Date(s) met:</span>'
@@ -1466,13 +1487,20 @@ async function initContactPage() {
       + '</div>'
       + '</div>'
 
-      // ── Two-column body ────────────────────────────────────────
+      // ── Two-column body (flat grid, 4 items across 2 cols × 3 rows) ──
       + '<div class="contact-page-body">'
 
-      // Left column
-      + '<div class="contact-page-left">'
+      // Col 1, rows 1–2: Log a Conversation
+      + '<section class="card cp-log-card"><h3 class="section-title">Log a Conversation</h3>'
+      + '<div class="two-col"><div class="field-group"><label>Date</label><input type="date" id="cpIntDate" value="' + todayDateString() + '" /></div>'
+      + '<div class="field-group"><label>Type</label><select id="cpIntType">' + interactionTypeOptions + '</select></div></div>'
+      + '<div class="field-group cp-log-notes-group"><label>Notes</label><textarea id="cpIntNotes" placeholder="What did you talk about?"></textarea></div>'
+      + '<div class="field-group cp-log-notes-group"><label>Outcome / Action items</label><textarea id="cpIntOutcome" placeholder="What will you or they do next?"></textarea></div>'
+      + '<div class="field-group"><label>Attach document <span class="cp-section-sub" style="font-weight:400">(optional PDF)</span></label><input type="file" id="cpIntDocInput" accept=".pdf,application/pdf" /></div>'
+      + '<p id="cpIntError" class="error" aria-live="polite"></p>'
+      + '<button class="btn" id="cpAddIntBtn" type="button">Save Conversation</button></section>'
 
-      // ── Things to bring up next ──────────────────────────────
+      // Col 2, row 1: Things to Bring Up Next
       + '<section class="card cp-checkin-card">'
       + '<div class="followup-section-header">'
       + '<div><h3 class="section-title">Things to Bring Up Next</h3><p class="cp-section-sub">Check off items after discussing them.</p></div>'
@@ -1483,37 +1511,9 @@ async function initContactPage() {
       + '<p id="cpFollowUpMsg" class="success" aria-live="polite"></p>'
       + '</section>'
 
-      // ── Interaction Timeline ─────────────────────────────────
-      + '<section class="card"><h3 class="section-title">Interaction Timeline</h3><div class="timeline" id="cpTimeline">' + renderInteractionTimeline(c.interactions) + '</div></section>'
-
-      // ── Add Interaction ──────────────────────────────────────
-      + '<section class="card"><h3 class="section-title">Log a Conversation</h3>'
-      + '<div class="two-col"><div class="field-group"><label>Date</label><input type="date" id="cpIntDate" value="' + todayDateString() + '" /></div>'
-      + '<div class="field-group"><label>Type</label><select id="cpIntType">' + interactionTypeOptions + '</select></div></div>'
-      + '<div class="field-group"><label>Notes</label><textarea id="cpIntNotes" rows="3" placeholder="What did you talk about?"></textarea></div>'
-      + '<div class="field-group"><label>Outcome / Action items</label><textarea id="cpIntOutcome" rows="2" placeholder="What will you or they do next?"></textarea></div>'
-      + '<p id="cpIntError" class="error" aria-live="polite"></p>'
-      + '<button class="btn" id="cpAddIntBtn" type="button">Save Conversation</button></section>'
-
-      + '</div>'
-
-      // Right column
-      + '<div class="contact-page-right">'
-
-      // ── Conversation Notes ───────────────────────────────────
+      // Col 2, row 2: Work History
       + '<section class="card">'
-      + '<h3 class="section-title">Conversation Notes</h3>'
-      + '<p class="cp-section-sub">General notes, background, and overall impressions.</p>'
-      + '<div class="field-group"><textarea id="cpNotes" rows="5" placeholder="Background, how you met, running notes…">' + escapeHtml(c.notes) + '</textarea></div>'
-      + '<div class="field-group"><label>Topics / Interests</label><input type="text" id="cpInterests" value="' + escapeHtml(c.interests) + '" placeholder="e.g. AI, product design, startups" /></div>'
-      + '<div class="field-group"><label>Advice Given</label><textarea id="cpAdvice" rows="2" placeholder="Advice or insights they shared…">' + escapeHtml(c.adviceGiven) + '</textarea></div>'
-      + '<button class="btn" id="cpSaveNotesBtn" type="button">Save Notes</button>'
-      + '<p id="cpSaveNotesMsg" class="success" aria-live="polite"></p>'
-      + '</section>'
-
-      // ── Contact Details ──────────────────────────────────────
-      + '<section class="card">'
-      + '<h3 class="section-title">Contact Details</h3>'
+      + '<h3 class="section-title">Work History</h3>'
       + '<div class="two-col">'
       + '<div class="field-group"><label>Current Company</label><input type="text" id="cpCompany" value="' + escapeHtml(c.company) + '" placeholder="e.g. Google" /></div>'
       + '<div class="field-group"><label>Role / Title</label><input type="text" id="cpRole" value="' + escapeHtml(c.role) + '" placeholder="e.g. Software Engineer" /></div>'
@@ -1522,43 +1522,31 @@ async function initContactPage() {
       + '<label>Past Companies <span class="cp-section-sub" style="font-weight:400">(comma-separated)</span></label>'
       + '<input type="text" id="cpCompanyHistory" value="' + escapeHtml((c.companyHistory || []).join(", ")) + '" placeholder="Meta, Apple, Stripe…" />'
       + '</div>'
-      + '<button class="btn" id="cpSaveDetailsBtn" type="button">Save Details</button>'
+      + '<button class="btn" id="cpSaveDetailsBtn" type="button">Save</button>'
       + '<p id="cpSaveDetailsMsg" class="success" aria-live="polite"></p>'
       + '</section>'
 
-      // ── Reminder Settings ────────────────────────────────────
-      + '<section class="card"><h3 class="section-title">Reminder Settings</h3>'
-      + '<div class="cp-reminder-summary">'
-      + '<span class="cp-freq-badge">' + escapeHtml(freqLabel) + '</span>'
-      + '<span class="tiny muted">Next: ' + (c.nextReminder ? formatDate(c.nextReminder.split("T")[0]) : "Not set") + '</span>'
+      // Col 1, row 3: Interaction Timeline
+      + '<section class="card cp-timeline-col"><h3 class="section-title">Interaction Timeline</h3><div class="timeline" id="cpTimeline">' + renderInteractionTimeline(c.interactions) + '</div></section>'
+
+      // Col 2, row 3: Stay in Touch
+      + '<section class="card cp-reminder-card">'
+      + '<h3 class="section-title">Stay in Touch</h3>'
+      + '<div class="cp-reminder-meta">'
+      + '<div class="cp-reminder-meta-item"><span class="cp-dates-label">Frequency</span><span class="cp-freq-badge">' + escapeHtml(freqLabel) + '</span></div>'
+      + '<div class="cp-reminder-meta-item"><span class="cp-dates-label">Next reminder</span><span class="cp-date-chip">' + (c.nextReminder ? formatDate(c.nextReminder.split("T")[0]) : "Not set") + '</span></div>'
       + '</div>'
-      + '<div class="field-group" style="margin-top:0.75rem"><label>Stay-in-touch frequency</label><select id="cpFrequency">' + freqOptions + '</select></div>'
-      + '<label class="row" style="margin-top:0.4rem;gap:0.5rem;cursor:pointer"><input type="checkbox" id="cpReminderEnabled"' + (c.reminderEnabled ? ' checked' : '') + ' /> Reminders enabled</label>'
-      + '<button class="btn" id="cpSaveReminderBtn" type="button" style="margin-top:0.75rem">Save Reminder Settings</button>'
-      + '<p id="cpSaveReminderMsg" class="success" aria-live="polite"></p></section>'
+      + '<div class="field-group" style="margin-top:0.9rem"><label>Frequency</label><select id="cpFrequency">' + freqOptions + '</select></div>'
+      + '<div class="field-group" id="cpCustomDaysGroup"' + (isCustomFreq ? '' : ' style="display:none"') + '><label>Every how many days?</label><input type="number" id="cpCustomDays" min="1" max="365" placeholder="30" value="' + escapeHtml(customFreqDays) + '" /></div>'
+      + '<div class="cp-reminder-toggle-row">'
+      + '<label class="cp-toggle" aria-label="Reminders enabled"><input type="checkbox" id="cpReminderEnabled"' + (c.reminderEnabled ? ' checked' : '') + ' /><span class="cp-toggle-track"></span></label>'
+      + '<span class="cp-toggle-label">Reminders enabled</span>'
+      + '</div>'
+      + '<button class="btn" id="cpSaveReminderBtn" type="button" style="margin-top:0.75rem">Save</button>'
+      + '<p id="cpSaveReminderMsg" class="success" aria-live="polite"></p>'
+      + '</section>'
 
-      // ── Documents ────────────────────────────────────────────
-      + '<section class="card"><h3 class="section-title">Documents</h3>'
-      + '<div id="cpDocList"><p class="muted" style="font-size:0.82rem">Loading…</p></div>'
-      + '<div class="followup-add-row" style="margin-top:0.75rem"><input type="file" id="cpDocInput" accept=".pdf,application/pdf" /><button class="btn btn-secondary" id="cpDocUploadBtn" type="button">Upload PDF</button></div>'
-      + '<p id="cpDocError" class="error" aria-live="polite"></p></section>'
-      + '</div></div>';
-
-    // ── Storage documents for this contact ─────────────────────────────────
-    async function refreshCpDocList() {
-      const cpDocListEl = root.querySelector("#cpDocList");
-      if (!cpDocListEl) return;
-      const storageDocs = await db.fetchStorageFilesByContact(contactId);
-      if (!storageDocs.length) {
-        cpDocListEl.innerHTML = '<p class="empty">No documents uploaded yet.</p>';
-        return;
-      }
-      cpDocListEl.innerHTML = '<div class="file-grid file-grid-compact">'
-        + storageDocs.map((f) => renderStorageFileCard(f)).join("")
-        + '</div>';
-      attachStorageFileCardListeners(cpDocListEl, refreshCpDocList);
-    }
-    await refreshCpDocList();
+      + '</div>';
 
     root.querySelector("#cpOpenReminderBtn").addEventListener("click", async () => { showReminderModal(await freshContact()); });
     root.querySelector("#cpDeleteBtn").addEventListener("click", async () => {
@@ -1575,11 +1563,18 @@ async function initContactPage() {
       const notes = root.querySelector("#cpIntNotes").value.trim();
       const outcome = root.querySelector("#cpIntOutcome").value.trim();
       if (!date) { errEl.textContent = "Date is required."; return; }
+      const docInput = root.querySelector("#cpIntDocInput");
+      const docFile = docInput?.files?.[0];
+      if (docFile && docFile.type !== "application/pdf") { errEl.textContent = "Only PDF files are allowed."; return; }
       const interaction = normalizeInteraction({ date, type, notes, outcome });
       await save((c) => {
         const newInteractions = [interaction, ...c.interactions].sort((a, b) => b.date.localeCompare(a.date));
         return { ...c, interactions: newInteractions, lastContacted: newInteractions[0].date, nextReminder: calculateNextReminder(newInteractions[0].date, c.followUpFrequency) };
       });
+      if (docFile) {
+        const uploadResult = await db.uploadFileToStorage(docFile, { contactId, category: "conversation" });
+        if (!uploadResult) errEl.textContent = "Conversation saved but document upload failed.";
+      }
       const fresh = await freshContact();
       const hasOpen = (fresh ? fresh.followUps || [] : []).some((f) => !f.completed);
       await renderPage();
@@ -1587,13 +1582,6 @@ async function initContactPage() {
         const msg = root.querySelector("#cpFollowUpMsg");
         if (msg) { msg.textContent = "Interaction saved! Use Suggest Follow-Ups to generate next steps."; setTimeout(() => { if (msg) msg.textContent = ""; }, 4000); }
       }
-    });
-    root.querySelector("#cpSaveNotesBtn").addEventListener("click", async () => {
-      await save((c) => ({ ...c, interests: root.querySelector("#cpInterests").value.trim(), adviceGiven: root.querySelector("#cpAdvice").value.trim(), notes: root.querySelector("#cpNotes").value.trim() }));
-      const msg = root.querySelector("#cpSaveNotesMsg");
-      msg.textContent = "Saved!";
-      setTimeout(() => { if (msg) msg.textContent = ""; }, 2000);
-      await renderPage();
     });
     root.querySelector("#cpSaveDetailsBtn").addEventListener("click", async () => {
       const newCompany = root.querySelector("#cpCompany").value.trim();
@@ -1606,31 +1594,25 @@ async function initContactPage() {
       setTimeout(() => { if (msg) msg.textContent = ""; }, 2000);
       await renderPage();
     });
+    const freqSelect = root.querySelector("#cpFrequency");
+    const customDaysGroup = root.querySelector("#cpCustomDaysGroup");
+    if (freqSelect && customDaysGroup) {
+      freqSelect.addEventListener("change", () => {
+        customDaysGroup.style.display = freqSelect.value === "custom" ? "" : "none";
+      });
+    }
     root.querySelector("#cpSaveReminderBtn").addEventListener("click", async () => {
-      const newFreq = root.querySelector("#cpFrequency").value;
+      let newFreq = root.querySelector("#cpFrequency").value;
+      if (newFreq === "custom") {
+        const days = parseInt(root.querySelector("#cpCustomDays")?.value, 10);
+        newFreq = (!isNaN(days) && days > 0) ? "custom:" + days : "none";
+      }
       const enabled = root.querySelector("#cpReminderEnabled").checked;
       await save((c) => ({ ...c, followUpFrequency: newFreq, reminderEnabled: enabled && newFreq !== "none", nextReminder: calculateNextReminder(c.lastContacted || c.dateMet, newFreq) }));
       const msg = root.querySelector("#cpSaveReminderMsg");
-      msg.textContent = "Reminder settings saved!";
+      msg.textContent = "Saved!";
       setTimeout(() => { if (msg) msg.textContent = ""; }, 2000);
       await renderPage();
-    });
-    root.querySelector("#cpDocUploadBtn").addEventListener("click", async () => {
-      const errEl    = root.querySelector("#cpDocError");
-      const inputEl  = root.querySelector("#cpDocInput");
-      const uploadEl = root.querySelector("#cpDocUploadBtn");
-      errEl.textContent = "";
-      const file = inputEl?.files?.[0];
-      if (!file) { errEl.textContent = "Select a PDF file."; return; }
-      if (file.type !== "application/pdf") { errEl.textContent = "Only PDF files are allowed."; return; }
-      if (inputEl) inputEl.disabled = true;
-      if (uploadEl) { uploadEl.disabled = true; uploadEl.textContent = "Uploading…"; }
-      const result = await db.uploadFileToStorage(file, { contactId, category: "conversation" });
-      if (inputEl) inputEl.disabled = false;
-      if (uploadEl) { uploadEl.disabled = false; uploadEl.textContent = "Upload PDF"; }
-      if (!result) { errEl.textContent = "Upload failed. Check the bucket exists and try again."; return; }
-      if (inputEl) inputEl.value = "";
-      await refreshCpDocList();
     });
     const addFollowUp = async () => {
       const input = root.querySelector("#cpNewFollowUp");

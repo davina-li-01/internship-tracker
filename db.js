@@ -260,7 +260,13 @@ function rowToContact(row) {
     lastContacted: row.last_contacted || "",
     followUpFrequency: row.follow_up_frequency || "none",
     notes: row.notes || "",
-    adviceGiven: row.advice_given || ""
+    adviceGiven: row.advice_given || "",
+    interests: row.interests || "",
+    reminderEnabled: row.reminder_enabled || false,
+    nextReminder: row.next_reminder || "",
+    interactions: Array.isArray(row.interactions) ? row.interactions : [],
+    companyHistory: Array.isArray(row.company_history) ? row.company_history : [],
+    followUps: Array.isArray(row.follow_ups) ? row.follow_ups : []
   };
 }
 
@@ -277,7 +283,13 @@ function contactToRow(contact, userId) {
     last_contacted: contact.lastContacted || null,
     follow_up_frequency: contact.followUpFrequency || "none",
     notes: contact.notes || "",
-    advice_given: contact.adviceGiven || ""
+    advice_given: contact.adviceGiven || "",
+    interests: contact.interests || "",
+    reminder_enabled: contact.reminderEnabled || false,
+    next_reminder: contact.nextReminder || null,
+    interactions: contact.interactions || [],
+    company_history: contact.companyHistory || [],
+    follow_ups: contact.followUps || []
   };
 }
 
