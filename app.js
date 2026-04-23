@@ -224,6 +224,7 @@ function applyTheme() {
   document.body.classList.toggle("dark", theme === "dark");
   const toggle = document.getElementById("themeToggle");
   if (toggle) toggle.textContent = theme === "dark" ? "Light Mode" : "Dark Mode";
+  document.documentElement.style.colorScheme = theme;
 }
 
 function initThemeToggle() {
