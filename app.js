@@ -545,11 +545,26 @@ async function renderWeeklyConnections(listId) {
   const list = document.getElementById(listId);
   if (!list) return;
   const contacts = await db.getContacts();
-  const people = contacts.filter((c) => isDateWithinLastDays(c.dateMet, 7)).sort((a, b) => b.dateMet.localeCompare(a.dateMet));
-  if (!people.length) { list.innerHTML = '<li class="empty">No new contacts in the last 7 days.</li>'; return; }
+  // All contacts met in the last 7 days, sorted A→Z
+  const people = contacts
+    .filter((c) => isDateWithinLastDays(c.dateMet, 7))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  if (!people.length) {
+    list.innerHTML = '<p class="empty">No new contacts added in the last 7 days.</p>';
+    return;
+  }
   list.innerHTML = people.map((person) =>
-    '<li class="list-item"><p><strong>' + escapeHtml(person.name) + '</strong> · ' + escapeHtml(person.role || "Role not set") + '</p><p class="tiny">Met: ' + formatDate(person.dateMet) + '</p></li>'
-  ).join("");
+    '<div class="weekly-contact-card">'
+    + '<div class="weekly-contact-main">'
+    + '<p class="weekly-contact-name">' + escapeHtml(person.name) + '</p>'
+    + '<p class="tiny">' + escapeHtml(person.role || 'Role not set') + (person.company ? ' @ <strong>' + escapeHtml(person.company) + '</strong>' : '') + '</p>'
+    + '</div>'
+    + '<div class="weekly-contact-meta">'
+    + reminderBadge(person)
+    + '<span class="tiny">Met ' + formatDate(person.dateMet) + '</span>'
+    + '</div>'
+    + '</div>'
+  ).join('');
 }
 
 async function renderProgressWidget() {
@@ -569,39 +584,61 @@ async function renderProgressWidget() {
 
 /**
  * Render the contact list on network.html.
- * Contacts sorted by dateMet descending; cards link to contact.html.
- * Reminder badge (due / soon / up to date) shown per contact.
+ * Sorted A→Z by first name. Optionally filtered by company/role search term.
  */
-async function renderContacts() {
+async function renderContacts(filterText) {
   const list = document.getElementById("contactList");
   if (!list) return;
-  const contacts = (await db.getContacts()).sort((a, b) => b.dateMet.localeCompare(a.dateMet));
-  if (!contacts.length) { list.innerHTML = '<li class="empty">No contacts yet. Add your first contact above.</li>'; return; }
-  list.innerHTML = contacts.map((contact) => {
-    const status = getReminderStatus(contact);
-    const freqLabel = FREQUENCY_LABELS[contact.followUpFrequency] || "No reminders";
-    const interactionCount = contact.interactions ? contact.interactions.length : 0;
-    return '<li class="contact-card ' + (status === "due" ? "due-item" : status === "soon" ? "soon-item" : "") + '" data-open-contact="' + contact.id + '" role="button" tabindex="0">'
-      + '<div class="contact-header">'
-      + '<div class="contact-summary">'
-      + '<p class="contact-name"><strong>' + escapeHtml(contact.name) + '</strong></p>'
-      + '<p class="tiny">' + escapeHtml(contact.role || "Role not set") + (contact.company ? ' @ ' + escapeHtml(contact.company) : '') + ' · ' + escapeHtml(contact.email) + '</p>'
-      + '</div>'
-      + '<div class="badge-col">' + reminderBadge(contact) + '</div>'
-      + '</div>'
-      + '<div class="contact-meta">'
-      + '<span class="tiny">Last contacted: ' + formatDate(contact.lastContacted) + '</span>'
-      + '<span class="tiny">Next: ' + (contact.nextReminder ? formatDate(contact.nextReminder.split("T")[0]) : "Not set") + '</span>'
-      + '<span class="tiny">' + interactionCount + ' interaction' + (interactionCount !== 1 ? 's' : '') + '</span>'
-      + '<span class="tiny">' + escapeHtml(freqLabel) + '</span>'
-      + '</div>'
-      + '<p class="contact-hint tiny muted">Click to view full profile</p>'
-      + '</li>';
-  }).join("");
-  list.querySelectorAll("[data-open-contact]").forEach((card) => {
-    const open = () => { window.location.href = "contact.html?id=" + encodeURIComponent(card.dataset.openContact); };
-    card.addEventListener("click", open);
-    card.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") open(); });
+  let contacts = await db.getContacts();
+  // Sort A→Z by name
+  contacts = contacts.sort((a, b) => a.name.localeCompare(b.name));
+  // Apply filter
+  if (filterText && filterText.trim()) {
+    const q = filterText.trim().toLowerCase();
+    contacts = contacts.filter((c) =>
+      (c.name && c.name.toLowerCase().includes(q)) ||
+      (c.role && c.role.toLowerCase().includes(q)) ||
+      (c.company && c.company.toLowerCase().includes(q))
+    );
+  }
+  if (!contacts.length) {
+    list.innerHTML = '<li class="empty">' + (filterText ? 'No contacts match "' + escapeHtml(filterText) + '".' : 'No contacts yet. Add your first contact above.') + '</li>';
+    return;
+  }
+  // Group into alphabetical buckets by first letter
+  const buckets = new Map();
+  contacts.forEach((c) => {
+    const letter = (c.name[0] || '#').toUpperCase();
+    if (!buckets.has(letter)) buckets.set(letter, []);
+    buckets.get(letter).push(c);
+  });
+  let html = '';
+  buckets.forEach((group, letter) => {
+    html += '<li class="contact-alpha-header">' + letter + '</li>';
+    group.forEach((contact) => {
+      const status = getReminderStatus(contact);
+      const freqLabel = FREQUENCY_LABELS[contact.followUpFrequency] || 'No reminders';
+      html += '<li class="contact-card ' + (status === 'due' ? 'due-item' : status === 'soon' ? 'soon-item' : '') + '" data-open-contact="' + contact.id + '" role="button" tabindex="0">'
+        + '<div class="contact-header">'
+        + '<div class="contact-summary">'
+        + '<p class="contact-name"><strong>' + escapeHtml(contact.name) + '</strong></p>'
+        + '<p class="tiny">' + escapeHtml(contact.role || 'Role not set') + (contact.company ? ' @ <strong>' + escapeHtml(contact.company) + '</strong>' : '') + '</p>'
+        + '</div>'
+        + '<div class="badge-col">' + reminderBadge(contact) + '</div>'
+        + '</div>'
+        + '<div class="contact-meta">'
+        + '<span class="tiny">Last met: ' + formatDate(contact.lastContacted) + '</span>'
+        + (contact.nextReminder ? '<span class="tiny">Next reminder: ' + formatDate(contact.nextReminder.split('T')[0]) + '</span>' : '')
+        + '<span class="tiny">' + escapeHtml(freqLabel) + '</span>'
+        + '</div>'
+        + '</li>';
+    });
+  });
+  list.innerHTML = html;
+  list.querySelectorAll('[data-open-contact]').forEach((card) => {
+    const open = () => { window.location.href = 'contact.html?id=' + encodeURIComponent(card.dataset.openContact); };
+    card.addEventListener('click', open);
+    card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') open(); });
   });
 }
 
@@ -829,9 +866,15 @@ async function initNetworking() {
   const dateMetEl = document.getElementById("dateMet");
   const followUpFrequencyEl = document.getElementById("followUpFrequency");
   const notesEl = document.getElementById("contactNotes");
+  const filterEl = document.getElementById("contactFilter");
 
   // Pre-fill date to today
   if (dateMetEl && !dateMetEl.value) dateMetEl.value = todayDateString();
+
+  // Live filter
+  if (filterEl) {
+    filterEl.addEventListener("input", () => renderContacts(filterEl.value));
+  }
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -855,14 +898,16 @@ async function initNetworking() {
     await db.saveContact(contact);
     form.reset();
     if (dateMetEl) dateMetEl.value = todayDateString();
+    if (filterEl) filterEl.value = "";
     await renderContacts();
+    await renderWeeklyConnections("weeklyConnections");
     await renderFollowUpAlerts("networkFollowUps");
   });
 
   refreshActivePageData = async () => {
-    await renderContacts();
-    await renderFollowUpAlerts("networkFollowUps");
+    await renderContacts(filterEl ? filterEl.value : "");
     await renderWeeklyConnections("weeklyConnections");
+    await renderFollowUpAlerts("networkFollowUps");
   };
 
   await refreshActivePageData();

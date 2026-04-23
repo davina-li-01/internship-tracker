@@ -91,7 +91,15 @@
           </div>
 
           <div class="card">
-            <h2>Your Network</h2>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:0.75rem;margin-bottom:0.85rem;flex-wrap:wrap">
+              <h2 style="margin:0">Your Network</h2>
+              <input
+                type="search"
+                id="contactFilter"
+                placeholder="Filter by name, role, company…"
+                style="flex:1;min-width:160px;max-width:260px;padding:0.42rem 0.75rem;font-size:0.82rem"
+              />
+            </div>
             <ul id="contactList" class="list"></ul>
           </div>
 
