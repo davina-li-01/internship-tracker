@@ -6,7 +6,7 @@
  * via Supabase Row Level Security (user_id = auth.uid()).
  *
  * Tables: preferences, internships, logs, files, contacts
- * Contacts store interactions, documents, and followUps as JSONB columns.
+ * Contacts store basic info and interactions. Documents live in storage_files; follow-ups in follow_ups table.
  *
  * AI-assisted: schema design, upsert patterns, JSONB handling.
  */
@@ -251,6 +251,7 @@ export async function deleteContact(contactId) {
 function rowToContact(row) {
   return {
     id: row.id,
+    internshipId: row.internship_id || null,
     name: row.name || "",
     email: row.email || "",
     company: row.company || "",
@@ -258,14 +259,8 @@ function rowToContact(row) {
     dateMet: row.date_met || "",
     lastContacted: row.last_contacted || "",
     followUpFrequency: row.follow_up_frequency || "none",
-    nextReminder: row.next_reminder || "",
-    reminderEnabled: row.reminder_enabled || false,
     notes: row.notes || "",
-    interests: row.interests || "",
-    adviceGiven: row.advice_given || "",
-    interactions: Array.isArray(row.interactions) ? row.interactions : [],
-    documents: Array.isArray(row.documents) ? row.documents : [],
-    followUps: Array.isArray(row.follow_ups) ? row.follow_ups : []
+    adviceGiven: row.advice_given || ""
   };
 }
 
@@ -273,6 +268,7 @@ function contactToRow(contact, userId) {
   return {
     id: contact.id,
     user_id: userId,
+    internship_id: contact.internshipId || null,
     name: contact.name || "",
     email: contact.email || "",
     company: contact.company || "",
@@ -280,14 +276,8 @@ function contactToRow(contact, userId) {
     date_met: contact.dateMet || null,
     last_contacted: contact.lastContacted || null,
     follow_up_frequency: contact.followUpFrequency || "none",
-    next_reminder: contact.nextReminder || null,
-    reminder_enabled: contact.reminderEnabled || false,
     notes: contact.notes || "",
-    interests: contact.interests || "",
-    advice_given: contact.adviceGiven || "",
-    interactions: contact.interactions || [],
-    documents: contact.documents || [],
-    follow_ups: contact.followUps || []
+    advice_given: contact.adviceGiven || ""
   };
 }
 
