@@ -916,6 +916,68 @@ body.dark .doc-row { border-top-color: rgba(255,255,255,0.06); }
 .contact-page-body { display: grid; grid-template-columns: minmax(0,1.2fr) minmax(0,1fr); gap: 1.25rem; align-items: start; }
 .contact-page-left, .contact-page-right { display: grid; gap: 1.25rem; }
 
+/* ── Profile Hero Card ───────────────────────────────────────── */
+.cp-profile-card { display: grid; gap: 1.25rem; }
+.cp-hero { display: flex; align-items: flex-start; gap: 1.25rem; flex-wrap: wrap; }
+.cp-avatar {
+  width: 68px; height: 68px; flex-shrink: 0;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), var(--primary-deep));
+  color: #fff;
+  font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 16px rgba(249,115,22,0.28);
+  user-select: none;
+}
+.cp-identity { flex: 1; min-width: 0; display: grid; gap: 0.45rem; }
+.cp-name-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.cp-name { font-size: 1.65rem; font-weight: 800; letter-spacing: -0.03em; margin: 0; }
+.cp-hero-badges { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.cp-role { font-size: 0.95rem; color: var(--text-muted); margin: 0; font-weight: 500; }
+.cp-companies { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.cp-company-pill {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.22rem 0.65rem; border-radius: var(--radius-pill);
+  font-size: 0.78rem; font-weight: 600;
+}
+.cp-company-pill.current {
+  background: rgba(249,115,22,0.12); color: var(--primary-deep);
+  border: 1px solid rgba(249,115,22,0.22);
+}
+body.dark .cp-company-pill.current { color: var(--accent); background: rgba(251,146,60,0.14); border-color: rgba(251,146,60,0.22); }
+.cp-company-pill.past {
+  background: rgba(120,113,108,0.08); color: var(--text-muted);
+  border: 1px solid rgba(120,113,108,0.15);
+}
+body.dark .cp-company-pill.past { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); }
+.cp-pill-tag { font-size: 0.68rem; font-weight: 500; opacity: 0.7; }
+.cp-email {
+  font-size: 0.85rem; color: var(--primary); text-decoration: none; font-weight: 500;
+  width: fit-content;
+}
+.cp-email:hover { text-decoration: underline; }
+.cp-dates-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.1rem; }
+.cp-dates-label { font-size: 0.78rem; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
+.cp-dates-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.cp-date-chip {
+  padding: 0.15rem 0.5rem; border-radius: var(--radius-pill);
+  background: rgba(180,140,110,0.1); border: 1px solid rgba(180,140,110,0.15);
+  font-size: 0.75rem; color: var(--text-muted);
+}
+body.dark .cp-date-chip { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); }
+.cp-freq-badge {
+  padding: 0.18rem 0.6rem; border-radius: var(--radius-pill);
+  background: rgba(249,115,22,0.1); color: var(--primary-deep);
+  border: 1px solid rgba(249,115,22,0.18);
+  font-size: 0.75rem; font-weight: 600;
+}
+body.dark .cp-freq-badge { color: var(--accent); background: rgba(251,146,60,0.12); border-color: rgba(251,146,60,0.2); }
+.cp-hero-actions { display: flex; align-items: flex-start; gap: 0.5rem; flex-wrap: wrap; flex-shrink: 0; }
+.cp-section-sub { font-size: 0.78rem; color: var(--text-muted); margin: 0; }
+.cp-checkin-card { background: linear-gradient(135deg, rgba(249,115,22,0.04), rgba(255,252,248,0)); }
+body.dark .cp-checkin-card { background: linear-gradient(135deg, rgba(249,115,22,0.06), transparent); }
+.cp-reminder-summary { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+
 /* ── Auth page ───────────────────────────────────────────────── */
 .auth-main { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 2rem 1rem; }
 .auth-card { width: min(420px,100%); padding: 2.5rem; }
@@ -970,6 +1032,8 @@ body.dark .auth-tab.active { background: rgba(255,255,255,0.09); }
   .workspace-content, .network-content, .contact-content { padding: 1.5rem 1rem 4rem; }
   .network-content { grid-template-columns: 1fr; }
   .contact-page-body { grid-template-columns: 1fr; }
+  .cp-hero { flex-direction: column; align-items: flex-start; }
+  .cp-hero-actions { flex-direction: row; }
   .two-col { grid-template-columns: 1fr; }
   .stat-grid { grid-template-columns: repeat(3,1fr); }
   .log-details-row { grid-template-columns: 1fr; }
