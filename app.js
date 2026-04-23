@@ -107,6 +107,8 @@ function normalizeLog(log = {}) {
 
 /** Human-readable labels for follow-up reminder frequencies. */
 const FREQUENCY_LABELS = {
+  weekly: "Weekly",
+  biweekly: "Every 2 weeks",
   monthly: "Monthly",
   bimonthly: "Every 2 months",
   quarterly: "Quarterly",
@@ -116,6 +118,8 @@ const FREQUENCY_LABELS = {
 function calculateNextReminder(lastContacted, frequency) {
   if (!lastContacted || frequency === "none") return "";
   const date = new Date(lastContacted);
+  if (frequency === "weekly") date.setDate(date.getDate() + 7);
+  if (frequency === "biweekly") date.setDate(date.getDate() + 14);
   if (frequency === "monthly") date.setMonth(date.getMonth() + 1);
   if (frequency === "bimonthly") date.setMonth(date.getMonth() + 2);
   if (frequency === "quarterly") date.setMonth(date.getMonth() + 3);
@@ -522,7 +526,7 @@ async function renderFollowUpAlerts(listId, emptyText) {
   emptyText = emptyText || "No follow-ups due.";
   const list = document.getElementById(listId);
   if (!list) return;
-  const contacts = await db.getContacts();
+  const contacts = (await db.getContacts()) || [];
   const now = new Date();
   now.setHours(23, 59, 59, 999);
   const soon = new Date(now.getTime() + 7 * 86400000);
@@ -600,7 +604,7 @@ async function renderTopAchievements() {
 async function renderWeeklyConnections(listId) {
   const list = document.getElementById(listId);
   if (!list) return;
-  const contacts = await db.getContacts();
+  const contacts = (await db.getContacts()) || [];
   // All contacts met in the last 7 days, sorted A→Z
   const people = contacts
     .filter((c) => isDateWithinLastDays(c.dateMet, 7))
@@ -630,7 +634,7 @@ async function renderProgressWidget() {
   if (!statLogs || !statContacts || !statFollowUps) return;
   const activeId = getActiveInternshipId();
   const allLogs = activeId ? await db.getLogs(activeId) : [];
-  const allContacts = await db.getContacts();
+  const allContacts = (await db.getContacts()) || [];
   const now = new Date();
   now.setHours(23, 59, 59, 999);
   statLogs.textContent = String(allLogs.filter((l) => isDateWithinLastDays(l.date, 7)).length);
@@ -645,7 +649,13 @@ async function renderProgressWidget() {
 async function renderContacts(filterText) {
   const list = document.getElementById("contactList");
   if (!list) return;
-  let contacts = await db.getContacts();
+  let contacts;
+  try {
+    contacts = (await db.getContacts()) || [];
+  } catch (err) {
+    list.innerHTML = '<li class="empty" style="color:var(--danger)">Error loading contacts — check the console (F12).</li>';
+    return;
+  }
   // Sort A→Z by name
   contacts = contacts.sort((a, b) => a.name.localeCompare(b.name));
   // Apply filter
@@ -942,7 +952,7 @@ async function renderCalendarView() {
   const tooltip  = document.getElementById("calTooltip");
   if (!grid) return;
 
-  const contacts = await db.getContacts();
+  const contacts = (await db.getContacts()) || [];
 
   // Build a map: "YYYY-MM-DD" → [contact names]
   const dayMap = new Map();
@@ -1232,6 +1242,9 @@ async function initNetworking() {
     form.reset();
     if (dateMetEl) dateMetEl.value = todayDateString();
     if (filterEl) filterEl.value = "";
+    error.textContent = "";
+    const successEl = document.getElementById("contactSuccess");
+    if (successEl) { successEl.textContent = "Contact added!"; setTimeout(() => { successEl.textContent = ""; }, 3000); }
     await renderContacts();
     await renderWeeklyConnections("weeklyConnections");
     await renderFollowUpAlerts("networkFollowUps");
@@ -1383,7 +1396,7 @@ async function initContactPage() {
   refreshActivePageData = renderPage;
 
   async function freshContact() {
-    const contacts = await db.getContacts();
+    const contacts = (await db.getContacts()) || [];
     return contacts.find((c) => c.id === contactId) || null;
   }
 
@@ -1784,7 +1797,7 @@ function initSignOut() {
 async function checkRemindersOnLoad() {
   if (document.querySelector("[data-page='contact']")) return;
   setTimeout(async () => {
-    const contacts = await db.getContacts();
+    const contacts = (await db.getContacts()) || [];
     const now = new Date();
     now.setHours(23, 59, 59, 999);
     const due = contacts.filter((c) => c.reminderEnabled && c.nextReminder && new Date(c.nextReminder) <= now);

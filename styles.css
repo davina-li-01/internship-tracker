@@ -822,6 +822,7 @@ body.dark .contact-card { background: rgba(255,255,255,0.04); border-color: rgba
 body.dark .contact-card:hover { background: rgba(255,255,255,0.08); }
 .contact-card:focus { box-shadow: 0 0 0 2px var(--primary); }
 .contact-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; }
+.contact-summary { flex: 1; min-width: 0; }
 .badge-col { flex-shrink: 0; }
 .contact-name { font-size: 1rem; margin: 0; }
 .contact-meta { display: flex; flex-wrap: wrap; gap: 0.3rem 0.9rem; margin-top: 0.35rem; }
