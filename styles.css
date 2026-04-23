@@ -928,7 +928,12 @@ body.dark .doc-row { border-top-color: rgba(255,255,255,0.06); }
 /* ── Stay in Touch (reminder) card ──────────────────────────── */
 .cp-reminder-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; background: var(--surface-alt, rgba(249,115,22,0.04)); border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem 1rem; }
 .cp-reminder-meta-item { display: flex; flex-direction: column; gap: 0.25rem; }
-.cp-reminder-toggle-row { display: flex; align-items: center; gap: 0.65rem; margin-top: 0.9rem; }
+.cp-reminder-header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+.cp-reminder-header .section-title { margin: 0; }
+.cp-reminder-toggle-row { display: flex; align-items: center; gap: 0.65rem; }
+.cp-reminder-freq-row { display: flex; align-items: center; gap: 0.6rem; }
+.cp-reminder-freq-row select { flex: 1; min-width: 0; }
+.cp-reminder-freq-label { font-size: 0.82rem; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
 .cp-toggle-label { font-size: 0.88rem; color: var(--text); }
 .cp-toggle { position: relative; display: inline-block; width: 42px; height: 24px; flex-shrink: 0; }
 .cp-toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
@@ -953,6 +958,8 @@ body.dark .doc-row { border-top-color: rgba(255,255,255,0.06); }
 .cp-identity { flex: 1; min-width: 0; display: grid; gap: 0.45rem; }
 .cp-name-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 .cp-name { font-size: 1.65rem; font-weight: 800; letter-spacing: -0.03em; margin: 0; }
+.cp-name-input { background: transparent; border: none; border-bottom: 1.5px solid transparent; border-radius: 0; padding: 0; outline: none; color: inherit; font-family: inherit; width: auto; max-width: 100%; transition: border-color 0.15s; }
+.cp-name-input:hover, .cp-name-input:focus { border-bottom-color: var(--primary); background: transparent; }
 .cp-hero-badges { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
 .cp-role { font-size: 0.95rem; color: var(--text-muted); margin: 0; font-weight: 500; }
 .cp-companies { display: flex; flex-wrap: wrap; gap: 0.4rem; }

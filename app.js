@@ -280,43 +280,56 @@ const INTERACTION_TYPES = ["coffee chat", "meeting", "check-in", "email", "phone
  * Returns up to 5 de-duplicated suggestion strings.
  */
 function generateFollowUpSuggestions(contact) {
-  const suggestions = [];
-  const interests = (contact.interests || "").toLowerCase();
-  const notes = (contact.notes || "").toLowerCase();
-  const advice = (contact.adviceGiven || "").toLowerCase();
-  const role = (contact.role || "").toLowerCase();
   const name = contact.name || "them";
+  const sentences = [];
 
-  if (interests.includes("ai") || interests.includes("machine learning") || notes.includes("ai"))
-    suggestions.push("Send an article about recent AI trends");
-  if (interests.includes("design") || interests.includes("ux") || interests.includes("product"))
-    suggestions.push("Share a product design case study or article");
-  if (interests.includes("startup") || interests.includes("entrepreneur"))
-    suggestions.push("Share a startup story or resource they might find interesting");
-  if (interests.includes("open source") || interests.includes("github"))
-    suggestions.push("Invite " + name + " to collaborate on an open-source project");
-  if (advice)
-    suggestions.push("Follow up on their advice and share your progress since your last talk");
-  if (role.includes("engineer") || role.includes("developer") || role.includes("software"))
-    suggestions.push("Share a technical article, repo, or tool relevant to their work");
-  if (role.includes("manager") || role.includes("director") || role.includes("lead"))
-    suggestions.push("Ask for feedback on your growth since your last conversation");
-  if (role.includes("recruiter") || role.includes("talent") || role.includes("hr"))
-    suggestions.push("Send an updated resume or LinkedIn summary");
-  const interactionCount = contact.interactions?.length || 0;
-  if (interactionCount === 0)
-    suggestions.push("Send a quick intro message to break the ice with " + name);
-  else if (interactionCount >= 3)
-    suggestions.push("Consider asking to grab coffee (virtual or in-person)");
-  if (notes.includes("referral") || notes.includes("refer"))
-    suggestions.push("Follow up about the referral they mentioned");
-  if (notes.includes("project") || notes.includes("work"))
-    suggestions.push("Ask for an update on the project they mentioned");
-  if (notes.includes("conference") || notes.includes("event") || notes.includes("meetup"))
-    suggestions.push("Share a recap or resource from the event you both attended");
-  suggestions.push("Schedule a quick check-in call");
-  suggestions.push("Send " + name + " a thoughtful update on what you have been working on");
-  return [...new Set(suggestions)].slice(0, 5);
+  // Pull sentences from recent interactions (most recent 3)
+  const recentInteractions = (contact.interactions || []).slice(0, 3);
+  for (const interaction of recentInteractions) {
+    for (const field of [interaction.notes, interaction.outcome]) {
+      if (!field) continue;
+      // Split on sentence boundaries
+      field.split(/[.!?\n]+/).forEach((s) => {
+        const trimmed = s.trim();
+        if (trimmed.length > 8) sentences.push({ text: trimmed, source: "interaction" });
+      });
+    }
+  }
+
+  // Pull sentences from contact-level notes
+  if (contact.notes) {
+    contact.notes.split(/[.!?\n]+/).forEach((s) => {
+      const trimmed = s.trim();
+      if (trimmed.length > 8) sentences.push({ text: trimmed, source: "notes" });
+    });
+  }
+
+  if (!sentences.length) return ["Send " + name + " a quick check-in message"];
+
+  // Score sentences: prefer ones that suggest ongoing topics or action items
+  const actionWords = /\b(mentioned|said|working on|planning|considering|wants to|will|might|should|asked|wondering|interested in|excited about|worried about|discussed|brought up|follow up|check back|update|revisit|explore|look into|thinking about|decided|going to|hope|looking for|applied|interviewing|offered|accepted|waiting|heard back|need to|want to)\b/i;
+
+  const scored = sentences.map((s) => ({
+    ...s,
+    score: (actionWords.test(s.text) ? 2 : 0) + (s.source === "interaction" ? 1 : 0)
+  }));
+
+  scored.sort((a, b) => b.score - a.score);
+
+  // Format as follow-up talking points
+  const seen = new Set();
+  const suggestions = [];
+  for (const s of scored) {
+    const key = s.text.toLowerCase().slice(0, 40);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    // Capitalize first letter
+    const text = s.text.charAt(0).toUpperCase() + s.text.slice(1);
+    suggestions.push("Follow up on: " + text);
+    if (suggestions.length >= 5) break;
+  }
+
+  return suggestions;
 }
 
 // ── Render helpers ────────────────────────────────────────────────────────────
@@ -1448,15 +1461,6 @@ async function initContactPage() {
       ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
       : (nameParts[0][0] || "?").toUpperCase();
 
-    // ── All dates met (first met + every interaction date, deduped) ─
-    const allDates = [...new Set([
-      ...(c.dateMet ? [c.dateMet] : []),
-      ...(c.interactions || []).map((i) => i.date)
-    ])].sort((a, b) => a.localeCompare(b));
-    const datesMetHtml = allDates.length
-      ? allDates.map((d) => '<span class="cp-date-chip">' + formatDate(d) + '</span>').join("")
-      : '<span class="cp-date-chip muted">No dates logged</span>';
-
     // ── Company pills (current + history) ───────────────────────
     const pastCompanies = (c.companyHistory || []).filter((co) => co !== c.company);
 
@@ -1468,17 +1472,13 @@ async function initContactPage() {
       + '<div class="cp-avatar" aria-hidden="true">' + escapeHtml(initials) + '</div>'
       + '<div class="cp-identity">'
       + '<div class="cp-name-row">'
-      + '<h2 class="cp-name">' + escapeHtml(c.name) + '</h2>'
+      + '<input type="text" id="cpNameInput" class="cp-name cp-name-input" value="' + escapeHtml(c.name) + '" aria-label="Contact name" />'
       + '<div class="cp-hero-badges">' + reminderBadge(c) + '<span class="cp-freq-badge">' + escapeHtml(freqLabel) + '</span></div>'
       + '</div>'
       + (c.role ? '<p class="cp-role">' + escapeHtml(c.role) + '</p>' : '')
       + '<div class="cp-companies">' + (c.company ? '<span class="cp-company-pill current">' + escapeHtml(c.company) + '</span>' : '<span class="muted" style="font-size:0.82rem">No company set</span>') + '</div>'
       + (pastCompanies.length ? '<div class="cp-prev-companies-row"><span class="cp-dates-label">Previous:</span><div class="cp-companies">' + pastCompanies.map((co) => '<span class="cp-company-pill past">' + escapeHtml(co) + '</span>').join("") + '</div></div>' : '')
       + (c.email ? '<a href="mailto:' + escapeHtml(c.email) + '" class="cp-email">✉ ' + escapeHtml(c.email) + '</a>' : '')
-      + '<div class="cp-dates-row">'
-      + '<span class="cp-dates-label">Date(s) met:</span>'
-      + '<div class="cp-dates-chips">' + datesMetHtml + '</div>'
-      + '</div>'
       + '</div>'
       + '<div class="cp-hero-actions">'
       + '<button class="btn btn-secondary" id="cpOpenReminderBtn" type="button">' + (status !== "none" ? "Manage Reminder" : "Send Email") + '</button>'
@@ -1531,23 +1531,33 @@ async function initContactPage() {
 
       // Col 2, row 3: Stay in Touch
       + '<section class="card cp-reminder-card">'
+      + '<div class="cp-reminder-header">'
       + '<h3 class="section-title">Stay in Touch</h3>'
-      + '<div class="cp-reminder-meta">'
-      + '<div class="cp-reminder-meta-item"><span class="cp-dates-label">Frequency</span><span class="cp-freq-badge">' + escapeHtml(freqLabel) + '</span></div>'
-      + '<div class="cp-reminder-meta-item"><span class="cp-dates-label">Next reminder</span><span class="cp-date-chip">' + (c.nextReminder ? formatDate(c.nextReminder.split("T")[0]) : "Not set") + '</span></div>'
-      + '</div>'
-      + '<div class="field-group" style="margin-top:0.9rem"><label>Frequency</label><select id="cpFrequency">' + freqOptions + '</select></div>'
-      + '<div class="field-group" id="cpCustomDaysGroup"' + (isCustomFreq ? '' : ' style="display:none"') + '><label>Every how many days?</label><input type="number" id="cpCustomDays" min="1" max="365" placeholder="30" value="' + escapeHtml(customFreqDays) + '" /></div>'
       + '<div class="cp-reminder-toggle-row">'
       + '<label class="cp-toggle" aria-label="Reminders enabled"><input type="checkbox" id="cpReminderEnabled"' + (c.reminderEnabled ? ' checked' : '') + ' /><span class="cp-toggle-track"></span></label>'
       + '<span class="cp-toggle-label">Reminders enabled</span>'
       + '</div>'
-      + '<button class="btn" id="cpSaveReminderBtn" type="button" style="margin-top:0.75rem">Save</button>'
+      + '</div>'
+      + '<div class="cp-reminder-meta">'
+      + '<div class="cp-reminder-meta-item"><span class="cp-dates-label">Frequency</span><span class="cp-freq-badge">' + escapeHtml(freqLabel) + '</span></div>'
+      + '<div class="cp-reminder-meta-item"><span class="cp-dates-label">Next reminder</span><span class="cp-date-chip">' + (c.nextReminder ? formatDate(c.nextReminder.split("T")[0]) : "Not set") + '</span></div>'
+      + '</div>'
+      + '<div class="cp-reminder-freq-row" style="margin-top:0.9rem">'
+      + '<label class="cp-reminder-freq-label">Frequency</label>'
+      + '<select id="cpFrequency">' + freqOptions + '</select>'
+      + '<button class="btn" id="cpSaveReminderBtn" type="button">Save</button>'
+      + '</div>'
+      + '<div class="field-group" id="cpCustomDaysGroup"' + (isCustomFreq ? '' : ' style="display:none"') + '><label>Every how many days?</label><input type="number" id="cpCustomDays" min="1" max="365" placeholder="30" value="' + escapeHtml(customFreqDays) + '" /></div>'
       + '<p id="cpSaveReminderMsg" class="success" aria-live="polite"></p>'
       + '</section>'
 
       + '</div>';
 
+    root.querySelector("#cpNameInput").addEventListener("blur", async (e) => {
+      const newName = e.target.value.trim();
+      if (!newName) { e.target.value = (await freshContact())?.name || ""; return; }
+      await save((c) => ({ ...c, name: newName }));
+    });
     root.querySelector("#cpOpenReminderBtn").addEventListener("click", async () => { showReminderModal(await freshContact()); });
     root.querySelector("#cpDeleteBtn").addEventListener("click", async () => {
       const contact = await freshContact();
