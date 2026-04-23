@@ -100,7 +100,8 @@ function normalizeLog(log = {}) {
     task: (log.task || log.text || "").trim(),
     impact: (log.impact || "").trim(),
     skills: (log.skills || "").trim(),
-    tags: splitTags(log.tags)
+    tags: splitTags(log.tags),
+    blockers: (log.blockers || "").trim()
   };
 }
 
@@ -642,60 +643,152 @@ async function renderContacts(filterText) {
   });
 }
 
-// ── Workspace timeline ───────────────────────────────────────────────────────
+// -- Workspace timeline -------------------------------------------------------
 
 /**
- * Render the day-by-day timeline of work logs on the Workspace page.
- * Groups logs into "This week" and "Previous" sections.
+ * Render logs as weekly tables (Mon-Fri) with an auto-generated top-5 summary.
+ * Each week block = header + daily log table + Friday Weekly Summary.
  */
 async function renderWorkspaceTimeline() {
   const container = document.getElementById("timelineContainer");
   if (!container) return;
   const activeId = getActiveInternshipId();
   if (!activeId) {
-    container.innerHTML = '<p class="timeline-empty">Select or add an internship to see your work timeline.</p>';
+    container.innerHTML = '<p class="timeline-empty">Select or add an internship to start logging your work.</p>';
     return;
   }
   const allLogs = await db.getLogs(activeId);
   if (!allLogs.length) {
-    container.innerHTML = '<p class="timeline-empty">No logs yet.<br>Use the form above to record your first win. 🎉</p>';
+    container.innerHTML = '<p class="timeline-empty">No logs yet. Use the form above to record your first day. \U0001f389</p>';
     return;
   }
-  const sorted = [...allLogs].sort((a, b) => b.date.localeCompare(a.date));
-  const today = new Date();
-  const weekStart = new Date(today);
-  weekStart.setDate(today.getDate() - today.getDay());
-  weekStart.setHours(0, 0, 0, 0);
-  const thisWeek = [];
-  const past = [];
-  sorted.forEach((log) => {
-    const d = parseDateOnly(log.date);
-    if (d >= weekStart) thisWeek.push(log);
-    else past.push(log);
+
+  // Group by calendar week starting Monday
+  function getWeekMonday(dateStr) {
+    const d = parseDateOnly(dateStr);
+    const dow = d.getDay();
+    const mon = new Date(d);
+    mon.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
+    return mon.toISOString().split("T")[0];
+  }
+
+  const weekMap = new Map();
+  allLogs.forEach((log) => {
+    const wk = getWeekMonday(log.date);
+    if (!weekMap.has(wk)) weekMap.set(wk, []);
+    weekMap.get(wk).push(log);
   });
-  function groupByDay(logs) {
-    const map = new Map();
-    logs.forEach((log) => { if (!map.has(log.date)) map.set(log.date, []); map.get(log.date).push(log); });
-    return map;
-  }
-  function renderDayGroup(date, entries) {
-    const entriesHtml = entries.map((log) => {
-      const impactHtml = log.impact ? '<p class="log-impact"><span class="entry-arrow">→</span>' + escapeHtml(log.impact) + '</p>' : '';
-      const skillsHtml = log.skills ? '<p class="log-skills">' + escapeHtml(log.skills) + '</p>' : '';
-      return '<div class="log-entry"><p class="log-task">' + escapeHtml(log.task) + '</p>' + impactHtml + skillsHtml + '</div>';
-    }).join('');
-    return '<div class="day-group"><p class="day-label">' + formatDate(date) + '</p><div class="day-entries">' + entriesHtml + '</div></div>';
-  }
-  let html = '';
-  if (thisWeek.length) {
-    const byDay = groupByDay(thisWeek);
-    html += '<div class="week-section"><p class="week-label">This week</p>' + Array.from(byDay.entries()).map(([d, e]) => renderDayGroup(d, e)).join('') + '</div>';
-  }
-  if (past.length) {
-    const byDay = groupByDay(past);
-    html += '<div class="week-section"><p class="week-label week-label-past">Previous</p>' + Array.from(byDay.entries()).map(([d, e]) => renderDayGroup(d, e)).join('') + '</div>';
-  }
+
+  // Sort weeks newest-first
+  const sortedWeeks = Array.from(weekMap.entries()).sort(([a], [b]) => b.localeCompare(a));
+
+  let html = "";
+
+  sortedWeeks.forEach(([weekMon, logs]) => {
+    const monDate = parseDateOnly(weekMon);
+    const friDate = new Date(monDate);
+    friDate.setDate(monDate.getDate() + 4);
+    const weekLabel = formatDate(weekMon) + " \u2013 " + formatDate(friDate.toISOString().split("T")[0]);
+
+    // Group by day, oldest first for display
+    const dayMap = new Map();
+    logs.forEach((log) => {
+      if (!dayMap.has(log.date)) dayMap.set(log.date, []);
+      dayMap.get(log.date).push(log);
+    });
+    const sortedDays = Array.from(dayMap.entries()).sort(([a], [b]) => a.localeCompare(b));
+
+    // Daily log table rows
+    const tableRows = sortedDays.map(([date, entries]) => {
+      const tasksHtml = entries.map((e) => escapeHtml(e.task)).join("<br><br>");
+      const blockersArr = entries.map((e) => e.blockers).filter(Boolean);
+      const blockersHtml = blockersArr.length ? blockersArr.map(escapeHtml).join("<br>") : '<span class="log-empty-cell">\u2014</span>';
+      return "<tr>"
+        + '<td class="log-td-date">' + formatDate(date) + "</td>"
+        + '<td class="log-td-task">' + tasksHtml + "</td>"
+        + '<td class="log-td-blockers">' + blockersHtml + "</td>"
+        + "</tr>";
+    }).join("");
+
+    // Top-5: sort by impact score
+    const top5 = [...logs].sort((a, b) => scoreImpact(b) - scoreImpact(a)).slice(0, 5);
+    const top5Rows = top5.map((log, i) =>
+      "<tr>"
+      + '<td class="top5-num">' + (i + 1) + ".</td>"
+      + "<td>" + escapeHtml(log.task) + (log.impact ? '<br><span class="summary-impact">\u2192 ' + escapeHtml(log.impact) + "</span>" : "") + "</td>"
+      + "</tr>"
+    ).join("");
+
+    const wkId = "week-" + weekMon.replace(/-/g, "");
+
+    html += '<div class="week-block">'
+      + '<div class="week-block-header">'
+      + '<span class="week-of-label">Daily Log</span>'
+      + '<span class="week-of-sep">\u2014</span>'
+      + '<span class="week-of-date">Week of ' + weekLabel + "</span>"
+      + "</div>"
+
+      + '<div class="daily-log-wrap">'
+      + '<table class="daily-log-table">'
+      + "<thead><tr>"
+      + '<th class="log-th-date">Date</th>'
+      + '<th class="log-th-task">Tasks Completed</th>'
+      + '<th class="log-th-blockers">Questions / Blockers</th>'
+      + "</tr></thead>"
+      + "<tbody>" + tableRows + "</tbody>"
+      + "</table>"
+      + "</div>"
+
+      + '<div class="weekly-summary-block">'
+      + '<div class="weekly-summary-header">'
+      + "<div>"
+      + '<p class="weekly-summary-title">Friday Weekly Summary</p>'
+      + '<p class="weekly-summary-sub">Your top ' + top5.length + ' things this week \u2014 copy into an email to your manager.</p>'
+      + "</div>"
+      + '<button class="btn btn-secondary" type="button" data-copy-week="' + wkId + '" style="font-size:0.82rem;padding:0.4rem 0.9rem">Copy as Email</button>'
+      + "</div>"
+      + '<table class="top5-table">'
+      + "<thead><tr>"
+      + '<th class="top5-num">#</th>'
+      + "<th>Top " + top5.length + " Things I Did This Week</th>"
+      + "</tr></thead>"
+      + "<tbody>" + top5Rows + "</tbody>"
+      + "</table>"
+      + "</div>"
+
+      + "</div>";
+  });
+
   container.innerHTML = html;
+
+  // Wire copy-as-email buttons
+  container.querySelectorAll("[data-copy-week]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const raw = btn.dataset.copyWeek.replace("week-", "");
+      const wkMon = raw.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3");
+      const logs = weekMap.get(wkMon) || [];
+      const top5 = [...logs].sort((a, b) => scoreImpact(b) - scoreImpact(a)).slice(0, 5);
+      const prefs = await db.getPreferences();
+      const manager = prefs.manager_name || "Manager";
+      const me = prefs.your_name || "Your Name";
+      const nextSteps = prefs.next_steps || "";
+      const monDate = parseDateOnly(wkMon);
+      const friDate = new Date(monDate);
+      friDate.setDate(monDate.getDate() + 4);
+      const weekRange = formatDate(wkMon) + " \u2013 " + formatDate(friDate.toISOString().split("T")[0]);
+      const numbered = top5.map((l, i) => (i + 1) + ". " + l.task + (l.impact ? " \u2014 " + l.impact : "")).join("\n");
+      const blockers = logs.map((l) => l.blockers).filter(Boolean).join("; ");
+      const email = "Hi " + manager + ",\n\nHere's my update for the week of " + weekRange + ":\n\nTop " + top5.length + " things I accomplished:\n" + numbered + (blockers ? "\n\nQuestions / Blockers:\n" + blockers : "") + (nextSteps ? "\n\nNext steps:\n" + nextSteps : "") + "\n\nBest,\n" + me;
+      try {
+        await navigator.clipboard.writeText(email);
+        const orig = btn.textContent;
+        btn.textContent = "Copied!";
+        setTimeout(() => { btn.textContent = orig; }, 2000);
+      } catch {
+        alert(email);
+      }
+    });
+  });
 }
 
 // ── Internship panel ──────────────────────────────────────────────────────────
@@ -827,6 +920,7 @@ async function initDashboard() {
   const logImpact = document.getElementById("logImpact");
   const logSkills = document.getElementById("logSkills");
   const logTags = document.getElementById("logTags");
+  const logBlockers = document.getElementById("logBlockers");
   const logError = document.getElementById("logError");
 
   if (logDate) logDate.value = todayDateString();
@@ -840,7 +934,8 @@ async function initDashboard() {
       task: logTask ? logTask.value : "",
       impact: logImpact ? logImpact.value : "",
       skills: logSkills ? logSkills.value : "",
-      tags: logTags ? logTags.value : ""
+      tags: logTags ? logTags.value : "",
+      blockers: logBlockers ? logBlockers.value : ""
     });
     if (!entry.date || !entry.task) { if (logError) logError.textContent = "What did you work on? Task is required."; return; }
     await db.saveLog(entry, getActiveInternshipId());
@@ -848,6 +943,7 @@ async function initDashboard() {
     if (logImpact) logImpact.value = "";
     if (logSkills) logSkills.value = "";
     if (logTags) logTags.value = "";
+    if (logBlockers) logBlockers.value = "";
     await renderWorkspaceTimeline();
     await renderInternshipPanel();
   });

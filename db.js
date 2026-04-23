@@ -140,7 +140,8 @@ function rowToLog(row) {
     task: row.task || "",
     impact: row.impact || "",
     skills: row.skills || "",
-    tags: row.tags ? row.tags.split(",").map(t => t.trim()).filter(Boolean) : []
+    tags: row.tags ? row.tags.split(",").map(t => t.trim()).filter(Boolean) : [],
+    blockers: row.blockers || ""
   };
 }
 
@@ -153,7 +154,8 @@ function logToRow(log, userId, internshipId) {
     task: log.task || "",
     impact: log.impact || "",
     skills: log.skills || "",
-    tags: Array.isArray(log.tags) ? log.tags.join(",") : (log.tags || "")
+    tags: Array.isArray(log.tags) ? log.tags.join(",") : (log.tags || ""),
+    blockers: log.blockers || ""
   };
 }
 

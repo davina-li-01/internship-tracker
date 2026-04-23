@@ -979,3 +979,138 @@ body.dark .auth-tab.active { background: rgba(255,255,255,0.09); }
   .auth-card { padding: 1.75rem 1.25rem; }
   .stat-grid { grid-template-columns: 1fr; }
 }
+
+/* Weekly Log Table */
+
+.week-block {
+  background: rgba(255,252,248,0.82);
+  border: 1px solid rgba(249,115,22,0.13);
+  border-radius: 18px;
+  padding: 1.5rem 1.75rem 1.75rem;
+  margin-bottom: 1.75rem;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.05);
+}
+.week-block-header {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 1.1rem;
+}
+.week-of-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--primary);
+  background: rgba(249,115,22,0.10);
+  padding: 0.18rem 0.65rem;
+  border-radius: 20px;
+}
+.week-of-sep { color: var(--text-muted); font-size: 0.85rem; }
+.week-of-date {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.daily-log-wrap {
+  overflow-x: auto;
+  border-radius: 10px;
+  margin-bottom: 1.25rem;
+}
+.daily-log-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.daily-log-table thead tr { background: #1e3a5f; color: #fff; }
+.daily-log-table thead th {
+  padding: 0.6rem 0.9rem;
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-align: left;
+  white-space: nowrap;
+}
+.daily-log-table tbody tr { border-bottom: 1px solid rgba(0,0,0,0.06); }
+.daily-log-table tbody tr:last-child { border-bottom: none; }
+.daily-log-table tbody tr:nth-child(even) { background: rgba(249,115,22,0.04); }
+.daily-log-table td {
+  padding: 0.65rem 0.9rem;
+  vertical-align: top;
+  color: var(--text-primary);
+  line-height: 1.55;
+}
+.log-th-date, .log-td-date {
+  width: 110px;
+  min-width: 100px;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+.log-th-task { min-width: 220px; }
+.log-th-blockers { min-width: 160px; }
+.log-td-blockers { color: var(--text-secondary); font-size: 0.86rem; }
+.log-empty-cell { color: var(--text-muted); }
+
+/* Weekly Summary Block */
+
+.weekly-summary-block {
+  background: rgba(30,58,95,0.04);
+  border: 1px solid rgba(30,58,95,0.12);
+  border-radius: 12px;
+  padding: 1.1rem 1.25rem 1.25rem;
+}
+.weekly-summary-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+.weekly-summary-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #1e3a5f;
+  margin: 0 0 0.2rem;
+}
+.weekly-summary-sub {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+.top5-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.top5-table thead tr { background: #1e3a5f; color: #fff; }
+.top5-table thead th {
+  padding: 0.5rem 0.85rem;
+  font-weight: 600;
+  font-size: 0.79rem;
+  letter-spacing: 0.04em;
+  text-align: left;
+}
+.top5-table tbody tr { border-bottom: 1px solid rgba(30,58,95,0.08); }
+.top5-table tbody tr:last-child { border-bottom: none; }
+.top5-table tbody tr:nth-child(even) { background: rgba(30,58,95,0.03); }
+.top5-table td {
+  padding: 0.55rem 0.85rem;
+  vertical-align: top;
+  line-height: 1.5;
+}
+.top5-num {
+  width: 32px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--primary);
+  font-size: 0.85rem;
+}
+.summary-impact {
+  font-size: 0.81rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
