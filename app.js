@@ -605,6 +605,62 @@ async function renderContacts() {
   });
 }
 
+// ── Workspace timeline ───────────────────────────────────────────────────────
+
+/**
+ * Render the day-by-day timeline of work logs on the Workspace page.
+ * Groups logs into "This week" and "Previous" sections.
+ */
+async function renderWorkspaceTimeline() {
+  const container = document.getElementById("timelineContainer");
+  if (!container) return;
+  const activeId = getActiveInternshipId();
+  if (!activeId) {
+    container.innerHTML = '<p class="timeline-empty">Select or add an internship to see your work timeline.</p>';
+    return;
+  }
+  const allLogs = await db.getLogs(activeId);
+  if (!allLogs.length) {
+    container.innerHTML = '<p class="timeline-empty">No logs yet.<br>Use the form above to record your first win. 🎉</p>';
+    return;
+  }
+  const sorted = [...allLogs].sort((a, b) => b.date.localeCompare(a.date));
+  const today = new Date();
+  const weekStart = new Date(today);
+  weekStart.setDate(today.getDate() - today.getDay());
+  weekStart.setHours(0, 0, 0, 0);
+  const thisWeek = [];
+  const past = [];
+  sorted.forEach((log) => {
+    const d = parseDateOnly(log.date);
+    if (d >= weekStart) thisWeek.push(log);
+    else past.push(log);
+  });
+  function groupByDay(logs) {
+    const map = new Map();
+    logs.forEach((log) => { if (!map.has(log.date)) map.set(log.date, []); map.get(log.date).push(log); });
+    return map;
+  }
+  function renderDayGroup(date, entries) {
+    const entriesHtml = entries.map((log) => {
+      const impactHtml = log.impact ? '<p class="log-impact"><span class="entry-arrow">→</span>' + escapeHtml(log.impact) + '</p>' : '';
+      const skillsHtml = log.skills ? '<p class="log-skills">' + escapeHtml(log.skills) + '</p>' : '';
+      return '<div class="log-entry"><p class="log-task">' + escapeHtml(log.task) + '</p>' + impactHtml + skillsHtml + '</div>';
+    }).join('');
+    return '<div class="day-group"><p class="day-label">' + formatDate(date) + '</p><div class="day-entries">' + entriesHtml + '</div></div>';
+  }
+  let html = '';
+  if (thisWeek.length) {
+    const byDay = groupByDay(thisWeek);
+    html += '<div class="week-section"><p class="week-label">This week</p>' + Array.from(byDay.entries()).map(([d, e]) => renderDayGroup(d, e)).join('') + '</div>';
+  }
+  if (past.length) {
+    const byDay = groupByDay(past);
+    html += '<div class="week-section"><p class="week-label week-label-past">Previous</p>' + Array.from(byDay.entries()).map(([d, e]) => renderDayGroup(d, e)).join('') + '</div>';
+  }
+  container.innerHTML = html;
+}
+
 // ── Internship panel ──────────────────────────────────────────────────────────
 
 async function renderInternshipPanel() {
@@ -623,17 +679,13 @@ async function renderInternshipPanel() {
   select.innerHTML = internships.map((i) => '<option value="' + i.id + '">' + escapeHtml(i.name) + '</option>').join("");
   select.value = activeId;
   list.innerHTML = internships.map((internship) => {
-    const activeLabel = internship.id === activeId ? '<span class="badge">Active</span>' : "";
-    const duration = (internship.startDate || internship.endDate)
-      ? formatDate(internship.startDate) + " to " + formatDate(internship.endDate)
-      : "Duration not set";
-    return '<li class="list-item">'
-      + '<p><strong>' + escapeHtml(internship.name) + '</strong> ' + activeLabel + '</p>'
-      + '<p class="tiny">' + escapeHtml(internship.company || "No company set") + '</p>'
-      + '<p class="tiny">' + escapeHtml(duration) + '</p>'
-      + '<div class="row wrap internship-actions">'
-      + '<button class="btn btn-secondary" type="button" data-internship-action="edit" data-internship-id="' + internship.id + '">Edit</button>'
-      + '<button class="btn btn-secondary" type="button" data-internship-action="delete" data-internship-id="' + internship.id + '">Delete</button>'
+    const isActive = internship.id === activeId;
+    return '<li class="intern-item' + (isActive ? ' intern-item-active' : '') + '">'
+      + '<span class="intern-name">' + escapeHtml(internship.name) + '</span>'
+      + (internship.company ? '<span class="tiny">' + escapeHtml(internship.company) + '</span>' : '')
+      + '<div class="intern-item-actions">'
+      + '<button class="intern-action-btn" type="button" data-internship-action="edit" data-internship-id="' + internship.id + '">Edit</button>'
+      + '<button class="intern-action-btn" type="button" data-internship-action="delete" data-internship-id="' + internship.id + '">Delete</button>'
       + '</div></li>';
   }).join("");
 }
@@ -719,85 +771,29 @@ async function initDashboard() {
   const logSkills = document.getElementById("logSkills");
   const logTags = document.getElementById("logTags");
   const logError = document.getElementById("logError");
-  const fileInput = document.getElementById("fileInput");
-  const addFileBtn = document.getElementById("addFileBtn");
-  const fileError = document.getElementById("fileError");
-  const managerNameInput = document.getElementById("managerName");
-  const yourNameInput = document.getElementById("yourName");
-  const nextStepsInput = document.getElementById("nextSteps");
-  const previewBtn = document.getElementById("generatePreviewBtn");
-  const previewArea = document.getElementById("summaryPreview");
-  const refreshInsightBtn = document.getElementById("refreshInsightBtn");
-  const dashboardQuote = document.getElementById("dashboardQuote");
 
-  logDate.value = todayDateString();
-
-  const prefs = await db.getPreferences();
-  if (managerNameInput) managerNameInput.value = prefs.manager_name || "";
-  if (yourNameInput) yourNameInput.value = prefs.your_name || "";
-  if (nextStepsInput) nextStepsInput.value = prefs.next_steps || "";
-
-  if (managerNameInput) managerNameInput.addEventListener("input", () => { db.savePreferences({ manager_name: managerNameInput.value }); });
-  if (yourNameInput) yourNameInput.addEventListener("input", () => { db.savePreferences({ your_name: yourNameInput.value }); });
-  if (nextStepsInput) nextStepsInput.addEventListener("input", () => { db.savePreferences({ next_steps: nextStepsInput.value }); });
+  if (logDate) logDate.value = todayDateString();
 
   logForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    logError.textContent = "";
+    if (logError) logError.textContent = "";
     if (!requireActiveInternship(logError)) return;
-    const entry = normalizeLog({ date: logDate.value, task: logTask.value, impact: logImpact.value, skills: logSkills.value, tags: logTags.value });
-    if (!entry.date || !entry.task || !entry.impact || !entry.skills) { logError.textContent = "Date, task, impact, and skills are required."; return; }
+    const entry = normalizeLog({
+      date: logDate ? logDate.value : todayDateString(),
+      task: logTask ? logTask.value : "",
+      impact: logImpact ? logImpact.value : "",
+      skills: logSkills ? logSkills.value : "",
+      tags: logTags ? logTags.value : ""
+    });
+    if (!entry.date || !entry.task) { if (logError) logError.textContent = "What did you work on? Task is required."; return; }
     await db.saveLog(entry, getActiveInternshipId());
-    logTask.value = ""; logImpact.value = ""; logSkills.value = ""; logTags.value = "";
-    await renderLogs();
-    await renderProgressWidget();
-    await renderTopAchievements();
+    if (logTask) logTask.value = "";
+    if (logImpact) logImpact.value = "";
+    if (logSkills) logSkills.value = "";
+    if (logTags) logTags.value = "";
+    await renderWorkspaceTimeline();
     await renderInternshipPanel();
   });
-
-  if (addFileBtn) addFileBtn.addEventListener("click", async () => {
-    fileError.textContent = "";
-    if (!requireActiveInternship(fileError)) return;
-    const selected = Array.from(fileInput.files || []);
-    if (!selected.length) { fileError.textContent = "Please choose at least one PDF."; return; }
-    if (selected.some((f) => !f.name.toLowerCase().endsWith(".pdf"))) { fileError.textContent = "Only PDF files are supported."; return; }
-    try {
-      const date = todayDateString();
-      const encoded = await Promise.all(selected.map(async (file) => normalizeFile({ id: makeId(), name: file.name, data: await readPdfFile(file), date })));
-      for (const file of encoded) await db.saveFile(file, getActiveInternshipId());
-      fileInput.value = "";
-      await renderFiles();
-      await renderInternshipPanel();
-    } catch { fileError.textContent = "Upload failed. Try again with a smaller PDF."; }
-  });
-
-  if (previewBtn) previewBtn.addEventListener("click", async () => {
-    if (!requireActiveInternship(logError, "Add/select an internship to generate a summary.")) return;
-    const allLogs = await db.getLogs(getActiveInternshipId());
-    const logs = allLogs.filter((l) => isDateWithinLastDays(l.date, 7));
-    previewArea.value = buildSummary({ logs, managerName: managerNameInput ? managerNameInput.value : "", yourName: yourNameInput ? yourNameInput.value : "", nextSteps: nextStepsInput ? nextStepsInput.value : "" });
-  });
-
-  if (refreshInsightBtn && dashboardQuote) {
-    refreshInsightBtn.addEventListener("click", async () => { dashboardQuote.textContent = await fetchQuote(); });
-  }
-
-  refreshActivePageData = async () => {
-    const p = await db.getPreferences();
-    if (managerNameInput) managerNameInput.value = p.manager_name || "";
-    if (yourNameInput) yourNameInput.value = p.your_name || "";
-    if (nextStepsInput) nextStepsInput.value = p.next_steps || "";
-    if (previewArea) previewArea.value = "";
-    await renderLogs();
-    await renderFiles();
-    await renderFollowUpAlerts("dashboardFollowUps");
-    await renderProgressWidget();
-    await renderTopAchievements();
-    await renderWeeklyConnections("recentPeopleDashboard");
-    if (dashboardQuote) dashboardQuote.textContent = await fetchQuote();
-  };
-
-  await refreshActivePageData();
 }
 
 // ── Networking ────────────────────────────────────────────────────────────────
@@ -817,6 +813,9 @@ async function initNetworking() {
   const adviceEl = document.getElementById("adviceGiven");
   const notesEl = document.getElementById("contactNotes");
 
+  // Default hidden dateMet to today so normalizeContact always has a value
+  if (dateMetEl && !dateMetEl.value) dateMetEl.value = todayDateString();
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     error.textContent = "";
@@ -826,8 +825,8 @@ async function initNetworking() {
       name: nameEl.value,
       email: emailEl.value,
       company: companyEl ? companyEl.value : "",
-      role: roleEl.value,
-      dateMet: dateMetEl ? dateMetEl.value : "",
+      role: roleEl ? roleEl.value : "",
+      dateMet: dateMetEl ? dateMetEl.value : todayDateString(),
       lastContacted: lastContactedValue,
       followUpFrequency: frequency,
       interests: interestsEl ? interestsEl.value : "",
@@ -848,6 +847,7 @@ async function initNetworking() {
   refreshActivePageData = async () => {
     await renderContacts();
     await renderFollowUpAlerts("networkFollowUps");
+    await renderWeeklyConnections("weeklyConnections");
   };
 
   await refreshActivePageData();
@@ -879,11 +879,10 @@ async function initSummary() {
   if (!generateBtn) return;
   const copyBtn = document.getElementById("copySummaryBtn");
   const summaryArea = document.getElementById("generatedSummary");
-  const quoteText = document.getElementById("quoteText");
   const message = document.getElementById("summaryMessage");
-  const managerNameInput = document.getElementById("summaryManagerName");
-  const yourNameInput = document.getElementById("summaryYourName");
-  const nextStepsInput = document.getElementById("summaryNextSteps");
+  const managerNameInput = document.getElementById("managerName");
+  const yourNameInput = document.getElementById("yourName");
+  const nextStepsInput = document.getElementById("nextSteps");
 
   const prefs = await db.getPreferences();
   if (managerNameInput) managerNameInput.value = prefs.manager_name || "";
@@ -895,19 +894,24 @@ async function initSummary() {
   if (nextStepsInput) nextStepsInput.addEventListener("input", () => { db.savePreferences({ next_steps: nextStepsInput.value }); });
 
   generateBtn.addEventListener("click", async () => {
-    message.textContent = "";
+    if (message) message.textContent = "";
     if (!requireActiveInternship(message, "Add/select an internship first.")) return;
-    const logs = await renderWeeklyLogs();
-    await renderWeeklyConnections("weeklyConnections");
-    summaryArea.value = buildSummary({ logs, managerName: managerNameInput ? managerNameInput.value : "", yourName: yourNameInput ? yourNameInput.value : "", nextSteps: nextStepsInput ? nextStepsInput.value : "" });
-    quoteText.textContent = await fetchQuote();
+    const activeId = getActiveInternshipId();
+    const allLogs = activeId ? await db.getLogs(activeId) : [];
+    const logs = allLogs.filter((l) => isDateWithinLastDays(l.date, 7));
+    if (summaryArea) summaryArea.value = buildSummary({
+      logs,
+      managerName: managerNameInput ? managerNameInput.value : "",
+      yourName: yourNameInput ? yourNameInput.value : "",
+      nextSteps: nextStepsInput ? nextStepsInput.value : ""
+    });
   });
 
   if (copyBtn) copyBtn.addEventListener("click", async () => {
-    message.textContent = "";
-    if (!summaryArea.value.trim()) { message.textContent = "Generate a summary first."; return; }
-    try { await navigator.clipboard.writeText(summaryArea.value); message.textContent = "Summary copied to clipboard."; }
-    catch { message.textContent = "Copy failed. Please copy manually."; }
+    if (message) message.textContent = "";
+    if (!summaryArea || !summaryArea.value.trim()) { if (message) message.textContent = "Generate a summary first."; return; }
+    try { await navigator.clipboard.writeText(summaryArea.value); if (message) message.textContent = "Copied to clipboard."; }
+    catch { if (message) message.textContent = "Copy failed. Please select and copy manually."; }
   });
 
   refreshActivePageData = async () => {
@@ -917,9 +921,8 @@ async function initSummary() {
     if (nextStepsInput) nextStepsInput.value = p.next_steps || "";
     if (summaryArea) summaryArea.value = "";
     if (message) message.textContent = "";
-    if (quoteText) quoteText.textContent = "Click Generate Summary to load a weekly insight.";
-    await renderWeeklyLogs();
-    await renderWeeklyConnections("weeklyConnections");
+    await renderWorkspaceTimeline();
+    await renderFollowUpAlerts("dashboardFollowUps");
   };
 
   await refreshActivePageData();

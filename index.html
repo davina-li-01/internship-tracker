@@ -1,155 +1,135 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>InternTrack | Dashboard</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css" />
-    <script type="module" src="app.js"></script>
-  </head>
-  <body data-page="dashboard">
-    <header class="site-header">
-      <div class="container nav-wrap">
-        <h1 class="brand">InternTrack</h1>
-        <nav class="nav" aria-label="Main navigation">
-          <a href="index.html" class="nav-link active">Dashboard</a>
-          <a href="network.html" class="nav-link">Networking</a>
-          <a href="summary.html" class="nav-link">Weekly Summary</a>
-        </nav>
-        <button id="themeToggle" class="btn btn-secondary" type="button">Dark Mode</button>
-        <button id="signOutBtn" class="btn btn-secondary" type="button">Sign Out</button>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InternTrack — Workspace</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="workspace">
+
+  <div class="app-layout">
+
+    <!-- ── Sidebar ───────────────────────────────────── -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">InternTrack</div>
+
+      <p class="sidebar-label">Internships</p>
+      <div class="sidebar-select-wrap">
+        <select id="internshipSelect" title="Switch internship"></select>
       </div>
-    </header>
+      <ul id="internshipList" class="intern-list"></ul>
+      <button id="addInternshipBtn" class="sidebar-add-btn" type="button">+ New Internship</button>
+      <p id="internshipError" class="error" style="font-size:0.72rem;margin:0.2rem 0 0"></p>
 
-    <main class="container app-shell">
-      <aside class="card internship-panel">
-        <h2>Internships</h2>
-        <p class="muted">Switch between current and past internships.</p>
+      <nav class="sidebar-nav">
+        <a href="index.html" class="s-link active">Workspace</a>
+        <a href="network.html" class="s-link">Networking</a>
+      </nav>
 
-        <div class="field-group">
-          <label for="internshipSelect">Active Internship</label>
-          <select id="internshipSelect"></select>
+      <div class="sidebar-footer">
+        <button id="themeToggle" class="s-btn" type="button">Dark Mode</button>
+        <button id="signOutBtn" class="s-btn" type="button">Sign Out</button>
+      </div>
+    </aside>
+
+    <!-- ── Main Scroll ───────────────────────────────── -->
+    <div class="main-scroll">
+      <div class="workspace-content">
+
+        <!-- Page header -->
+        <div>
+          <h1 class="page-heading">Workspace</h1>
+          <p class="page-subheading">Log your work, track progress, and generate weekly updates.</p>
         </div>
 
-        <ul id="internshipList" class="list compact-list"></ul>
+        <!-- Log Composer -->
+        <div class="card log-composer">
+          <form id="logForm" autocomplete="off">
+            <textarea
+              id="logTask"
+              rows="2"
+              placeholder="What did you work on today?"
+              required
+            ></textarea>
 
-        <button id="addInternshipBtn" class="btn btn-secondary" type="button">+ New Internship</button>
-        <p id="internshipError" class="error" aria-live="polite"></p>
-      </aside>
-
-      <section class="main-content single-col">
-        <section class="card">
-          <h2>People to Follow Up With</h2>
-          <ul id="dashboardFollowUps" class="list"></ul>
-        </section>
-
-        <section class="dashboard-columns">
-          <div class="dashboard-center">
-            <section class="card">
-              <h2>Impact Logs</h2>
-              <form id="logForm" novalidate>
-                <div class="field-group">
+            <div class="log-details">
+              <div class="log-details-row">
+                <div class="field-group" style="margin:0">
                   <label for="logDate">Date</label>
-                  <input id="logDate" type="date" required />
+                  <input type="date" id="logDate" />
                 </div>
-                <div class="field-group">
-                  <label for="logTask">What did you do?</label>
-                  <textarea id="logTask" rows="3" required></textarea>
+                <div class="field-group" style="margin:0">
+                  <label for="logImpact">Impact <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+                  <input type="text" id="logImpact" placeholder="What was the outcome?" />
                 </div>
-                <div class="field-group">
-                  <label for="logImpact">What was the impact?</label>
-                  <textarea id="logImpact" rows="3" required></textarea>
-                </div>
-                <div class="field-group">
-                  <label for="logSkills">Skills used/learned</label>
-                  <textarea id="logSkills" rows="2" required></textarea>
-                </div>
-                <div class="field-group">
-                  <label for="logTags">Tags (optional, comma-separated)</label>
-                  <input id="logTags" type="text" placeholder="frontend, meetings, analysis" />
-                </div>
-                <p id="logError" class="error" aria-live="polite"></p>
-                <button class="btn" type="submit">Add Impact Log</button>
-              </form>
-            </section>
-
-            <section class="card">
-              <h2>Saved Impact Logs</h2>
-              <ul id="logList" class="list"></ul>
-            </section>
-
-            <section class="card">
-              <h2>PDF Documentation</h2>
-              <p class="muted">Attach offer letters, project docs, and other PDFs to this internship.</p>
-              <div class="row wrap">
-                <input id="fileInput" type="file" accept=".pdf,application/pdf" multiple />
-                <button id="addFileBtn" class="btn" type="button">Upload PDF(s)</button>
               </div>
-              <p id="fileError" class="error" aria-live="polite"></p>
-              <ul id="fileList" class="list"></ul>
-            </section>
+              <div class="log-details-row">
+                <div class="field-group" style="margin:0">
+                  <label for="logSkills">Skills <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+                  <input type="text" id="logSkills" placeholder="Python, communication…" />
+                </div>
+                <div class="field-group" style="margin:0">
+                  <label for="logTags">Tags <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+                  <input type="text" id="logTags" placeholder="project-x, design…" />
+                </div>
+              </div>
+            </div>
+
+            <div class="log-actions">
+              <p id="logError" class="error" style="margin:0"></p>
+              <button type="submit" class="btn">Log it →</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Timeline -->
+        <div id="timelineContainer"></div>
+
+        <!-- Weekly Update -->
+        <div class="card summary-card">
+          <div class="summary-header">
+            <h2>Weekly Update</h2>
+            <div class="summary-actions">
+              <button id="generateSummaryBtn" class="btn" type="button">Generate</button>
+              <button id="copySummaryBtn" class="btn btn-secondary" type="button">Copy</button>
+            </div>
           </div>
 
-          <div class="dashboard-right">
-            <section class="card">
-              <h2>Weekly Progress</h2>
-              <div class="stat-grid">
-                <div class="stat-card">
-                  <p class="tiny">Logs</p>
-                  <p id="statLogs" class="stat-value">0</p>
-                </div>
-                <div class="stat-card">
-                  <p class="tiny">Contacts Met</p>
-                  <p id="statContacts" class="stat-value">0</p>
-                </div>
-                <div class="stat-card">
-                  <p class="tiny">Follow-ups Due</p>
-                  <p id="statFollowUps" class="stat-value">0</p>
-                </div>
-              </div>
-            </section>
-
-            <section class="card">
-              <h2>Top Achievements</h2>
-              <ul id="topAchievements" class="list"></ul>
-            </section>
-
-            <section class="card">
-              <h2>People I Connected With This Week</h2>
-              <ul id="recentPeopleDashboard" class="list"></ul>
-            </section>
-
-            <section class="card">
-              <h2>Weekly Insight for Growth</h2>
-              <p id="dashboardQuote" class="quote">Click refresh to load an insight.</p>
-              <button id="refreshInsightBtn" class="btn btn-secondary" type="button">Refresh Insight</button>
-            </section>
-
-            <section class="card">
-              <h2>Weekly Summary Preview</h2>
-              <div class="two-col">
-                <div class="field-group">
-                  <label for="managerName">Manager Name</label>
-                  <input id="managerName" type="text" placeholder="Manager" />
-                </div>
-                <div class="field-group">
-                  <label for="yourName">Your Name</label>
-                  <input id="yourName" type="text" placeholder="Your name" />
-                </div>
-              </div>
-              <div class="field-group">
-                <label for="nextSteps">Next steps (optional)</label>
-                <textarea id="nextSteps" rows="2" placeholder="Share priorities for next week"></textarea>
-              </div>
-              <button id="generatePreviewBtn" class="btn" type="button">Generate Summary</button>
-              <textarea id="summaryPreview" rows="12" readonly></textarea>
-            </section>
+          <div class="two-col">
+            <div class="field-group">
+              <label for="managerName">To (manager)</label>
+              <input type="text" id="managerName" placeholder="Manager's name" />
+            </div>
+            <div class="field-group">
+              <label for="yourName">From (you)</label>
+              <input type="text" id="yourName" placeholder="Your name" />
+            </div>
           </div>
-        </section>
-      </section>
-    </main>
-  </body>
+
+          <div class="field-group">
+            <label for="nextSteps">Next steps / plans</label>
+            <input type="text" id="nextSteps" placeholder="What are you working on next?" />
+          </div>
+
+          <p id="summaryMessage" class="muted" style="font-size:0.82rem;margin-bottom:0.5rem"></p>
+          <textarea id="generatedSummary" rows="10" readonly placeholder="Your weekly update will appear here…"></textarea>
+        </div>
+
+        <!-- Follow-up Reminders -->
+        <div class="card reminders-section">
+          <h2>Reminders</h2>
+          <ul id="dashboardFollowUps" class="list"></ul>
+        </div>
+
+      </div>
+    </div>
+
+  </div><!-- /.app-layout -->
+
+  <script type="module" src="app.js"></script>
+</body>
 </html>

@@ -1,106 +1,107 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>InternTrack | Networking</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css" />
-    <script type="module" src="app.js"></script>
-  </head>
-  <body data-page="network">
-    <header class="site-header">
-      <div class="container nav-wrap">
-        <h1 class="brand">InternTrack</h1>
-        <nav class="nav" aria-label="Main navigation">
-          <a href="index.html" class="nav-link">Dashboard</a>
-          <a href="network.html" class="nav-link active">Networking</a>
-          <a href="summary.html" class="nav-link">Weekly Summary</a>
-        </nav>
-        <button id="themeToggle" class="btn btn-secondary" type="button">Dark Mode</button>
-        <button id="signOutBtn" class="btn btn-secondary" type="button">Sign Out</button>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InternTrack — Networking</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="network">
+
+  <div class="app-layout">
+
+    <!-- ── Sidebar ───────────────────────────────────── -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">InternTrack</div>
+
+      <nav class="sidebar-nav">
+        <a href="index.html" class="s-link">Workspace</a>
+        <a href="network.html" class="s-link active">Networking</a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button id="themeToggle" class="s-btn" type="button">Dark Mode</button>
+        <button id="signOutBtn" class="s-btn" type="button">Sign Out</button>
       </div>
-    </header>
+    </aside>
 
-    <main class="container network-main">
+    <!-- ── Main Scroll ───────────────────────────────── -->
+    <div class="main-scroll">
+      <div class="network-content">
 
-      <!-- LEFT: Add contact form -->
-      <div class="network-left">
-        <section class="card">
-          <h2>Add Networking Contact</h2>
-          <form id="contactForm" novalidate>
-            <div class="two-col">
-              <div class="field-group">
-                <label for="contactName">Name <span class="required">*</span></label>
-                <input id="contactName" type="text" required />
+        <!-- Left: Add contact + contacts list -->
+        <div class="network-left">
+
+          <div class="card">
+            <h2>Add Contact</h2>
+            <form id="contactForm" autocomplete="off">
+              <!-- hidden date so normalizeContact gets a dateMet value -->
+              <input type="hidden" id="dateMet" />
+
+              <div class="two-col">
+                <div class="field-group">
+                  <label for="contactName">Name <span class="required">*</span></label>
+                  <input type="text" id="contactName" placeholder="Full name" required />
+                </div>
+                <div class="field-group">
+                  <label for="contactRole">Role / Title</label>
+                  <input type="text" id="contactRole" placeholder="Software Engineer" />
+                </div>
               </div>
-              <div class="field-group">
-                <label for="contactEmail">Email <span class="required">*</span></label>
-                <input id="contactEmail" type="email" required />
+
+              <div class="two-col">
+                <div class="field-group">
+                  <label for="contactCompany">Company <span class="required">*</span></label>
+                  <input type="text" id="contactCompany" placeholder="Company name" required />
+                </div>
+                <div class="field-group">
+                  <label for="contactEmail">Email <span class="required">*</span></label>
+                  <input type="email" id="contactEmail" placeholder="email@example.com" required />
+                </div>
               </div>
-            </div>
-            <div class="two-col">
+
               <div class="field-group">
-                <label for="contactCompany">Company <span class="required">*</span></label>
-                <input id="contactCompany" type="text" placeholder="Google, Meta, etc." required />
+                <label for="contactNotes">Notes</label>
+                <textarea id="contactNotes" rows="2" placeholder="How you met, key topics, advice given…"></textarea>
               </div>
-              <div class="field-group">
-                <label for="contactRole">Role</label>
-                <input id="contactRole" type="text" placeholder="Software Engineer" />
+
+              <p id="contactError" class="error"></p>
+              <div class="row">
+                <button type="submit" class="btn">Add Contact</button>
               </div>
-            </div>
-            <div class="two-col">
-              <div class="field-group">
-                <label for="dateMet">Date Met <span class="required">*</span></label>
-                <input id="dateMet" type="date" required />
-              </div>
-              <div class="field-group">
-                <label for="lastContacted">Last Contacted</label>
-                <input id="lastContacted" type="date" />
-              </div>
-            </div>
-            <div class="field-group">
-              <label for="followUpFrequency">Stay in touch frequency</label>
-              <select id="followUpFrequency">
-                <option value="monthly">Monthly</option>
-                <option value="bimonthly">Every 2 months</option>
-                <option value="quarterly">Quarterly</option>
-                <option value="none">No reminders</option>
-              </select>
-            </div>
-            <div class="field-group">
-              <label for="interests">Interests</label>
-              <input id="interests" type="text" placeholder="AI, product, front-end" />
-            </div>
-            <div class="field-group">
-              <label for="adviceGiven">Advice Given</label>
-              <textarea id="adviceGiven" rows="2"></textarea>
-            </div>
-            <div class="field-group">
-              <label for="contactNotes">Notes</label>
-              <textarea id="contactNotes" rows="3"></textarea>
-            </div>
-            <p id="contactError" class="error" aria-live="polite"></p>
-            <button class="btn" type="submit">Save Contact</button>
-          </form>
-        </section>
+            </form>
+          </div>
+
+          <div class="card">
+            <h2>Your Network</h2>
+            <ul id="contactList" class="list"></ul>
+          </div>
+
+        </div><!-- /.network-left -->
+
+        <!-- Right: Reminders + weekly connections -->
+        <div class="network-right">
+
+          <div class="card">
+            <h2>Upcoming Reminders</h2>
+            <ul id="networkFollowUps" class="list"></ul>
+          </div>
+
+          <div class="card">
+            <h2>Weekly Connections</h2>
+            <div id="weeklyConnections"></div>
+          </div>
+
+        </div><!-- /.network-right -->
+
       </div>
+    </div>
 
-      <!-- RIGHT: Reminders + Contact list -->
-      <div class="network-right">
-        <section class="card">
-          <h2>Reminders &amp; Follow-ups</h2>
-          <ul id="networkFollowUps" class="list"></ul>
-        </section>
+  </div><!-- /.app-layout -->
 
-        <section class="card">
-          <h2>Contact List</h2>
-          <ul id="contactList" class="list"></ul>
-        </section>
-      </div>
-
-    </main>
-  </body>
+  <script type="module" src="app.js"></script>
+</body>
 </html>
