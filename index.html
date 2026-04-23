@@ -64,46 +64,45 @@
       <div class="workspace-content">
 
         <!-- Page header -->
-        <div>
+        <div class="ws-page-header">
           <h1 class="page-heading">Workspace</h1>
-          <p class="page-subheading">Log your work, track progress, and generate weekly updates.</p>
+          <p class="page-subheading">Log daily → pick your top 5 → send your manager a clean update.</p>
         </div>
 
-        <!-- Log Composer -->
+        <!-- ① Daily Log -->
         <div class="card log-composer">
+          <div class="log-composer-header">
+            <p class="section-eyebrow">① Daily Log</p>
+            <input type="date" id="logDate" class="log-date-inline" />
+          </div>
           <form id="logForm" autocomplete="off">
-            <textarea
-              id="logTask"
-              rows="2"
-              placeholder="What did you work on today?"
-              required
-            ></textarea>
 
-            <div class="log-details">
-              <div class="log-details-row">
-                <div class="field-group" style="margin:0">
-                  <label for="logDate">Date</label>
-                  <input type="date" id="logDate" />
-                </div>
-                <div class="field-group" style="margin:0">
-                  <label for="logImpact">Impact <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
-                  <input type="text" id="logImpact" placeholder="What was the outcome?" />
-                </div>
-              </div>
-              <div class="log-details-row">
-                <div class="field-group" style="margin:0">
-                  <label for="logSkills">Skills <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
-                  <input type="text" id="logSkills" placeholder="Python, communication…" />
-                </div>
-                <div class="field-group" style="margin:0">
-                  <label for="logTags">Tags <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
-                  <input type="text" id="logTags" placeholder="project-x, design…" />
-                </div>
-              </div>
+            <div class="log-field-block">
+              <label class="log-field-label" for="logTask">Task Completed</label>
+              <textarea
+                id="logTask"
+                rows="3"
+                placeholder="What did you work on today?"
+                required
+              ></textarea>
             </div>
-            <div class="field-group" style="margin:0.5rem 0 0">
-              <label for="logBlockers">Questions / Blockers <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
-              <input type="text" id="logBlockers" placeholder="Any blockers or open questions?" />
+
+            <div class="log-field-block">
+              <label class="log-field-label" for="logImpact">Impact <span class="opt-label">(optional)</span></label>
+              <textarea
+                id="logImpact"
+                rows="2"
+                placeholder="What was the outcome or result?"
+              ></textarea>
+            </div>
+
+            <div class="log-field-block" style="margin-bottom:0">
+              <label class="log-field-label" for="logBlockers">Questions / Blockers <span class="opt-label">(optional)</span></label>
+              <textarea
+                id="logBlockers"
+                rows="2"
+                placeholder="Any blockers or open questions?"
+              ></textarea>
             </div>
 
             <div class="log-actions">
@@ -113,43 +112,45 @@
           </form>
         </div>
 
-        <!-- Timeline -->
+        <!-- Daily log history -->
         <div id="timelineContainer"></div>
 
-        <!-- Weekly Update -->
-        <div class="card summary-card">
-          <div class="summary-header">
-            <h2>Weekly Update</h2>
-            <div class="summary-actions">
-              <button id="generateSummaryBtn" class="btn" type="button">Generate</button>
-              <button id="copySummaryBtn" class="btn btn-secondary" type="button">Copy</button>
-            </div>
+        <!-- ② Weekly Focus -->
+        <div class="card" id="weeklyFocusCard">
+          <p class="section-eyebrow">② Weekly Focus</p>
+          <h2 class="focus-heading">👉 Top 5 Things This Week</h2>
+          <p class="page-subheading focus-sub">Check the logs you want to highlight, or add an item manually.</p>
+          <div id="weeklyFocusContainer"></div>
+          <div class="manual-add-row">
+            <input type="text" id="manualFocusInput" placeholder="Add an item manually…" />
+            <button class="btn btn-secondary" id="addManualFocusBtn" type="button">+ Add</button>
           </div>
+          <p id="focusCount" class="focus-count"></p>
+        </div>
 
-          <div class="two-col">
-            <div class="field-group">
+        <!-- ③ Weekly Update -->
+        <div class="card summary-card">
+          <p class="section-eyebrow">③ Weekly Update</p>
+          <h2 class="focus-heading">Manager Update</h2>
+          <p class="page-subheading focus-sub">Auto-generated from your Top 5 selections and any blockers.</p>
+
+          <div class="two-col" style="margin-bottom:0.85rem">
+            <div class="field-group" style="margin:0">
               <label for="managerName">To (manager)</label>
               <input type="text" id="managerName" placeholder="Manager's name" />
             </div>
-            <div class="field-group">
+            <div class="field-group" style="margin:0">
               <label for="yourName">From (you)</label>
               <input type="text" id="yourName" placeholder="Your name" />
             </div>
           </div>
 
-          <div class="field-group">
-            <label for="nextSteps">Next steps / plans</label>
-            <input type="text" id="nextSteps" placeholder="What are you working on next?" />
+          <p id="summaryMessage" class="muted" style="font-size:0.82rem;margin-bottom:0.5rem" aria-live="polite"></p>
+          <textarea id="generatedSummary" rows="11" readonly placeholder="Select your Top 5 above, then click Generate…"></textarea>
+          <div class="update-actions">
+            <button id="generateSummaryBtn" class="btn" type="button">Generate Update →</button>
+            <button id="copySummaryBtn" class="btn btn-secondary" type="button">Copy</button>
           </div>
-
-          <p id="summaryMessage" class="muted" style="font-size:0.82rem;margin-bottom:0.5rem"></p>
-          <textarea id="generatedSummary" rows="10" readonly placeholder="Your weekly update will appear here…"></textarea>
-        </div>
-
-        <!-- Follow-up Reminders -->
-        <div class="card reminders-section">
-          <h2>Reminders</h2>
-          <ul id="dashboardFollowUps" class="list"></ul>
         </div>
 
       </div>

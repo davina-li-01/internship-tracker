@@ -643,27 +643,111 @@ async function renderContacts(filterText) {
   });
 }
 
+// ── Weekly Focus ──────────────────────────────────────────────────────────────
+
+/** In-memory list of manually added focus items for the current session. */
+let manualFocusItems = [];
+
+async function renderWeeklyFocus() {
+  const container = document.getElementById("weeklyFocusContainer");
+  const countEl   = document.getElementById("focusCount");
+  if (!container) return;
+
+  const activeId = getActiveInternshipId();
+  if (!activeId) {
+    container.innerHTML = '<p class="empty">Select an internship to see this week\'s logs.</p>';
+    if (countEl) countEl.textContent = "";
+    return;
+  }
+
+  const allLogs  = await db.getLogs(activeId);
+  const weekLogs = allLogs
+    .filter((l) => isDateWithinLastDays(l.date, 7))
+    .sort((a, b) => scoreImpact(b) - scoreImpact(a));
+
+  const preselectedIds = new Set(weekLogs.slice(0, 5).map((l) => l.id));
+
+  let html = "";
+  if (!weekLogs.length && !manualFocusItems.length) {
+    html = '<p class="empty focus-empty">No logs this week yet — add some using the Daily Log above.</p>';
+  } else {
+    weekLogs.forEach((log) => {
+      const checked = preselectedIds.has(log.id) ? "checked" : "";
+      html += '<label class="focus-item">'
+        + '<input type="checkbox" class="focus-checkbox" data-log-id="' + escapeHtml(log.id) + '" ' + checked + ' />'
+        + '<span class="focus-item-body">'
+        + '<span class="focus-text">' + escapeHtml(log.task) + '</span>'
+        + (log.impact ? '<span class="focus-impact">→ ' + escapeHtml(log.impact) + '</span>' : '')
+        + '</span>'
+        + '<span class="focus-date">' + formatDate(log.date) + '</span>'
+        + '</label>';
+    });
+    manualFocusItems.forEach((item, idx) => {
+      html += '<label class="focus-item focus-item-manual">'
+        + '<input type="checkbox" class="focus-checkbox" data-manual-idx="' + idx + '" checked />'
+        + '<span class="focus-item-body">'
+        + '<span class="focus-text">' + escapeHtml(item) + '</span>'
+        + '<span class="focus-manual-tag">manual</span>'
+        + '</span>'
+        + '<button class="focus-remove" type="button" data-manual-idx="' + idx + '" title="Remove">×</button>'
+        + '</label>';
+    });
+  }
+
+  container.innerHTML = html;
+
+  container.querySelectorAll(".focus-remove").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      manualFocusItems.splice(parseInt(btn.dataset.manualIdx), 1);
+      renderWeeklyFocus();
+    });
+  });
+
+  function updateCount() {
+    if (countEl) {
+      const n = container.querySelectorAll(".focus-checkbox:checked").length;
+      countEl.textContent = n + " item" + (n !== 1 ? "s" : "") + " selected";
+    }
+  }
+  container.querySelectorAll(".focus-checkbox").forEach((cb) => {
+    cb.addEventListener("change", updateCount);
+  });
+  updateCount();
+}
+
+function initWeeklyFocus() {
+  const addBtn = document.getElementById("addManualFocusBtn");
+  const input  = document.getElementById("manualFocusInput");
+  if (!addBtn || !input) return;
+  const add = () => {
+    const text = input.value.trim();
+    if (!text) return;
+    manualFocusItems.push(text);
+    input.value = "";
+    renderWeeklyFocus();
+  };
+  addBtn.addEventListener("click", add);
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); add(); } });
+}
+
 // -- Workspace timeline -------------------------------------------------------
 
-/**
- * Render logs as weekly tables (Mon-Fri) with an auto-generated top-5 summary.
- * Each week block = header + daily log table + Friday Weekly Summary.
- */
 async function renderWorkspaceTimeline() {
   const container = document.getElementById("timelineContainer");
   if (!container) return;
   const activeId = getActiveInternshipId();
   if (!activeId) {
-    container.innerHTML = '<p class="timeline-empty">Select or add an internship to start logging your work.</p>';
+    container.innerHTML = '<p class="timeline-empty">Select or add an internship to start logging.</p>';
     return;
   }
   const allLogs = await db.getLogs(activeId);
   if (!allLogs.length) {
-    container.innerHTML = '<p class="timeline-empty">No logs yet. Use the form above to record your first day. \U0001f389</p>';
+    container.innerHTML = '<p class="timeline-empty">No logs yet. Use the form above to record your first entry. 🎉</p>';
     return;
   }
 
-  // Group by calendar week starting Monday
   function getWeekMonday(dateStr) {
     const d = parseDateOnly(dateStr);
     const dow = d.getDay();
@@ -679,116 +763,37 @@ async function renderWorkspaceTimeline() {
     weekMap.get(wk).push(log);
   });
 
-  // Sort weeks newest-first
   const sortedWeeks = Array.from(weekMap.entries()).sort(([a], [b]) => b.localeCompare(a));
 
   let html = "";
-
   sortedWeeks.forEach(([weekMon, logs]) => {
     const monDate = parseDateOnly(weekMon);
     const friDate = new Date(monDate);
     friDate.setDate(monDate.getDate() + 4);
-    const weekLabel = formatDate(weekMon) + " \u2013 " + formatDate(friDate.toISOString().split("T")[0]);
+    const weekLabel = "Week of " + formatDate(weekMon) + " \u2013 " + formatDate(friDate.toISOString().split("T")[0]);
 
-    // Group by day, oldest first for display
-    const dayMap = new Map();
-    logs.forEach((log) => {
-      if (!dayMap.has(log.date)) dayMap.set(log.date, []);
-      dayMap.get(log.date).push(log);
-    });
-    const sortedDays = Array.from(dayMap.entries()).sort(([a], [b]) => a.localeCompare(b));
-
-    // Daily log table rows
-    const tableRows = sortedDays.map(([date, entries]) => {
-      const tasksHtml = entries.map((e) => escapeHtml(e.task)).join("<br><br>");
-      const blockersArr = entries.map((e) => e.blockers).filter(Boolean);
-      const blockersHtml = blockersArr.length ? blockersArr.map(escapeHtml).join("<br>") : '<span class="log-empty-cell">\u2014</span>';
-      return "<tr>"
-        + '<td class="log-td-date">' + formatDate(date) + "</td>"
-        + '<td class="log-td-task">' + tasksHtml + "</td>"
-        + '<td class="log-td-blockers">' + blockersHtml + "</td>"
-        + "</tr>";
+    const sortedLogs = [...logs].sort((a, b) => b.date.localeCompare(a.date));
+    const rows = sortedLogs.map((log) => {
+      const blockerHtml = log.blockers
+        ? '<span class="log-blocker-badge">\u26a0 ' + escapeHtml(log.blockers) + "</span>"
+        : "";
+      return '<div class="log-row">'
+        + '<span class="log-row-date">' + formatDate(log.date) + "</span>"
+        + '<div class="log-row-body">'
+        + '<p class="log-task">' + escapeHtml(log.task) + "</p>"
+        + (log.impact ? '<p class="log-impact"><span class="entry-arrow">\u2192</span> ' + escapeHtml(log.impact) + "</p>" : "")
+        + blockerHtml
+        + "</div>"
+        + "</div>";
     }).join("");
 
-    // Top-5: sort by impact score
-    const top5 = [...logs].sort((a, b) => scoreImpact(b) - scoreImpact(a)).slice(0, 5);
-    const top5Rows = top5.map((log, i) =>
-      "<tr>"
-      + '<td class="top5-num">' + (i + 1) + ".</td>"
-      + "<td>" + escapeHtml(log.task) + (log.impact ? '<br><span class="summary-impact">\u2192 ' + escapeHtml(log.impact) + "</span>" : "") + "</td>"
-      + "</tr>"
-    ).join("");
-
-    const wkId = "week-" + weekMon.replace(/-/g, "");
-
-    html += '<div class="week-block">'
-      + '<div class="week-block-header">'
-      + '<span class="week-of-label">Daily Log</span>'
-      + '<span class="week-of-sep">\u2014</span>'
-      + '<span class="week-of-date">Week of ' + weekLabel + "</span>"
-      + "</div>"
-
-      + '<div class="daily-log-wrap">'
-      + '<table class="daily-log-table">'
-      + "<thead><tr>"
-      + '<th class="log-th-date">Date</th>'
-      + '<th class="log-th-task">Tasks Completed</th>'
-      + '<th class="log-th-blockers">Questions / Blockers</th>'
-      + "</tr></thead>"
-      + "<tbody>" + tableRows + "</tbody>"
-      + "</table>"
-      + "</div>"
-
-      + '<div class="weekly-summary-block">'
-      + '<div class="weekly-summary-header">'
-      + "<div>"
-      + '<p class="weekly-summary-title">Friday Weekly Summary</p>'
-      + '<p class="weekly-summary-sub">Your top ' + top5.length + ' things this week \u2014 copy into an email to your manager.</p>'
-      + "</div>"
-      + '<button class="btn btn-secondary" type="button" data-copy-week="' + wkId + '" style="font-size:0.82rem;padding:0.4rem 0.9rem">Copy as Email</button>'
-      + "</div>"
-      + '<table class="top5-table">'
-      + "<thead><tr>"
-      + '<th class="top5-num">#</th>'
-      + "<th>Top " + top5.length + " Things I Did This Week</th>"
-      + "</tr></thead>"
-      + "<tbody>" + top5Rows + "</tbody>"
-      + "</table>"
-      + "</div>"
-
+    html += '<div class="week-section">'
+      + '<p class="week-label">' + weekLabel + "</p>"
+      + '<div class="week-entries">' + rows + "</div>"
       + "</div>";
   });
 
   container.innerHTML = html;
-
-  // Wire copy-as-email buttons
-  container.querySelectorAll("[data-copy-week]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const raw = btn.dataset.copyWeek.replace("week-", "");
-      const wkMon = raw.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3");
-      const logs = weekMap.get(wkMon) || [];
-      const top5 = [...logs].sort((a, b) => scoreImpact(b) - scoreImpact(a)).slice(0, 5);
-      const prefs = await db.getPreferences();
-      const manager = prefs.manager_name || "Manager";
-      const me = prefs.your_name || "Your Name";
-      const nextSteps = prefs.next_steps || "";
-      const monDate = parseDateOnly(wkMon);
-      const friDate = new Date(monDate);
-      friDate.setDate(monDate.getDate() + 4);
-      const weekRange = formatDate(wkMon) + " \u2013 " + formatDate(friDate.toISOString().split("T")[0]);
-      const numbered = top5.map((l, i) => (i + 1) + ". " + l.task + (l.impact ? " \u2014 " + l.impact : "")).join("\n");
-      const blockers = logs.map((l) => l.blockers).filter(Boolean).join("; ");
-      const email = "Hi " + manager + ",\n\nHere's my update for the week of " + weekRange + ":\n\nTop " + top5.length + " things I accomplished:\n" + numbered + (blockers ? "\n\nQuestions / Blockers:\n" + blockers : "") + (nextSteps ? "\n\nNext steps:\n" + nextSteps : "") + "\n\nBest,\n" + me;
-      try {
-        await navigator.clipboard.writeText(email);
-        const orig = btn.textContent;
-        btn.textContent = "Copied!";
-        setTimeout(() => { btn.textContent = orig; }, 2000);
-      } catch {
-        alert(email);
-      }
-    });
-  });
 }
 
 // ── Internship panel ──────────────────────────────────────────────────────────
@@ -918,8 +923,6 @@ async function initDashboard() {
   const logDate = document.getElementById("logDate");
   const logTask = document.getElementById("logTask");
   const logImpact = document.getElementById("logImpact");
-  const logSkills = document.getElementById("logSkills");
-  const logTags = document.getElementById("logTags");
   const logBlockers = document.getElementById("logBlockers");
   const logError = document.getElementById("logError");
 
@@ -933,18 +936,15 @@ async function initDashboard() {
       date: logDate ? logDate.value : todayDateString(),
       task: logTask ? logTask.value : "",
       impact: logImpact ? logImpact.value : "",
-      skills: logSkills ? logSkills.value : "",
-      tags: logTags ? logTags.value : "",
       blockers: logBlockers ? logBlockers.value : ""
     });
     if (!entry.date || !entry.task) { if (logError) logError.textContent = "What did you work on? Task is required."; return; }
     await db.saveLog(entry, getActiveInternshipId());
     if (logTask) logTask.value = "";
     if (logImpact) logImpact.value = "";
-    if (logSkills) logSkills.value = "";
-    if (logTags) logTags.value = "";
     if (logBlockers) logBlockers.value = "";
     await renderWorkspaceTimeline();
+    await renderWeeklyFocus();
     await renderInternshipPanel();
   });
 }
@@ -1051,16 +1051,66 @@ async function initSummary() {
 
   generateBtn.addEventListener("click", async () => {
     if (message) message.textContent = "";
-    if (!requireActiveInternship(message, "Add/select an internship first.")) return;
-    const activeId = getActiveInternshipId();
-    const allLogs = activeId ? await db.getLogs(activeId) : [];
-    const logs = allLogs.filter((l) => isDateWithinLastDays(l.date, 7));
-    if (summaryArea) summaryArea.value = buildSummary({
-      logs,
-      managerName: managerNameInput ? managerNameInput.value : "",
-      yourName: yourNameInput ? yourNameInput.value : "",
-      nextSteps: nextStepsInput ? nextStepsInput.value : ""
-    });
+    if (!requireActiveInternship(message, "Add or select an internship first.")) return;
+    const activeId  = getActiveInternshipId();
+    const allLogs   = activeId ? await db.getLogs(activeId) : [];
+    const weekLogs  = allLogs.filter((l) => isDateWithinLastDays(l.date, 7));
+
+    // Collect selections from the Weekly Focus section
+    const focusContainer = document.getElementById("weeklyFocusContainer");
+    const selectedLogIds  = new Set();
+    const selectedManuals = [];
+    if (focusContainer) {
+      focusContainer.querySelectorAll(".focus-checkbox:checked").forEach((cb) => {
+        if (cb.dataset.logId) selectedLogIds.add(cb.dataset.logId);
+        if (cb.dataset.manualIdx !== undefined) {
+          const item = manualFocusItems[parseInt(cb.dataset.manualIdx)];
+          if (item) selectedManuals.push(item);
+        }
+      });
+    }
+
+    const topLogs       = weekLogs.filter((l) => selectedLogIds.has(l.id));
+    const remainingLogs = weekLogs.filter((l) => !selectedLogIds.has(l.id));
+    const blockers      = weekLogs.map((l) => l.blockers).filter(Boolean);
+
+    const safeManager = ((managerNameInput ? managerNameInput.value : "") || "").trim() || "Manager";
+    const safeName    = ((yourNameInput    ? yourNameInput.value    : "") || "").trim() || "Your Name";
+
+    const today = new Date();
+    const dow   = today.getDay();
+    const mon   = new Date(today);
+    mon.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+    const fri   = new Date(mon);
+    fri.setDate(mon.getDate() + 4);
+    const weekRange = formatDate(mon.toISOString().split("T")[0]) + " \u2013 " + formatDate(fri.toISOString().split("T")[0]);
+
+    const allSelected = [
+      ...topLogs.map((l) => l.task + (l.impact ? " \u2014 " + l.impact : "")),
+      ...selectedManuals
+    ];
+
+    let text = "Hi " + safeManager + ",\n\nHere\u2019s my update for the week of " + weekRange + ":\n\n";
+
+    if (allSelected.length) {
+      text += "Top " + allSelected.length + " thing" + (allSelected.length !== 1 ? "s" : "") + " I accomplished:\n";
+      allSelected.forEach((item, i) => { text += (i + 1) + ". " + item + "\n"; });
+    } else {
+      text += "Top accomplishments:\n(Select items from the Weekly Focus section above.)\n";
+    }
+
+    if (remainingLogs.length) {
+      text += "\nOther work this week:\n";
+      remainingLogs.forEach((l) => { text += "\u2022 " + l.task + "\n"; });
+    }
+
+    if (blockers.length) {
+      text += "\nQuestions / Blockers:\n";
+      blockers.forEach((b) => { text += "\u2022 " + b + "\n"; });
+    }
+
+    text += "\nBest,\n" + safeName;
+    if (summaryArea) summaryArea.value = text;
   });
 
   if (copyBtn) copyBtn.addEventListener("click", async () => {
@@ -1074,11 +1124,10 @@ async function initSummary() {
     const p = await db.getPreferences();
     if (managerNameInput) managerNameInput.value = p.manager_name || "";
     if (yourNameInput) yourNameInput.value = p.your_name || "";
-    if (nextStepsInput) nextStepsInput.value = p.next_steps || "";
     if (summaryArea) summaryArea.value = "";
     if (message) message.textContent = "";
     await renderWorkspaceTimeline();
-    await renderFollowUpAlerts("dashboardFollowUps");
+    await renderWeeklyFocus();
   };
 
   await refreshActivePageData();
@@ -1311,6 +1360,7 @@ async function checkRemindersOnLoad() {
   initThemeToggle();
   initSignOut();
   await initDashboard();
+  initWeeklyFocus();
   await initNetworking();
   await initSummary();
   await initContactPage();

@@ -1114,3 +1114,257 @@ body.dark .auth-tab.active { background: rgba(255,255,255,0.09); }
   color: var(--text-muted);
   font-style: italic;
 }
+
+/* ── Workspace redesign — Daily log → Weekly focus → Update ──── */
+
+/* ── Log Composer header row (eyebrow + inline date) ─────────── */
+.log-composer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.log-date-inline {
+  width: auto;
+  padding: 0.36rem 0.7rem;
+  font-size: 0.8rem;
+  border-radius: 9px;
+  border: 1.5px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text);
+  outline: none;
+  transition: border-color var(--trans);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.log-date-inline:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(249,115,22,0.1);
+}
+
+/* ── Log field block (label + textarea) ──────────────────────── */
+.log-field-block {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(180,140,100,0.09);
+}
+body.dark .log-field-block {
+  border-bottom-color: rgba(255,255,255,0.06);
+}
+.log-field-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.log-field-block textarea {
+  resize: none;
+  font-size: 0.93rem;
+  line-height: 1.6;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  color: var(--text);
+  font-weight: 400;
+}
+.log-field-block textarea::placeholder { color: var(--text-faint); font-weight: 400; }
+.log-field-block textarea:focus { border: none !important; box-shadow: none !important; }
+
+/* Section eyebrow label (① ② ③) */
+.section-eyebrow {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--primary);
+  margin-bottom: 0.45rem;
+}
+
+/* Headings inside the new cards */
+.focus-heading {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.2rem;
+}
+.focus-sub { margin-bottom: 1rem; }
+
+/* Optional label inside field labels */
+.opt-label {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-faint);
+}
+
+/* ── Weekly Focus checklist ──────────────────────────────────── */
+.focus-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.6rem 0.25rem;
+  border-bottom: 1px solid rgba(180,140,100,0.09);
+  cursor: pointer;
+  transition: background var(--trans);
+  border-radius: 6px;
+}
+.focus-item:last-child { border-bottom: none; }
+body.dark .focus-item { border-bottom-color: rgba(255,255,255,0.06); }
+.focus-item:hover { background: rgba(249,115,22,0.04); }
+
+/* override global input styles for checkboxes inside focus items */
+.focus-item input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  padding: 0;
+  border: 1.5px solid var(--input-border);
+  border-radius: 4px;
+  background: var(--input-bg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  flex-shrink: 0;
+  margin-top: 0.18rem;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+.focus-item input[type="checkbox"]:focus {
+  box-shadow: 0 0 0 2px rgba(249,115,22,0.2);
+}
+
+.focus-item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.focus-text {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.4;
+}
+.focus-impact {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.focus-manual-tag {
+  display: inline-block;
+  font-size: 0.67rem;
+  font-weight: 700;
+  color: var(--primary-deep);
+  background: rgba(249,115,22,0.1);
+  padding: 0.1rem 0.42rem;
+  border-radius: 4px;
+  width: fit-content;
+  margin-top: 0.1rem;
+}
+.focus-date {
+  font-size: 0.73rem;
+  color: var(--text-faint);
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin-top: 0.2rem;
+}
+.focus-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-faint);
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0 0.15rem;
+  flex-shrink: 0;
+  transition: color var(--trans);
+  margin-top: 0.1rem;
+  font-family: inherit;
+}
+.focus-remove:hover { color: var(--danger); }
+.focus-empty { padding: 0.5rem 0; }
+
+/* Manual add row */
+.manual-add-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(180,140,100,0.1);
+}
+body.dark .manual-add-row { border-top-color: rgba(255,255,255,0.06); }
+.manual-add-row input { flex: 1; min-width: 0; font-size: 0.875rem; }
+.manual-add-row .btn { white-space: nowrap; }
+
+.focus-count {
+  font-size: 0.76rem;
+  color: var(--text-faint);
+  margin-top: 0.45rem;
+  min-height: 1.1rem;
+}
+
+/* Weekly Update actions row */
+.update-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+  flex-wrap: wrap;
+}
+
+/* ── Daily log history (simplified timeline) ─────────────────── */
+.week-entries {
+  display: grid;
+  gap: 0;
+}
+.log-row {
+  display: flex;
+  gap: 0.9rem;
+  padding: 0.65rem 0.25rem;
+  border-bottom: 1px solid rgba(180,140,100,0.08);
+  align-items: flex-start;
+}
+.log-row:last-child { border-bottom: none; }
+body.dark .log-row { border-bottom-color: rgba(255,255,255,0.05); }
+
+.log-row-date {
+  font-size: 0.73rem;
+  font-weight: 700;
+  color: var(--primary);
+  flex-shrink: 0;
+  min-width: 82px;
+  padding-top: 0.15rem;
+  white-space: nowrap;
+}
+.log-row-body {
+  flex: 1;
+  min-width: 0;
+}
+.log-blocker-badge {
+  display: inline-block;
+  font-size: 0.74rem;
+  color: var(--warning);
+  background: rgba(202,138,4,0.08);
+  padding: 0.14rem 0.5rem;
+  border-radius: 5px;
+  margin-top: 0.28rem;
+  line-height: 1.5;
+}
+body.dark .log-blocker-badge {
+  background: rgba(252,211,77,0.1);
+}
+
+/* Week section header in simplified timeline */
+.week-section {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-card);
+  padding: 1.25rem 1.5rem 1.35rem;
+  box-shadow: var(--glass-shadow);
+}
