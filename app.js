@@ -1227,7 +1227,8 @@ async function initNetworking() {
       documents: []
     });
     if (!contact.name || !contact.email || !contact.dateMet || !contact.company) { error.textContent = "Name, email, company, and date last met are required."; return; }
-    await db.saveContact(contact);
+    const saved = await db.saveContact(contact);
+    if (!saved) { error.textContent = "Failed to save contact. Check the browser console (F12) for the Supabase error — it's usually a missing table column or RLS policy."; return; }
     form.reset();
     if (dateMetEl) dateMetEl.value = todayDateString();
     if (filterEl) filterEl.value = "";
