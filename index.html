@@ -17,41 +17,9 @@
     <aside class="sidebar">
       <div class="sidebar-brand">InternTrack</div>
 
-      <p class="sidebar-label">Internships</p>
-      <ul id="internshipList" class="intern-list"></ul>
-
-      <!-- Inline add / edit form -->
-      <form id="internshipForm" class="intern-inline-form hidden" autocomplete="off">
-        <input type="hidden" id="internshipEditId" />
-        <div class="field-group" style="margin:0 0 0.4rem">
-          <label for="internshipName">Name <span class="required">*</span></label>
-          <input type="text" id="internshipName" placeholder="e.g. Meta SWE Internship" required />
-        </div>
-        <div class="field-group" style="margin:0 0 0.4rem">
-          <label for="internshipCompany">Company</label>
-          <input type="text" id="internshipCompany" placeholder="e.g. Meta" />
-        </div>
-        <div class="field-group" style="margin:0 0 0.4rem">
-          <label for="internshipStart">Start date</label>
-          <input type="date" id="internshipStart" />
-        </div>
-        <div class="field-group" style="margin:0 0 0.5rem">
-          <label for="internshipEnd">End date</label>
-          <input type="date" id="internshipEnd" />
-        </div>
-        <p id="internshipError" class="error" style="font-size:0.72rem;margin:0 0 0.3rem"></p>
-        <div style="display:flex;gap:0.35rem">
-          <button type="submit" class="sidebar-save-btn">Save</button>
-          <button type="button" id="internshipCancelBtn" class="sidebar-cancel-btn">Cancel</button>
-        </div>
-      </form>
-
-      <button id="addInternshipBtn" class="sidebar-add-btn" type="button">+ New Internship</button>
-
       <nav class="sidebar-nav">
         <a href="index.html" class="s-link active">Workspace</a>
         <a href="network.html" class="s-link">Networking</a>
-        <a href="files.html" class="s-link">Files</a>
       </nav>
 
       <div class="sidebar-footer">
@@ -63,16 +31,97 @@
     <!-- ── Main Scroll ───────────────────────────────── -->
     <div class="main-scroll">
 
-      <!-- Active internship context banner -->
-      <div id="activeInternshipBanner" class="active-internship-banner"></div>
+      <!-- ═══════════════════════════════════════════════
+           VIEW 1 — Internship Module Grid
+      ═══════════════════════════════════════════════ -->
+      <div id="workspaceGrid" class="workspace-content">
 
-      <div class="workspace-content">
-
-        <!-- Page header -->
-        <div class="ws-page-header">
-          <h1 class="page-heading">Workspace</h1>
-          <p class="page-subheading">Log daily → pick your top 5 → send your manager a clean update.</p>
+        <div class="ws-page-header ws-grid-header">
+          <div>
+            <h1 class="page-heading">Workspace</h1>
+            <p class="page-subheading">Your internship workspaces. Click one to enter and start logging.</p>
+          </div>
+          <button id="addInternshipBtn" class="btn" type="button">+ New Internship</button>
         </div>
+
+        <!-- Add / Edit form card -->
+        <div id="internshipFormCard" class="card hidden">
+          <h3 id="internshipFormTitle" class="form-card-title">Add Internship</h3>
+          <form id="internshipForm" autocomplete="off">
+            <input type="hidden" id="internshipEditId" />
+            <div class="two-col">
+              <div class="field-group">
+                <label for="internshipName">Role / Title <span class="required">*</span></label>
+                <input type="text" id="internshipName" placeholder="e.g. Software Engineering Intern" required />
+              </div>
+              <div class="field-group">
+                <label for="internshipCompany">Company <span class="required">*</span></label>
+                <input type="text" id="internshipCompany" placeholder="e.g. Meta" required />
+              </div>
+            </div>
+            <div class="two-col">
+              <div class="field-group">
+                <label for="internshipStart">Start Date <span class="required">*</span></label>
+                <input type="date" id="internshipStart" required />
+              </div>
+              <div class="field-group">
+                <label for="internshipEnd">End Date <span class="opt-label">(optional)</span></label>
+                <input type="date" id="internshipEnd" />
+              </div>
+            </div>
+            <p id="internshipError" class="error"></p>
+            <div class="form-actions">
+              <button type="submit" class="btn">Save Internship</button>
+              <button type="button" id="internshipCancelBtn" class="btn btn-secondary">Cancel</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Internship module cards grid -->
+        <div id="internshipModuleGrid" class="intern-module-grid"></div>
+
+      </div><!-- /#workspaceGrid -->
+
+      <!-- ═══════════════════════════════════════════════
+           VIEW 2 — Internship Detail Workspace
+      ═══════════════════════════════════════════════ -->
+      <div id="workspaceDetail" class="workspace-content hidden">
+
+        <!-- Resume Points Widget (shows only when past end date) -->
+        <div id="resumeWidget" class="resume-widget hidden">
+          <div class="resume-widget-inner">
+            <div class="resume-widget-header">
+              <div class="resume-widget-icon-col">🏆</div>
+              <div class="resume-widget-text">
+                <strong>Your internship has ended!</strong>
+                <p>Turn your work logs into resume bullet points.</p>
+              </div>
+              <div class="resume-widget-actions">
+                <button id="generateResumeBtn" class="btn btn-sm" type="button">Generate Points ✨</button>
+                <button id="resumeWidgetDismiss" class="btn btn-secondary btn-sm" type="button">Dismiss</button>
+              </div>
+            </div>
+            <div id="resumeContent" class="resume-content hidden">
+              <p id="resumeGenStatus" class="muted tiny" aria-live="polite"></p>
+              <div id="resumePoints" class="resume-points-list"></div>
+              <div class="resume-widget-copy-row">
+                <button id="copyResumeBtn" class="btn btn-secondary btn-sm" type="button">Copy All Points</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Detail top bar -->
+        <div class="ws-detail-top">
+          <button id="backToGridBtn" class="btn btn-secondary" type="button">← All Workspaces</button>
+          <div class="detail-header-actions">
+            <button id="editInternshipDetailBtn" class="btn btn-secondary" type="button">Edit</button>
+            <button id="deleteInternshipDetailBtn" class="btn btn-secondary danger-btn" type="button">Delete</button>
+          </div>
+        </div>
+
+        <!-- Internship name / dates header -->
+        <div id="internshipDetailHeader" class="internship-detail-header"></div>
 
         <!-- ① Daily Log -->
         <div class="card log-composer">
@@ -83,31 +132,34 @@
           <form id="logForm" autocomplete="off">
 
             <div class="log-field-block">
-              <label class="log-field-label" for="logTask">Task Completed</label>
-              <textarea
-                id="logTask"
-                rows="3"
-                placeholder="What did you work on today?"
-                required
-              ></textarea>
+              <label class="log-field-label" for="logTask">Tasks Completed <span class="required">*</span></label>
+              <textarea id="logTask" rows="3" placeholder="What did you work on today? Describe your tasks and contributions." required></textarea>
             </div>
 
             <div class="log-field-block">
-              <label class="log-field-label" for="logImpact">Impact <span class="opt-label">(optional)</span></label>
-              <textarea
-                id="logImpact"
-                rows="2"
-                placeholder="What was the outcome or result?"
-              ></textarea>
+              <label class="log-field-label" for="logBlockers">Questions / Blockers <span class="opt-label">(optional)</span></label>
+              <textarea id="logBlockers" rows="2" placeholder="Any blockers, open questions, or things you need help with?"></textarea>
             </div>
 
+            <!-- Embedded file attachment -->
+            <div class="log-field-block">
+              <label class="log-field-label">Attach Files <span class="opt-label">(optional)</span></label>
+              <div id="logDropZone" class="log-drop-zone">
+                <span class="log-drop-icon">📎</span>
+                <span>Drag & drop files here, or <label for="logFileInput" class="file-browse-link">browse</label></span>
+                <input type="file" id="logFileInput" class="sr-only" multiple />
+              </div>
+              <div id="logPendingFiles" class="log-pending-files"></div>
+            </div>
+
+            <!-- AI-generated Impact Statement -->
             <div class="log-field-block" style="margin-bottom:0">
-              <label class="log-field-label" for="logBlockers">Questions / Blockers <span class="opt-label">(optional)</span></label>
-              <textarea
-                id="logBlockers"
-                rows="2"
-                placeholder="Any blockers or open questions?"
-              ></textarea>
+              <div class="impact-label-row">
+                <label class="log-field-label" for="logImpact">Impact Statement</label>
+                <button type="button" id="generateImpactBtn" class="btn btn-secondary btn-sm">Generate ✨</button>
+              </div>
+              <textarea id="logImpact" rows="2" placeholder="AI-generated from your tasks and files, or write your own…"></textarea>
+              <p id="impactGenStatus" class="muted tiny" aria-live="polite" style="margin-top:0.25rem"></p>
             </div>
 
             <div class="log-actions">
@@ -117,60 +169,87 @@
           </form>
         </div>
 
-        <!-- Daily log history -->
+        <!-- Daily log history timeline -->
         <div id="timelineContainer"></div>
 
-        <!-- ② Weekly Focus -->
-        <div class="card" id="weeklyFocusCard">
-          <p class="section-eyebrow">② Weekly Focus</p>
-          <h2 class="focus-heading">👉 Top 5 Things This Week</h2>
-          <p class="page-subheading focus-sub">Check the logs you want to highlight, or add an item manually.</p>
-          <div id="weeklyFocusContainer"></div>
-          <div class="manual-add-row">
-            <input type="text" id="manualFocusInput" placeholder="Add an item manually…" />
-            <button class="btn btn-secondary" id="addManualFocusBtn" type="button">+ Add</button>
+        <!-- Manager Highlights Widget -->
+        <div class="card manager-highlights-card">
+          <div class="manager-highlights-header">
+            <div>
+              <p class="section-eyebrow">Manager Highlights</p>
+              <h2 class="focus-heading">Top 5 to Raise with Your Manager</h2>
+              <p class="page-subheading focus-sub">Auto-pulled from your highest-impact logs. Edit freely — saved per internship.</p>
+            </div>
+            <button id="regenHighlightsBtn" class="btn btn-secondary btn-sm" type="button">↺ Refresh from Logs</button>
           </div>
-          <p id="focusCount" class="focus-count"></p>
+          <ol id="managerHighlightsList" class="manager-highlights-list">
+            <li><textarea class="highlight-item" rows="2" placeholder="Add a highlight…" data-index="0"></textarea></li>
+            <li><textarea class="highlight-item" rows="2" placeholder="Add a highlight…" data-index="1"></textarea></li>
+            <li><textarea class="highlight-item" rows="2" placeholder="Add a highlight…" data-index="2"></textarea></li>
+            <li><textarea class="highlight-item" rows="2" placeholder="Add a highlight…" data-index="3"></textarea></li>
+            <li><textarea class="highlight-item" rows="2" placeholder="Add a highlight…" data-index="4"></textarea></li>
+          </ol>
+          <div class="manager-highlights-actions">
+            <button id="saveHighlightsBtn" class="btn btn-secondary btn-sm" type="button">Save Edits</button>
+            <p id="highlightsSaveMsg" class="muted tiny" aria-live="polite"></p>
+          </div>
         </div>
 
-        <!-- ③ Weekly Update -->
+        <!-- ② Weekly Manager Update -->
         <div class="card summary-card">
-          <p class="section-eyebrow">③ Weekly Update</p>
-          <h2 class="focus-heading">Manager Update</h2>
-          <p class="page-subheading focus-sub">Auto-generated from your Top 5 selections and any blockers.</p>
-
-          <div class="two-col" style="margin-bottom:0.85rem">
-            <div class="field-group" style="margin:0">
-              <label for="managerName">To (manager)</label>
-              <input type="text" id="managerName" placeholder="Manager's name" />
+          <div class="summary-card-header">
+            <div>
+              <p class="section-eyebrow">② Weekly Manager Update</p>
+              <h2 class="focus-heading">Manager Update</h2>
+              <p class="page-subheading focus-sub">Auto-generated from this week's logs. Edit as needed, then copy or email.</p>
             </div>
-            <div class="field-group" style="margin:0">
-              <label for="yourName">From (you)</label>
-              <input type="text" id="yourName" placeholder="Your name" />
+            <div class="week-nav-row">
+              <button id="prevWeekBtn" class="btn btn-secondary btn-sm" type="button">← Prev</button>
+              <span id="weekNavLabel" class="week-nav-label"></span>
+              <button id="nextWeekBtn" class="btn btn-secondary btn-sm" type="button">Next →</button>
             </div>
           </div>
 
-          <p id="summaryMessage" class="muted" style="font-size:0.82rem;margin-bottom:0.5rem" aria-live="polite"></p>
-          <textarea id="generatedSummary" rows="11" readonly placeholder="Select your Top 5 above, then click Generate…"></textarea>
+          <div class="two-col" style="margin-bottom:0.75rem">
+            <div class="field-group" style="margin:0">
+              <label for="managerName">Manager's name</label>
+              <input type="text" id="managerName" placeholder="e.g. Jane Smith" />
+            </div>
+            <div class="field-group" style="margin:0">
+              <label for="yourName">Your name</label>
+              <input type="text" id="yourName" placeholder="e.g. Davina Li" />
+            </div>
+          </div>
+
+          <div class="field-group" style="margin-bottom:0.75rem">
+            <label for="yourEmail">Your email <span class="opt-label">(for emailing yourself the update)</span></label>
+            <input type="email" id="yourEmail" placeholder="you@email.com" />
+          </div>
+
+          <div class="two-col" style="margin-bottom:0.75rem">
+            <div class="field-group" style="margin:0">
+              <label for="nextPlansInput">Next week I'm planning to</label>
+              <input type="text" id="nextPlansInput" placeholder="e.g. Finish the dashboard redesign…" />
+            </div>
+            <div class="field-group" style="margin:0">
+              <label for="blockersNoteInput">Things I need from you <span class="opt-label">(optional)</span></label>
+              <input type="text" id="blockersNoteInput" placeholder="e.g. Access to analytics dashboard…" />
+            </div>
+          </div>
+
+          <textarea id="generatedSummary" rows="12" placeholder="Your weekly update will auto-generate from this week's logs above…"></textarea>
+
           <div class="update-actions">
-            <button id="generateSummaryBtn" class="btn" type="button">Generate Update →</button>
+            <button id="regenerateSummaryBtn" class="btn btn-secondary" type="button">↺ Regenerate</button>
             <button id="copySummaryBtn" class="btn btn-secondary" type="button">Copy</button>
+            <button id="emailSummaryBtn" class="btn" type="button">Email to Myself →</button>
           </div>
+          <p id="summaryMessage" class="muted" style="font-size:0.82rem;margin-top:0.5rem" aria-live="polite"></p>
         </div>
 
-        <!-- ④ Project Files -->
-        <div class="card" id="projectFilesCard">
-          <p class="section-eyebrow">④ Project Files</p>
-          <h2 class="focus-heading">📁 Linked Files</h2>
-          <p class="page-subheading focus-sub">PDFs and documents associated with this internship.</p>
-          <div id="projectFileGrid"></div>
-          <div style="margin-top:0.85rem">
-            <a href="files.html" class="btn btn-secondary">Manage All Files →</a>
-          </div>
-        </div>
+      </div><!-- /#workspaceDetail -->
 
-      </div>
-    </div>
+    </div><!-- /.main-scroll -->
 
   </div><!-- /.app-layout -->
 

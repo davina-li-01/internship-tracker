@@ -589,51 +589,6 @@ async function renderFollowUpAlerts(listId, emptyText) {
   });
 }
 
-async function renderLogs() {
-  const list = document.getElementById("logList");
-  if (!list) return;
-  const activeId = getActiveInternshipId();
-  if (!activeId) { list.innerHTML = '<li class="empty">Select an internship to view logs.</li>'; return; }
-  const logs = (await db.getLogs(activeId)).sort((a, b) => b.date.localeCompare(a.date));
-  if (!logs.length) { list.innerHTML = '<li class="empty">No impact logs yet.</li>'; return; }
-  list.innerHTML = logs.map((log) =>
-    '<li class="list-item">'
-    + '<p><strong>' + formatDate(log.date) + '</strong></p>'
-    + '<p><span class="label">Did:</span> ' + escapeHtml(log.task) + '</p>'
-    + '<p><span class="label">Impact:</span> ' + escapeHtml(log.impact) + '</p>'
-    + '<p><span class="label">Skills:</span> ' + escapeHtml(log.skills) + '</p>'
-    + '<div class="tag-row">' + log.tags.map((tag) => '<span class="tag">' + escapeHtml(tag) + '</span>').join("") + '</div>'
-    + '</li>'
-  ).join("");
-}
-
-async function renderFiles() {
-  const list = document.getElementById("fileList");
-  if (!list) return;
-  const activeId = getActiveInternshipId();
-  if (!activeId) { list.innerHTML = '<li class="empty">Select an internship to view files.</li>'; return; }
-  const files = (await db.getFiles(activeId)).sort((a, b) => b.date.localeCompare(a.date));
-  if (!files.length) { list.innerHTML = '<li class="empty">No PDFs uploaded yet.</li>'; return; }
-  list.innerHTML = files.map((file) =>
-    '<li class="list-item">'
-    + '<p><strong>' + escapeHtml(file.name) + '</strong> <span class="tiny">' + formatDate(file.date) + '</span></p>'
-    + '<div class="row wrap">'
-    + '<a class="btn btn-secondary" href="' + file.data + '" target="_blank" rel="noopener">Open</a>'
-    + '<a class="btn" href="' + file.data + '" download="' + escapeHtml(file.name) + '">Download</a>'
-    + '</div></li>'
-  ).join("");
-}
-
-async function renderTopAchievements() {
-  const list = document.getElementById("topAchievements");
-  if (!list) return;
-  const activeId = getActiveInternshipId();
-  if (!activeId) { list.innerHTML = '<li class="empty">Select an internship first.</li>'; return; }
-  const allLogs = await db.getLogs(activeId);
-  const top = allLogs.filter((log) => isDateWithinLastDays(log.date, 7)).sort((a, b) => scoreImpact(b) - scoreImpact(a)).slice(0, 3);
-  if (!top.length) { list.innerHTML = '<li class="empty">Add logs to surface top achievements.</li>'; return; }
-  list.innerHTML = top.map((log) => '<li class="list-item"><p><strong>' + escapeHtml(log.task) + '</strong></p><p>' + escapeHtml(log.impact) + '</p></li>').join("");
-}
 
 async function renderWeeklyConnections(listId) {
   const list = document.getElementById(listId);
@@ -742,236 +697,6 @@ async function renderContacts(filterText) {
   });
 }
 
-// ── Weekly Focus ──────────────────────────────────────────────────────────────
-
-/** In-memory list of manually added focus items for the current session. */
-let manualFocusItems = [];
-
-async function renderWeeklyFocus() {
-  const container = document.getElementById("weeklyFocusContainer");
-  const countEl   = document.getElementById("focusCount");
-  if (!container) return;
-
-  const activeId = getActiveInternshipId();
-  if (!activeId) {
-    container.innerHTML = '<p class="empty">Select an internship to see this week\'s logs.</p>';
-    if (countEl) countEl.textContent = "";
-    return;
-  }
-
-  const allLogs  = await db.getLogs(activeId);
-  const weekLogs = allLogs
-    .filter((l) => isDateWithinLastDays(l.date, 7))
-    .sort((a, b) => scoreImpact(b) - scoreImpact(a));
-
-  const preselectedIds = new Set(weekLogs.slice(0, 5).map((l) => l.id));
-
-  let html = "";
-  if (!weekLogs.length && !manualFocusItems.length) {
-    html = '<p class="empty focus-empty">No logs this week yet — add some using the Daily Log above.</p>';
-  } else {
-    weekLogs.forEach((log) => {
-      const checked = preselectedIds.has(log.id) ? "checked" : "";
-      html += '<label class="focus-item">'
-        + '<input type="checkbox" class="focus-checkbox" data-log-id="' + escapeHtml(log.id) + '" ' + checked + ' />'
-        + '<span class="focus-item-body">'
-        + '<span class="focus-text">' + escapeHtml(log.task) + '</span>'
-        + (log.impact ? '<span class="focus-impact">→ ' + escapeHtml(log.impact) + '</span>' : '')
-        + '</span>'
-        + '<span class="focus-date">' + formatDate(log.date) + '</span>'
-        + '</label>';
-    });
-    manualFocusItems.forEach((item, idx) => {
-      html += '<label class="focus-item focus-item-manual">'
-        + '<input type="checkbox" class="focus-checkbox" data-manual-idx="' + idx + '" checked />'
-        + '<span class="focus-item-body">'
-        + '<span class="focus-text">' + escapeHtml(item) + '</span>'
-        + '<span class="focus-manual-tag">manual</span>'
-        + '</span>'
-        + '<button class="focus-remove" type="button" data-manual-idx="' + idx + '" title="Remove">×</button>'
-        + '</label>';
-    });
-  }
-
-  container.innerHTML = html;
-
-  container.querySelectorAll(".focus-remove").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      manualFocusItems.splice(parseInt(btn.dataset.manualIdx), 1);
-      renderWeeklyFocus();
-    });
-  });
-
-  function updateCount() {
-    if (countEl) {
-      const n = container.querySelectorAll(".focus-checkbox:checked").length;
-      countEl.textContent = n + " item" + (n !== 1 ? "s" : "") + " selected";
-    }
-  }
-  container.querySelectorAll(".focus-checkbox").forEach((cb) => {
-    cb.addEventListener("change", updateCount);
-  });
-  updateCount();
-}
-
-function initWeeklyFocus() {
-  const addBtn = document.getElementById("addManualFocusBtn");
-  const input  = document.getElementById("manualFocusInput");
-  if (!addBtn || !input) return;
-  const add = () => {
-    const text = input.value.trim();
-    if (!text) return;
-    manualFocusItems.push(text);
-    input.value = "";
-    renderWeeklyFocus();
-  };
-  addBtn.addEventListener("click", add);
-  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); add(); } });
-}
-
-// -- Workspace timeline -------------------------------------------------------
-
-async function renderWorkspaceTimeline() {
-  const container = document.getElementById("timelineContainer");
-  if (!container) return;
-  const activeId = getActiveInternshipId();
-  if (!activeId) {
-    container.innerHTML = '<p class="timeline-empty">Select or add an internship to start logging.</p>';
-    return;
-  }
-  const allLogs = await db.getLogs(activeId);
-  if (!allLogs.length) {
-    container.innerHTML = '<p class="timeline-empty">No logs yet. Use the form above to record your first entry. 🎉</p>';
-    return;
-  }
-
-  function getWeekMonday(dateStr) {
-    const d = parseDateOnly(dateStr);
-    const dow = d.getDay();
-    const mon = new Date(d);
-    mon.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
-    return mon.toISOString().split("T")[0];
-  }
-
-  const weekMap = new Map();
-  allLogs.forEach((log) => {
-    const wk = getWeekMonday(log.date);
-    if (!weekMap.has(wk)) weekMap.set(wk, []);
-    weekMap.get(wk).push(log);
-  });
-
-  const sortedWeeks = Array.from(weekMap.entries()).sort(([a], [b]) => b.localeCompare(a));
-
-  let html = "";
-  sortedWeeks.forEach(([weekMon, logs]) => {
-    const monDate = parseDateOnly(weekMon);
-    const friDate = new Date(monDate);
-    friDate.setDate(monDate.getDate() + 4);
-    const weekLabel = "Week of " + formatDate(weekMon) + " \u2013 " + formatDate(friDate.toISOString().split("T")[0]);
-
-    const sortedLogs = [...logs].sort((a, b) => b.date.localeCompare(a.date));
-    const rows = sortedLogs.map((log) => {
-      const blockerHtml = log.blockers
-        ? '<span class="log-blocker-badge">\u26a0 ' + escapeHtml(log.blockers) + "</span>"
-        : "";
-      return '<div class="log-row">'
-        + '<span class="log-row-date">' + formatDate(log.date) + "</span>"
-        + '<div class="log-row-body">'
-        + '<p class="log-task">' + escapeHtml(log.task) + "</p>"
-        + (log.impact ? '<p class="log-impact"><span class="entry-arrow">\u2192</span> ' + escapeHtml(log.impact) + "</p>" : "")
-        + blockerHtml
-        + "</div>"
-        + "</div>";
-    }).join("");
-
-    html += '<div class="week-section">'
-      + '<p class="week-label">' + weekLabel + "</p>"
-      + '<div class="week-entries">' + rows + "</div>"
-      + "</div>";
-  });
-
-  container.innerHTML = html;
-}
-
-// ── Active internship banner ──────────────────────────────────────────────────
-// Shows a persistent top-of-page strip so you always know which internship
-// you are working in. Includes a dropdown switcher for quick context switching.
-
-async function renderActiveInternshipBanner() {
-  const banner = document.getElementById("activeInternshipBanner");
-  if (!banner) return;
-
-  const internships = await db.getInternships();
-  const activeId    = getActiveInternshipId();
-  const active      = internships.find((i) => i.id === activeId);
-
-  if (!active) {
-    banner.className = "active-internship-banner aib-empty";
-    banner.innerHTML =
-      '<span class="aib-icon">📋</span>'
-      + '<span class="aib-no-intern">No internship selected — add one in the sidebar to get started.</span>';
-    return;
-  }
-
-  const others = internships.filter((i) => i.id !== activeId);
-  const companySpan = active.company
-    ? '<span class="aib-company">@ ' + escapeHtml(active.company) + '</span>'
-    : "";
-
-  let switcherHtml = "";
-  if (others.length) {
-    switcherHtml =
-      '<div class="aib-switcher">'
-      + '<button class="aib-switch-btn" type="button" id="aibSwitchBtn">'
-      + 'Switch ▾'
-      + '</button>'
-      + '<ul class="aib-dropdown" id="aibDropdown">'
-      + others.map((i) =>
-          '<li><button type="button" class="aib-option" data-switch-to="' + i.id + '">'
-          + escapeHtml(i.name)
-          + (i.company ? ' <span class="aib-option-co">@ ' + escapeHtml(i.company) + '</span>' : '')
-          + '</button></li>'
-        ).join("")
-      + '</ul>'
-      + '</div>';
-  }
-
-  banner.className = "active-internship-banner";
-  banner.innerHTML =
-    '<div class="aib-inner">'
-    + '<span class="aib-icon">👉</span>'
-    + '<div class="aib-text">'
-    + '<span class="aib-name">' + escapeHtml(active.name) + '</span>'
-    + companySpan
-    + '</div>'
-    + switcherHtml
-    + '</div>';
-
-  if (others.length) {
-    const switchBtn = banner.querySelector("#aibSwitchBtn");
-    const dropdown  = banner.querySelector("#aibDropdown");
-
-    switchBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const isOpen = dropdown.classList.contains("aib-open");
-      dropdown.classList.toggle("aib-open", !isOpen);
-    });
-
-    const closeDropdown = () => dropdown.classList.remove("aib-open");
-    document.addEventListener("click", closeDropdown, { once: true });
-
-    banner.querySelectorAll(".aib-option").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        setActiveInternshipId(btn.dataset.switchTo);
-        await renderActiveInternshipBanner();
-        await renderInternshipPanel();
-        await refreshActivePageData();
-      });
-    });
-  }
-}
 
 // ── Contact calendar ──────────────────────────────────────────────────────────
 // Renders a simple month grid (Sun→Sat) with orange dots on days where
@@ -1074,161 +799,6 @@ function initCalendarNav() {
 
 // ── Internship panel ──────────────────────────────────────────────────────────
 
-async function renderInternshipPanel() {
-  const list = document.getElementById("internshipList");
-  if (!list) return;
-  const internships = await db.getInternships();
-  const activeId = getActiveInternshipId();
-  if (!internships.length) {
-    list.innerHTML = '<li class="empty" style="font-size:0.78rem;padding:0.4rem 0.5rem">No internships yet.</li>';
-    return;
-  }
-  list.innerHTML = internships.map((internship) => {
-    const isActive = internship.id === activeId;
-    return '<li class="intern-item' + (isActive ? ' intern-item-active' : '') + '">'
-      + '<button class="intern-name-btn" type="button" data-internship-action="switch" data-internship-id="' + internship.id + '">'
-      + '<span class="intern-name">' + escapeHtml(internship.name) + '</span>'
-      + (internship.company ? '<span class="intern-co">' + escapeHtml(internship.company) + '</span>' : '')
-      + '</button>'
-      + '<div class="intern-item-actions">'
-      + '<button class="intern-action-btn" type="button" data-internship-action="edit" data-internship-id="' + internship.id + '">Edit</button>'
-      + '<button class="intern-action-btn" type="button" data-internship-action="delete" data-internship-id="' + internship.id + '">Delete</button>'
-      + '</div></li>';
-  }).join("");
-}
-
-let refreshActivePageData = async () => {};
-
-async function initInternshipPanel() {
-  const list = document.getElementById("internshipList");
-  const addBtn = document.getElementById("addInternshipBtn");
-  if (!list || !addBtn) return;
-
-  const form       = document.getElementById("internshipForm");
-  const editIdEl   = document.getElementById("internshipEditId");
-  const nameEl     = document.getElementById("internshipName");
-  const companyEl  = document.getElementById("internshipCompany");
-  const startEl    = document.getElementById("internshipStart");
-  const endEl      = document.getElementById("internshipEnd");
-  const cancelBtn  = document.getElementById("internshipCancelBtn");
-  const error      = document.getElementById("internshipError");
-
-  function openForm(seed) {
-    seed = seed || {};
-    editIdEl.value   = seed.id || "";
-    nameEl.value     = seed.name || "";
-    companyEl.value  = seed.company || "";
-    startEl.value    = seed.startDate || "";
-    endEl.value      = seed.endDate || "";
-    if (error) error.textContent = "";
-    form.classList.remove("hidden");
-    addBtn.classList.add("hidden");
-    nameEl.focus();
-  }
-
-  function closeForm() {
-    form.classList.add("hidden");
-    addBtn.classList.remove("hidden");
-    form.reset();
-  }
-
-  addBtn.addEventListener("click", () => openForm());
-  cancelBtn.addEventListener("click", closeForm);
-
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (error) error.textContent = "";
-    const name = nameEl.value.trim();
-    if (!name) { if (error) error.textContent = "Name is required."; return; }
-    const payload = { name, company: companyEl.value.trim(), startDate: startEl.value, endDate: endEl.value };
-    const existingId = editIdEl.value;
-    if (existingId) {
-      const internships = await db.getInternships();
-      const target = internships.find((i) => i.id === existingId);
-      if (target) await db.saveInternship({ ...target, ...payload });
-    } else {
-      const next = { id: makeId(), ...payload, createdAt: new Date().toISOString() };
-      await db.saveInternship(next);
-      setActiveInternshipId(next.id);
-    }
-    closeForm();
-    await renderInternshipPanel();
-    await renderActiveInternshipBanner();
-    await refreshActivePageData();
-  });
-
-  list.addEventListener("click", async (event) => {
-    const button = event.target.closest("[data-internship-action]");
-    if (!button) return;
-    const internshipId = button.dataset.internshipId;
-    const action = button.dataset.internshipAction;
-    const internships = await db.getInternships();
-    const target = internships.find((i) => i.id === internshipId);
-    if (!target) return;
-    if (action === "switch") {
-      setActiveInternshipId(internshipId);
-      await renderInternshipPanel();
-      await renderActiveInternshipBanner();
-      await refreshActivePageData();
-    } else if (action === "edit") {
-      openForm(target);
-    } else if (action === "delete") {
-      const confirmed = window.confirm('Delete "' + target.name + '" and all its logs? This cannot be undone.');
-      if (!confirmed) return;
-      await db.deleteInternship(internshipId);
-      if (getActiveInternshipId() === internshipId) {
-        const remaining = await db.getInternships();
-        setActiveInternshipId(remaining.length ? remaining[0].id : "");
-      }
-      await renderInternshipPanel();
-      await renderActiveInternshipBanner();
-      await refreshActivePageData();
-    }
-  });
-
-  const internships = await db.getInternships();
-  const activeId = getActiveInternshipId();
-  if (internships.length && !internships.some((i) => i.id === activeId)) {
-    setActiveInternshipId(internships[0].id);
-  }
-  await renderInternshipPanel();
-  await renderActiveInternshipBanner();
-}
-
-// ── Dashboard ─────────────────────────────────────────────────────────────────
-
-async function initDashboard() {
-  const logForm = document.getElementById("logForm");
-  if (!logForm) return;
-  const logDate = document.getElementById("logDate");
-  const logTask = document.getElementById("logTask");
-  const logImpact = document.getElementById("logImpact");
-  const logBlockers = document.getElementById("logBlockers");
-  const logError = document.getElementById("logError");
-
-  if (logDate) logDate.value = todayDateString();
-
-  logForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    if (logError) logError.textContent = "";
-    if (!requireActiveInternship(logError)) return;
-    const entry = normalizeLog({
-      date: logDate ? logDate.value : todayDateString(),
-      task: logTask ? logTask.value : "",
-      impact: logImpact ? logImpact.value : "",
-      blockers: logBlockers ? logBlockers.value : ""
-    });
-    if (!entry.date || !entry.task) { if (logError) logError.textContent = "What did you work on? Task is required."; return; }
-    await db.saveLog(entry, getActiveInternshipId());
-    if (logTask) logTask.value = "";
-    if (logImpact) logImpact.value = "";
-    if (logBlockers) logBlockers.value = "";
-    await renderWorkspaceTimeline();
-    await renderWeeklyFocus();
-    await renderInternshipPanel();
-  });
-}
-
 // ── Networking ────────────────────────────────────────────────────────────────
 
 async function initNetworking() {
@@ -1296,129 +866,6 @@ async function initNetworking() {
 }
 
 // ── Summary page ──────────────────────────────────────────────────────────────
-
-async function renderWeeklyLogs() {
-  const weeklyLogsList = document.getElementById("weeklyLogs");
-  if (!weeklyLogsList) return [];
-  const activeId = getActiveInternshipId();
-  if (!activeId) { weeklyLogsList.innerHTML = '<li class="empty">Select an internship to view logs.</li>'; return []; }
-  const allLogs = await db.getLogs(activeId);
-  const logs = allLogs.filter((l) => isDateWithinLastDays(l.date, 7)).sort((a, b) => a.date.localeCompare(b.date));
-  if (!logs.length) { weeklyLogsList.innerHTML = '<li class="empty">No impact logs from the last 7 days.</li>'; return []; }
-  weeklyLogsList.innerHTML = logs.map((log) =>
-    '<li class="list-item">'
-    + '<p><strong>' + formatDate(log.date) + '</strong></p>'
-    + '<p><span class="label">Completed:</span> ' + escapeHtml(log.task) + '</p>'
-    + '<p><span class="label">Achieved:</span> ' + escapeHtml(log.impact) + '</p>'
-    + '<p><span class="label">Learned:</span> ' + escapeHtml(log.skills) + '</p>'
-    + '</li>'
-  ).join("");
-  return logs;
-}
-
-async function initSummary() {
-  const generateBtn = document.getElementById("generateSummaryBtn");
-  if (!generateBtn) return;
-  const copyBtn = document.getElementById("copySummaryBtn");
-  const summaryArea = document.getElementById("generatedSummary");
-  const message = document.getElementById("summaryMessage");
-  const managerNameInput = document.getElementById("managerName");
-  const yourNameInput = document.getElementById("yourName");
-  const nextStepsInput = document.getElementById("nextSteps");
-
-  const prefs = await db.getPreferences();
-  if (managerNameInput) managerNameInput.value = prefs.manager_name || "";
-  if (yourNameInput) yourNameInput.value = prefs.your_name || "";
-  if (nextStepsInput) nextStepsInput.value = prefs.next_steps || "";
-
-  if (managerNameInput) managerNameInput.addEventListener("input", () => { db.savePreferences({ manager_name: managerNameInput.value }); });
-  if (yourNameInput) yourNameInput.addEventListener("input", () => { db.savePreferences({ your_name: yourNameInput.value }); });
-  if (nextStepsInput) nextStepsInput.addEventListener("input", () => { db.savePreferences({ next_steps: nextStepsInput.value }); });
-
-  generateBtn.addEventListener("click", async () => {
-    if (message) message.textContent = "";
-    if (!requireActiveInternship(message, "Add or select an internship first.")) return;
-    const activeId  = getActiveInternshipId();
-    const allLogs   = activeId ? await db.getLogs(activeId) : [];
-    const weekLogs  = allLogs.filter((l) => isDateWithinLastDays(l.date, 7));
-
-    // Collect selections from the Weekly Focus section
-    const focusContainer = document.getElementById("weeklyFocusContainer");
-    const selectedLogIds  = new Set();
-    const selectedManuals = [];
-    if (focusContainer) {
-      focusContainer.querySelectorAll(".focus-checkbox:checked").forEach((cb) => {
-        if (cb.dataset.logId) selectedLogIds.add(cb.dataset.logId);
-        if (cb.dataset.manualIdx !== undefined) {
-          const item = manualFocusItems[parseInt(cb.dataset.manualIdx)];
-          if (item) selectedManuals.push(item);
-        }
-      });
-    }
-
-    const topLogs       = weekLogs.filter((l) => selectedLogIds.has(l.id));
-    const remainingLogs = weekLogs.filter((l) => !selectedLogIds.has(l.id));
-    const blockers      = weekLogs.map((l) => l.blockers).filter(Boolean);
-
-    const safeManager = ((managerNameInput ? managerNameInput.value : "") || "").trim() || "Manager";
-    const safeName    = ((yourNameInput    ? yourNameInput.value    : "") || "").trim() || "Your Name";
-
-    const today = new Date();
-    const dow   = today.getDay();
-    const mon   = new Date(today);
-    mon.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
-    const fri   = new Date(mon);
-    fri.setDate(mon.getDate() + 4);
-    const weekRange = formatDate(mon.toISOString().split("T")[0]) + " \u2013 " + formatDate(fri.toISOString().split("T")[0]);
-
-    const allSelected = [
-      ...topLogs.map((l) => l.task + (l.impact ? " \u2014 " + l.impact : "")),
-      ...selectedManuals
-    ];
-
-    let text = "Hi " + safeManager + ",\n\nHere\u2019s my update for the week of " + weekRange + ":\n\n";
-
-    if (allSelected.length) {
-      text += "Top " + allSelected.length + " thing" + (allSelected.length !== 1 ? "s" : "") + " I accomplished:\n";
-      allSelected.forEach((item, i) => { text += (i + 1) + ". " + item + "\n"; });
-    } else {
-      text += "Top accomplishments:\n(Select items from the Weekly Focus section above.)\n";
-    }
-
-    if (remainingLogs.length) {
-      text += "\nOther work this week:\n";
-      remainingLogs.forEach((l) => { text += "\u2022 " + l.task + "\n"; });
-    }
-
-    if (blockers.length) {
-      text += "\nQuestions / Blockers:\n";
-      blockers.forEach((b) => { text += "\u2022 " + b + "\n"; });
-    }
-
-    text += "\nBest,\n" + safeName;
-    if (summaryArea) summaryArea.value = text;
-  });
-
-  if (copyBtn) copyBtn.addEventListener("click", async () => {
-    if (message) message.textContent = "";
-    if (!summaryArea || !summaryArea.value.trim()) { if (message) message.textContent = "Generate a summary first."; return; }
-    try { await navigator.clipboard.writeText(summaryArea.value); if (message) message.textContent = "Copied to clipboard."; }
-    catch { if (message) message.textContent = "Copy failed. Please select and copy manually."; }
-  });
-
-  refreshActivePageData = async () => {
-    const p = await db.getPreferences();
-    if (managerNameInput) managerNameInput.value = p.manager_name || "";
-    if (yourNameInput) yourNameInput.value = p.your_name || "";
-    if (summaryArea) summaryArea.value = "";
-    if (message) message.textContent = "";
-    await renderWorkspaceTimeline();
-    await renderWeeklyFocus();
-    await renderProjectFiles();
-  };
-
-  await refreshActivePageData();
-}
 
 // ── Contact page ──────────────────────────────────────────────────────────────
 
@@ -1673,27 +1120,6 @@ async function initContactPage() {
   await renderPage();
 }
 
-// ── Project Files (workspace panel) ──────────────────────────────────────────
-
-async function renderProjectFiles() {
-  const grid = document.getElementById("projectFileGrid");
-  if (!grid) return;
-  const activeId = getActiveInternshipId();
-  if (!activeId) {
-    grid.innerHTML = '<p class="empty">Select an internship to view linked files.</p>';
-    return;
-  }
-  const files = await db.fetchStorageFilesByInternship(activeId);
-  if (!files.length) {
-    grid.innerHTML = '<p class="empty">No files linked to this internship yet. <a href="files.html">Upload one →</a></p>';
-    return;
-  }
-  grid.innerHTML = '<div class="file-grid file-grid-compact">'
-    + files.map((f) => renderStorageFileCard(f)).join("")
-    + '</div>';
-  attachStorageFileCardListeners(grid, renderProjectFiles);
-}
-
 // ── Files page ────────────────────────────────────────────────────────────────
 
 async function initFilesPage() {
@@ -1885,6 +1311,739 @@ async function checkRemindersOnLoad() {
   }, 800);
 }
 
+// ── Workspace ─────────────────────────────────────────────────────────────────
+// Per-internship workspace: grid view → detail view.
+// Each internship is its own "module" with daily log, weekly update, resume widget.
+
+let workspaceCurrentInternshipId = "";
+let weeklyUpdateOffset = 0;
+let pendingLogFiles = [];
+let refreshActivePageData = async () => {};
+
+// ── Week helpers ──────────────────────────────────────────────────────────────
+
+function getWeekRange(offset) {
+  offset = offset || 0;
+  const now = new Date();
+  const dow = now.getDay();
+  const mon = new Date(now);
+  mon.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1) + offset * 7);
+  mon.setHours(0, 0, 0, 0);
+  const sun = new Date(mon);
+  sun.setDate(mon.getDate() + 6);
+  return {
+    start: mon.toISOString().split("T")[0],
+    end:   sun.toISOString().split("T")[0],
+    label: formatDate(mon.toISOString().split("T")[0]) + " – " + formatDate(sun.toISOString().split("T")[0])
+  };
+}
+
+function isDateInWeek(dateStr, start, end) {
+  if (!dateStr || !start || !end) return false;
+  return dateStr >= start && dateStr <= end;
+}
+
+// ── API key management ────────────────────────────────────────────────────────
+
+function getApiKey() { return localStorage.getItem("interntrack_anthropic_key") || ""; }
+function setApiKey(key) { localStorage.setItem("interntrack_anthropic_key", key || ""); }
+
+function promptForApiKey() {
+  return new Promise((resolve) => {
+    const existing = document.getElementById("apiKeyModal");
+    if (existing) { resolve(); return; }
+    const modal = document.createElement("div");
+    modal.id = "apiKeyModal";
+    modal.className = "modal-overlay";
+    modal.innerHTML = '<div class="modal-card">'
+      + '<h3>Add Anthropic API Key</h3>'
+      + '<p class="muted" style="font-size:0.85rem;margin-bottom:0.75rem">Your key is stored only in your browser (localStorage) and is sent directly to the Anthropic API for AI generation features.</p>'
+      + '<div class="field-group" style="margin-bottom:0.75rem"><label>API Key</label>'
+      + '<input type="password" id="apiKeyInput" placeholder="sk-ant-…" style="font-family:monospace" /></div>'
+      + '<div class="modal-actions">'
+      + '<button class="btn" id="apiKeySave" type="button">Save & Continue</button>'
+      + '<button class="btn btn-secondary" id="apiKeyCancel" type="button">Cancel</button>'
+      + '</div>'
+      + '<p id="apiKeyError" class="error" style="margin-top:0.5rem"></p>'
+      + '</div>';
+    document.body.appendChild(modal);
+    modal.querySelector("#apiKeySave").addEventListener("click", () => {
+      const val = (modal.querySelector("#apiKeyInput").value || "").trim();
+      if (!val) { modal.querySelector("#apiKeyError").textContent = "Please enter your API key."; return; }
+      setApiKey(val);
+      modal.remove();
+      resolve();
+    });
+    modal.querySelector("#apiKeyCancel").addEventListener("click", () => { modal.remove(); resolve(); });
+    modal.querySelector("#apiKeyInput").focus();
+  });
+}
+
+async function callAnthropicAPI(prompt, maxTokens) {
+  maxTokens = maxTokens || 300;
+  const key = getApiKey();
+  if (!key) return null;
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: maxTokens,
+        messages: [{ role: "user", content: prompt }]
+      })
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err?.error?.message || "API error " + response.status);
+    }
+    const data = await response.json();
+    return data.content?.[0]?.text || "";
+  } catch (err) {
+    console.error("[AI]", err.message);
+    return null;
+  }
+}
+
+// ── Workspace navigation ──────────────────────────────────────────────────────
+
+async function navigateToGrid() {
+  const grid   = document.getElementById("workspaceGrid");
+  const detail = document.getElementById("workspaceDetail");
+  if (!grid || !detail) return;
+  workspaceCurrentInternshipId = "";
+  detail.classList.add("hidden");
+  grid.classList.remove("hidden");
+  await renderInternshipGrid();
+}
+
+async function navigateToInternship(id) {
+  const grid   = document.getElementById("workspaceGrid");
+  const detail = document.getElementById("workspaceDetail");
+  if (!grid || !detail) return;
+  workspaceCurrentInternshipId = id;
+  setActiveInternshipId(id);
+  grid.classList.add("hidden");
+  detail.classList.remove("hidden");
+  const internships = await db.getInternships();
+  const internship  = internships.find((i) => i.id === id);
+  if (!internship) return;
+  renderInternshipDetailHeader(internship);
+  initResumeWidget(internship);
+  weeklyUpdateOffset = 0;
+  pendingLogFiles = [];
+  const logDate = document.getElementById("logDate");
+  if (logDate) logDate.value = todayDateString();
+  await renderWorkspaceTimeline();
+  await renderWeeklyUpdate();
+  await renderManagerHighlights(id);
+}
+
+// ── Internship grid ───────────────────────────────────────────────────────────
+
+async function renderInternshipGrid() {
+  const grid = document.getElementById("internshipModuleGrid");
+  if (!grid) return;
+  const internships = await db.getInternships();
+  if (!internships.length) {
+    grid.innerHTML = '<div class="intern-grid-empty">'
+      + '<p class="intern-grid-empty-title">No internship workspaces yet.</p>'
+      + '<p class="muted">Click "+ New Internship" above to create your first workspace.</p>'
+      + '</div>';
+    return;
+  }
+  const today = todayDateString();
+  grid.innerHTML = internships.map((item) => {
+    const isPast   = item.endDate && item.endDate < today;
+    const badge    = isPast
+      ? '<span class="intern-status-badge intern-badge-past">Completed</span>'
+      : '<span class="intern-status-badge intern-badge-active">Active</span>';
+    const dateRow  = [
+      item.startDate ? formatDate(item.startDate) : null,
+      item.endDate   ? formatDate(item.endDate)   : "Ongoing"
+    ].filter(Boolean).join(" → ");
+    return '<div class="intern-module-card ' + (isPast ? "intern-card-past" : "intern-card-active") + '">'
+      + '<div class="intern-card-header">'
+      + '<div class="intern-card-titles">'
+      + '<h3 class="intern-card-role">' + escapeHtml(item.name) + '</h3>'
+      + '<p class="intern-card-company">' + escapeHtml(item.company || "") + '</p>'
+      + '</div>'
+      + badge
+      + '</div>'
+      + '<p class="intern-card-dates">' + escapeHtml(dateRow) + '</p>'
+      + (isPast ? '<p class="intern-card-resume-hint">✨ Resume points available</p>' : '')
+      + '<div class="intern-card-actions">'
+      + '<button class="btn intern-enter-btn" type="button" data-intern-id="' + item.id + '">Enter Workspace →</button>'
+      + '<div class="intern-card-secondary-actions">'
+      + '<button class="btn btn-secondary btn-sm" type="button" data-intern-edit="' + item.id + '">Edit</button>'
+      + '<button class="btn btn-secondary btn-sm danger-btn" type="button" data-intern-delete="' + item.id + '">Delete</button>'
+      + '</div></div></div>';
+  }).join("");
+
+  grid.querySelectorAll(".intern-enter-btn").forEach((btn) => {
+    btn.addEventListener("click", () => navigateToInternship(btn.dataset.internId));
+  });
+  grid.querySelectorAll("[data-intern-edit]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openInternshipForm(internships.find((i) => i.id === btn.dataset.internEdit));
+    });
+  });
+  grid.querySelectorAll("[data-intern-delete]").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const target = internships.find((i) => i.id === btn.dataset.internDelete);
+      if (!target || !window.confirm('Delete "' + target.name + '" and all its logs? This cannot be undone.')) return;
+      await db.deleteInternship(btn.dataset.internDelete);
+      if (workspaceCurrentInternshipId === btn.dataset.internDelete) workspaceCurrentInternshipId = "";
+      await renderInternshipGrid();
+    });
+  });
+}
+
+// ── Internship form ───────────────────────────────────────────────────────────
+
+function openInternshipForm(seed) {
+  seed = seed || {};
+  const card    = document.getElementById("internshipFormCard");
+  const title   = document.getElementById("internshipFormTitle");
+  const editId  = document.getElementById("internshipEditId");
+  const nameEl  = document.getElementById("internshipName");
+  const coEl    = document.getElementById("internshipCompany");
+  const startEl = document.getElementById("internshipStart");
+  const endEl   = document.getElementById("internshipEnd");
+  const errEl   = document.getElementById("internshipError");
+  if (!card) return;
+  if (title)  title.textContent  = seed.id ? "Edit Internship" : "Add Internship";
+  if (editId) editId.value       = seed.id || "";
+  if (nameEl) nameEl.value       = seed.name || "";
+  if (coEl)   coEl.value         = seed.company || "";
+  if (startEl) startEl.value     = seed.startDate || "";
+  if (endEl)  endEl.value        = seed.endDate || "";
+  if (errEl)  errEl.textContent  = "";
+  card.classList.remove("hidden");
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (nameEl) nameEl.focus();
+}
+
+function closeInternshipForm() {
+  const card = document.getElementById("internshipFormCard");
+  const form = document.getElementById("internshipForm");
+  if (card) card.classList.add("hidden");
+  if (form) form.reset();
+}
+
+// ── Internship detail header ──────────────────────────────────────────────────
+
+function renderInternshipDetailHeader(internship) {
+  const el = document.getElementById("internshipDetailHeader");
+  if (!el) return;
+  const today   = todayDateString();
+  const isPast  = internship.endDate && internship.endDate < today;
+  const dateStr = [
+    internship.startDate ? formatDate(internship.startDate) : null,
+    internship.endDate   ? formatDate(internship.endDate)   : "Ongoing"
+  ].filter(Boolean).join(" → ");
+  el.innerHTML = '<div class="detail-header-content">'
+    + '<h1 class="detail-role">' + escapeHtml(internship.name) + '</h1>'
+    + (internship.company ? '<p class="detail-company">' + escapeHtml(internship.company) + '</p>' : '')
+    + '<p class="detail-dates">' + escapeHtml(dateStr)
+    + (isPast ? ' <span class="intern-status-badge intern-badge-past">Completed</span>' : '') + '</p>'
+    + '</div>';
+}
+
+// ── Resume Points Widget ──────────────────────────────────────────────────────
+
+function initResumeWidget(internship) {
+  const widget = document.getElementById("resumeWidget");
+  if (!widget) return;
+
+  // Reset listeners by cloning nodes
+  const freshWidget = widget.cloneNode(true);
+  widget.parentNode.replaceChild(freshWidget, widget);
+  const wDismiss  = freshWidget.querySelector("#resumeWidgetDismiss");
+  const wGenerate = freshWidget.querySelector("#generateResumeBtn");
+  const wCopy     = freshWidget.querySelector("#copyResumeBtn");
+
+  const today      = todayDateString();
+  const isPast     = internship.endDate && internship.endDate < today;
+  const dismissKey = "interntrack_resume_dismissed_" + internship.id;
+
+  if (!isPast || sessionStorage.getItem(dismissKey) === "1") {
+    freshWidget.classList.add("hidden");
+    return;
+  }
+  freshWidget.classList.remove("hidden");
+
+  wDismiss?.addEventListener("click", () => {
+    sessionStorage.setItem(dismissKey, "1");
+    freshWidget.classList.add("hidden");
+  });
+
+  wGenerate?.addEventListener("click", async () => {
+    const statusEl  = freshWidget.querySelector("#resumeGenStatus");
+    const content   = freshWidget.querySelector("#resumeContent");
+    const pointsEl  = freshWidget.querySelector("#resumePoints");
+    if (content) content.classList.remove("hidden");
+    if (statusEl) statusEl.textContent = "Generating resume points…";
+    if (wGenerate) { wGenerate.disabled = true; wGenerate.textContent = "Generating…"; }
+
+    if (!getApiKey()) {
+      await promptForApiKey();
+      if (!getApiKey()) {
+        if (statusEl) statusEl.textContent = "API key required. Click the button again after adding your key.";
+        if (wGenerate) { wGenerate.disabled = false; wGenerate.textContent = "Generate Points ✨"; }
+        return;
+      }
+    }
+
+    const allLogs  = await db.getLogs(internship.id);
+    const logLines = allLogs.map((l) =>
+      "- " + l.date + ": " + l.task + (l.impact ? " → " + l.impact : "")
+    ).join("\n") || "No logs recorded.";
+
+    const prompt = "You are helping an intern write strong resume bullet points. Based on their work log from their role as "
+      + internship.name + " at " + (internship.company || "a company")
+      + ", generate 4-6 resume bullet points.\n\nEach bullet should:\n- Start with a strong action verb\n- Be concise (one line)\n- Quantify impact where mentioned\n- Sound professional\n\nWork log:\n" + logLines
+      + "\n\nReturn only the bullet points, one per line, each starting with a dash (-). No headers or extra text.";
+
+    const result = await callAnthropicAPI(prompt, 600);
+    if (wGenerate) { wGenerate.disabled = false; wGenerate.textContent = "Regenerate ✨"; }
+
+    if (!result) {
+      if (statusEl) statusEl.textContent = "Generation failed — verify your API key and try again.";
+      return;
+    }
+    if (statusEl) statusEl.textContent = "";
+    const bullets = result.split("\n").filter((l) => l.trim().startsWith("-"));
+    if (pointsEl) {
+      pointsEl.innerHTML = bullets.map((b) =>
+        '<div class="resume-point-item">'
+        + '<textarea class="resume-point-textarea" rows="2">' + escapeHtml(b.replace(/^-\s*/, "")) + '</textarea>'
+        + '</div>'
+      ).join("");
+    }
+  });
+
+  wCopy?.addEventListener("click", async () => {
+    const areas = freshWidget.querySelectorAll(".resume-point-textarea");
+    const text  = Array.from(areas).map((t) => "• " + t.value.trim()).filter(Boolean).join("\n");
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      const orig = wCopy.textContent;
+      wCopy.textContent = "Copied!";
+      setTimeout(() => { wCopy.textContent = orig; }, 2000);
+    } catch {
+      alert("Copy failed — please select and copy manually.");
+    }
+  });
+}
+
+// ── Daily Log (detail view) ───────────────────────────────────────────────────
+
+function initDetailLog() {
+  const logForm    = document.getElementById("logForm");
+  if (!logForm) return;
+  const logDate    = document.getElementById("logDate");
+  const logTask    = document.getElementById("logTask");
+  const logBlockers = document.getElementById("logBlockers");
+  const logImpact  = document.getElementById("logImpact");
+  const logError   = document.getElementById("logError");
+  const genBtn     = document.getElementById("generateImpactBtn");
+  const statusEl   = document.getElementById("impactGenStatus");
+  const dropZone   = document.getElementById("logDropZone");
+  const fileInput  = document.getElementById("logFileInput");
+  const pendingEl  = document.getElementById("logPendingFiles");
+
+  function addPendingFiles(files) {
+    Array.from(files).forEach((f) => {
+      if (!pendingLogFiles.some((p) => p.file.name === f.name && p.file.size === f.size)) {
+        pendingLogFiles.push({ file: f, uid: makeId() });
+      }
+    });
+    renderPendingFiles();
+  }
+
+  function renderPendingFiles() {
+    if (!pendingEl) return;
+    if (!pendingLogFiles.length) { pendingEl.innerHTML = ""; return; }
+    pendingEl.innerHTML = pendingLogFiles.map((p) =>
+      '<div class="pending-file-item" data-uid="' + p.uid + '">'
+      + '<span class="pending-file-icon">📄</span>'
+      + '<span class="pending-file-name">' + escapeHtml(p.file.name) + '</span>'
+      + '<span class="pending-file-size">' + (p.file.size / 1024).toFixed(1) + ' KB</span>'
+      + '<button type="button" class="pending-file-remove" data-uid="' + p.uid + '">✕</button>'
+      + '</div>'
+    ).join("");
+    pendingEl.querySelectorAll(".pending-file-remove").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        pendingLogFiles = pendingLogFiles.filter((p) => p.uid !== btn.dataset.uid);
+        renderPendingFiles();
+      });
+    });
+  }
+
+  if (dropZone) {
+    dropZone.addEventListener("dragover",  (e) => { e.preventDefault(); dropZone.classList.add("log-drop-zone-hover"); });
+    dropZone.addEventListener("dragleave", ()  => dropZone.classList.remove("log-drop-zone-hover"));
+    dropZone.addEventListener("drop",      (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("log-drop-zone-hover");
+      addPendingFiles(e.dataTransfer.files);
+    });
+    dropZone.addEventListener("click", (e) => {
+      if (e.target.tagName !== "LABEL" && e.target.tagName !== "INPUT") fileInput?.click();
+    });
+  }
+  if (fileInput) {
+    fileInput.addEventListener("change", () => { addPendingFiles(fileInput.files); fileInput.value = ""; });
+  }
+
+  genBtn?.addEventListener("click", async () => {
+    const task     = logTask?.value.trim() || "";
+    const blockers = logBlockers?.value.trim() || "";
+    if (!task) { if (statusEl) statusEl.textContent = "Describe your tasks first."; return; }
+    if (!getApiKey()) {
+      await promptForApiKey();
+      if (!getApiKey()) { if (statusEl) statusEl.textContent = "API key required for AI generation."; return; }
+    }
+    if (genBtn) { genBtn.disabled = true; genBtn.textContent = "Generating…"; }
+    if (statusEl) statusEl.textContent = "Generating impact statement…";
+    const fileNames = pendingLogFiles.map((p) => p.file.name).join(", ");
+    const prompt = "Write a concise 1-2 sentence impact statement in first person for an intern's daily work log.\n\nTasks completed: " + task
+      + (blockers ? "\nQuestions/blockers: " + blockers : "")
+      + (fileNames ? "\nFiles worked with: " + fileNames : "")
+      + "\n\nReturn only the impact statement. Start with an action verb. Be specific and professional. No quotation marks.";
+    const result = await callAnthropicAPI(prompt, 150);
+    if (genBtn) { genBtn.disabled = false; genBtn.textContent = "Generate ✨"; }
+    if (result) {
+      if (logImpact) logImpact.value = result.trim();
+      if (statusEl)  statusEl.textContent = "";
+    } else {
+      if (statusEl) statusEl.textContent = "Generation failed — check your API key or write the impact manually.";
+    }
+  });
+
+  logForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (logError) logError.textContent = "";
+    const activeId = workspaceCurrentInternshipId;
+    if (!activeId) { if (logError) logError.textContent = "No internship selected."; return; }
+    const entry = normalizeLog({
+      date:     logDate?.value     || todayDateString(),
+      task:     logTask?.value     || "",
+      impact:   logImpact?.value   || "",
+      blockers: logBlockers?.value || ""
+    });
+    if (!entry.date || !entry.task) { if (logError) logError.textContent = "Tasks completed is required."; return; }
+    const saved = await db.saveLog(entry, activeId);
+    if (!saved) { if (logError) logError.textContent = "Failed to save log. Check console for details."; return; }
+    for (const p of pendingLogFiles) {
+      await db.uploadFileToStorage(p.file, { internshipId: activeId, category: "daily-log" });
+    }
+    pendingLogFiles = [];
+    renderPendingFiles();
+    if (logTask)     logTask.value     = "";
+    if (logImpact)   logImpact.value   = "";
+    if (logBlockers) logBlockers.value = "";
+    if (statusEl)    statusEl.textContent = "";
+    await renderWorkspaceTimeline();
+    await renderWeeklyUpdate();
+  });
+
+  refreshActivePageData = async () => {
+    await renderWorkspaceTimeline();
+    await renderWeeklyUpdate();
+    await renderManagerHighlights(workspaceCurrentInternshipId);
+  };
+}
+
+// ── Workspace timeline ────────────────────────────────────────────────────────
+
+async function renderWorkspaceTimeline() {
+  const container = document.getElementById("timelineContainer");
+  if (!container) return;
+  const activeId = workspaceCurrentInternshipId || getActiveInternshipId();
+  if (!activeId) {
+    container.innerHTML = '<p class="timeline-empty">Select an internship to view logs.</p>';
+    return;
+  }
+  const [allLogs, allFiles] = await Promise.all([
+    db.getLogs(activeId),
+    db.fetchStorageFilesByInternship(activeId)
+  ]);
+  if (!allLogs.length) {
+    container.innerHTML = '<p class="timeline-empty">No logs yet. Use the form above to record your first entry.</p>';
+    return;
+  }
+
+  const filesByDate = new Map();
+  allFiles.forEach((f) => {
+    if (f.category !== "daily-log") return;
+    const date = f.createdAt ? f.createdAt.slice(0, 10) : "";
+    if (!date) return;
+    if (!filesByDate.has(date)) filesByDate.set(date, []);
+    filesByDate.get(date).push(f);
+  });
+
+  function getWeekMonday(dateStr) {
+    const d   = parseDateOnly(dateStr);
+    const dow = d.getDay();
+    const mon = new Date(d);
+    mon.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
+    return mon.toISOString().split("T")[0];
+  }
+
+  const weekMap = new Map();
+  allLogs.forEach((log) => {
+    const wk = getWeekMonday(log.date);
+    if (!weekMap.has(wk)) weekMap.set(wk, []);
+    weekMap.get(wk).push(log);
+  });
+  const sortedWeeks = Array.from(weekMap.entries()).sort(([a], [b]) => b.localeCompare(a));
+
+  let html = "";
+  sortedWeeks.forEach(([weekMon, logs]) => {
+    const monDate = parseDateOnly(weekMon);
+    const friDate = new Date(monDate);
+    friDate.setDate(monDate.getDate() + 4);
+    const weekLabel = "Week of " + formatDate(weekMon) + " – " + formatDate(friDate.toISOString().split("T")[0]);
+    const rows = [...logs].sort((a, b) => b.date.localeCompare(a.date)).map((log) => {
+      const dateFiles = filesByDate.get(log.date) || [];
+      const filesHtml = dateFiles.length
+        ? '<div class="log-row-files">' + dateFiles.map((f) =>
+            '<a class="log-file-chip" href="' + escapeHtml(f.fileUrl) + '" target="_blank" rel="noopener">📄 ' + escapeHtml(f.name) + '</a>'
+          ).join("") + '</div>'
+        : "";
+      return '<div class="log-row">'
+        + '<span class="log-row-date">' + formatDate(log.date) + "</span>"
+        + '<div class="log-row-body">'
+        + '<p class="log-task">' + escapeHtml(log.task) + "</p>"
+        + (log.impact ? '<p class="log-impact"><span class="entry-arrow">→</span> ' + escapeHtml(log.impact) + "</p>" : "")
+        + (log.blockers ? '<span class="log-blocker-badge">⚠ ' + escapeHtml(log.blockers) + "</span>" : "")
+        + filesHtml
+        + "</div></div>";
+    }).join("");
+    html += '<div class="week-section"><p class="week-label">' + weekLabel + "</p>"
+      + '<div class="week-entries">' + rows + "</div></div>";
+  });
+  container.innerHTML = html;
+}
+
+// ── Weekly Manager Update ─────────────────────────────────────────────────────
+
+async function renderWeeklyUpdate() {
+  const area     = document.getElementById("generatedSummary");
+  const navLabel = document.getElementById("weekNavLabel");
+  const nextBtn  = document.getElementById("nextWeekBtn");
+  if (!area) return;
+  const week = getWeekRange(weeklyUpdateOffset);
+  if (navLabel) navLabel.textContent = week.label;
+  if (nextBtn)  nextBtn.disabled = weeklyUpdateOffset >= 0;
+  const activeId  = workspaceCurrentInternshipId || getActiveInternshipId();
+  if (!activeId) { area.value = ""; return; }
+  const allLogs   = await db.getLogs(activeId);
+  const weekLogs  = allLogs.filter((l) => isDateInWeek(l.date, week.start, week.end));
+  const manager   = (document.getElementById("managerName")?.value    || "").trim() || "[Manager Name]";
+  const yourName  = (document.getElementById("yourName")?.value      || "").trim() || "[Your Name]";
+  const nextPlans = (document.getElementById("nextPlansInput")?.value  || "").trim();
+  const blockNote = (document.getElementById("blockersNoteInput")?.value || "").trim();
+
+  const subject = "Subject: Weekly Update — " + week.label;
+
+  const top5 = [...weekLogs].sort((a, b) => scoreImpact(b) - scoreImpact(a)).slice(0, 5);
+  const lines = Array.from({ length: 5 }, (_, i) => {
+    const log = top5[i];
+    return (i + 1) + ". " + (log ? (log.impact || log.task || "") : "");
+  });
+
+  const autoBlockers = weekLogs.map((l) => l.blockers).filter(Boolean).join("; ");
+  const blockersLine = blockNote || autoBlockers || "";
+
+  area.value = subject
+    + "\n\nHi " + manager + ","
+    + "\n\nHere’s a quick update on what I worked on this week:\n\n"
+    + lines.join("\n")
+    + "\n\nNext week I’m planning to: " + nextPlans
+    + "\n\nAny blockers or things I need from you: " + blockersLine
+    + "\n\nThanks! — " + yourName;
+}
+
+// ── Manager Highlights Widget ──────────────────────────────────────────────────
+
+async function renderManagerHighlights(internshipId) {
+  const list = document.getElementById("managerHighlightsList");
+  if (!list || !internshipId) return;
+  const items = list.querySelectorAll(".highlight-item");
+
+  const storageKey = "interntrack_highlights_" + internshipId;
+  const saved = (() => { try { return JSON.parse(localStorage.getItem(storageKey) || "null"); } catch { return null; } })();
+
+  if (saved && Array.isArray(saved) && saved.length === 5) {
+    saved.forEach((text, i) => { if (items[i]) items[i].value = text; });
+    return;
+  }
+
+  const allLogs = await db.getLogs(internshipId);
+  const top5 = [...allLogs].sort((a, b) => scoreImpact(b) - scoreImpact(a)).slice(0, 5);
+  items.forEach((el, i) => { el.value = top5[i] ? (top5[i].impact || top5[i].task || "") : ""; });
+}
+
+function initManagerHighlights() {
+  const saveBtn  = document.getElementById("saveHighlightsBtn");
+  const regenBtn = document.getElementById("regenHighlightsBtn");
+  const msgEl    = document.getElementById("highlightsSaveMsg");
+  if (!saveBtn) return;
+
+  saveBtn.addEventListener("click", () => {
+    const id = workspaceCurrentInternshipId;
+    if (!id) return;
+    const values = Array.from(document.querySelectorAll(".highlight-item")).map((el) => el.value.trim());
+    localStorage.setItem("interntrack_highlights_" + id, JSON.stringify(values));
+    if (msgEl) { msgEl.textContent = "Saved!"; setTimeout(() => { msgEl.textContent = ""; }, 2000); }
+  });
+
+  regenBtn?.addEventListener("click", async () => {
+    const id = workspaceCurrentInternshipId;
+    if (!id) return;
+    localStorage.removeItem("interntrack_highlights_" + id);
+    await renderManagerHighlights(id);
+    if (msgEl) { msgEl.textContent = "Refreshed from logs."; setTimeout(() => { msgEl.textContent = ""; }, 2000); }
+  });
+}
+
+async function initWeeklyUpdate() {
+  const prevBtn   = document.getElementById("prevWeekBtn");
+  const nextBtn   = document.getElementById("nextWeekBtn");
+  const regenBtn  = document.getElementById("regenerateSummaryBtn");
+  const copyBtn   = document.getElementById("copySummaryBtn");
+  const emailBtn  = document.getElementById("emailSummaryBtn");
+  const msgEl     = document.getElementById("summaryMessage");
+  const managerEl   = document.getElementById("managerName");
+  const nameEl      = document.getElementById("yourName");
+  const emailEl     = document.getElementById("yourEmail");
+  const nextPlansEl = document.getElementById("nextPlansInput");
+  const blockersEl  = document.getElementById("blockersNoteInput");
+  if (!regenBtn) return;
+
+  const prefs = await db.getPreferences();
+  if (managerEl)   managerEl.value   = prefs.manager_name || "";
+  if (nameEl)      nameEl.value      = prefs.your_name    || "";
+  if (emailEl)     emailEl.value     = prefs.your_email   || "";
+  if (nextPlansEl) nextPlansEl.value = localStorage.getItem("interntrack_next_plans")    || "";
+  if (blockersEl)  blockersEl.value  = localStorage.getItem("interntrack_blockers_note") || "";
+
+  const savePrefs = async () => {
+    await db.savePreferences({
+      manager_name: managerEl?.value || "",
+      your_name:    nameEl?.value    || "",
+      your_email:   emailEl?.value   || ""
+    });
+    if (nextPlansEl) localStorage.setItem("interntrack_next_plans",    nextPlansEl.value);
+    if (blockersEl)  localStorage.setItem("interntrack_blockers_note", blockersEl.value);
+  };
+  managerEl?.addEventListener("blur",   savePrefs);
+  nameEl?.addEventListener("blur",      savePrefs);
+  emailEl?.addEventListener("blur",     savePrefs);
+  nextPlansEl?.addEventListener("blur", savePrefs);
+  blockersEl?.addEventListener("blur",  savePrefs);
+
+  prevBtn?.addEventListener("click",  async () => { weeklyUpdateOffset--; await renderWeeklyUpdate(); });
+  nextBtn?.addEventListener("click",  async () => { if (weeklyUpdateOffset < 0) { weeklyUpdateOffset++; await renderWeeklyUpdate(); } });
+  regenBtn?.addEventListener("click", async () => { await savePrefs(); await renderWeeklyUpdate(); });
+
+  copyBtn?.addEventListener("click", async () => {
+    const area = document.getElementById("generatedSummary");
+    if (!area?.value.trim()) { if (msgEl) msgEl.textContent = "Nothing to copy yet."; return; }
+    try {
+      await navigator.clipboard.writeText(area.value);
+      if (msgEl) { msgEl.textContent = "Copied to clipboard!"; setTimeout(() => { msgEl.textContent = ""; }, 2000); }
+    } catch {
+      if (msgEl) msgEl.textContent = "Copy failed — please select and copy manually.";
+    }
+  });
+
+  emailBtn?.addEventListener("click", () => {
+    const area  = document.getElementById("generatedSummary");
+    const text  = area?.value.trim() || "";
+    const email = emailEl?.value.trim() || "";
+    if (!text) { if (msgEl) msgEl.textContent = "No update to send yet."; return; }
+    const week    = getWeekRange(weeklyUpdateOffset);
+    const subject = "Weekly Update — " + week.label;
+    window.open("mailto:" + encodeURIComponent(email) + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(text), "_blank");
+    if (msgEl) { msgEl.textContent = "Opening your email client…"; setTimeout(() => { msgEl.textContent = ""; }, 3000); }
+  });
+}
+
+// ── Main workspace init ───────────────────────────────────────────────────────
+
+async function initWorkspace() {
+  const grid = document.getElementById("workspaceGrid");
+  if (!grid) return;
+
+  document.getElementById("addInternshipBtn")?.addEventListener("click", () => openInternshipForm());
+  document.getElementById("internshipCancelBtn")?.addEventListener("click", closeInternshipForm);
+
+  document.getElementById("internshipForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errEl   = document.getElementById("internshipError");
+    if (errEl) errEl.textContent = "";
+    const name    = (document.getElementById("internshipName")?.value    || "").trim();
+    const company = (document.getElementById("internshipCompany")?.value || "").trim();
+    const start   = document.getElementById("internshipStart")?.value    || "";
+    const end     = document.getElementById("internshipEnd")?.value      || "";
+    if (!name)    { if (errEl) errEl.textContent = "Role / Title is required.";  return; }
+    if (!company) { if (errEl) errEl.textContent = "Company is required.";       return; }
+    if (!start)   { if (errEl) errEl.textContent = "Start date is required.";    return; }
+    const editId = document.getElementById("internshipEditId")?.value || "";
+    if (editId) {
+      const all    = await db.getInternships();
+      const target = all.find((i) => i.id === editId);
+      if (target) await db.saveInternship({ ...target, name, company, startDate: start, endDate: end });
+    } else {
+      const newItem = { id: makeId(), name, company, startDate: start, endDate: end, createdAt: new Date().toISOString() };
+      const saved   = await db.saveInternship(newItem);
+      if (!saved) { if (errEl) errEl.textContent = "Failed to save. Check console for details."; return; }
+    }
+    closeInternshipForm();
+    await renderInternshipGrid();
+  });
+
+  document.getElementById("backToGridBtn")?.addEventListener("click", navigateToGrid);
+
+  document.getElementById("editInternshipDetailBtn")?.addEventListener("click", async () => {
+    const all     = await db.getInternships();
+    const current = all.find((i) => i.id === workspaceCurrentInternshipId);
+    if (!current) return;
+    await navigateToGrid();
+    openInternshipForm(current);
+  });
+
+  document.getElementById("deleteInternshipDetailBtn")?.addEventListener("click", async () => {
+    const all     = await db.getInternships();
+    const current = all.find((i) => i.id === workspaceCurrentInternshipId);
+    if (!current || !window.confirm('Delete "' + current.name + '" and all its logs? This cannot be undone.')) return;
+    await db.deleteInternship(workspaceCurrentInternshipId);
+    await navigateToGrid();
+  });
+
+  initDetailLog();
+  initManagerHighlights();
+  await initWeeklyUpdate();
+  await renderInternshipGrid();
+
+  const internships = await db.getInternships();
+  if (internships.length === 1) {
+    await navigateToInternship(internships[0].id);
+  }
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 // requireAuth() redirects to auth.html if the user is not signed in.
 // All init functions are no-ops on pages where their root element is absent,
@@ -1895,13 +2054,10 @@ async function checkRemindersOnLoad() {
   if (!user) return;
   initThemeToggle();
   initSignOut();
-  await initDashboard();
-  initWeeklyFocus();
+  await initWorkspace();
   await initNetworking();
-  await initSummary();
   await initContactPage();
   await initFilesPage();
-  await initInternshipPanel();
   initCalendarNav();
   await renderCalendarView();
   await checkRemindersOnLoad();
