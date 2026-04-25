@@ -2224,13 +2224,18 @@ async function initWorkspace() {
   initStoriesTab();
   initWsFilesTab();
   await initWeeklyUpdate();
-  await renderInternshipGrid();
 
   const sessionId = sessionStorage.getItem("interntrack_session_workspace_id");
   if (sessionId) {
     const internships = await db.getInternships();
     const match = internships.find((i) => i.id === sessionId);
-    if (match) await navigateToInternship(match.id);
+    if (match) {
+      await navigateToInternship(match.id);
+    } else {
+      await renderInternshipGrid();
+    }
+  } else {
+    await renderInternshipGrid();
   }
 }
 
