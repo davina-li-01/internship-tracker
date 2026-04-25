@@ -15,6 +15,7 @@
 
     <!-- ── Sidebar ───────────────────────────────────── -->
     <aside class="sidebar">
+      <button id="sidebarToggleBtn" class="sidebar-toggle" type="button" title="Toggle sidebar">☰</button>
       <div class="sidebar-brand">InternTrack</div>
 
       <nav class="sidebar-nav">
@@ -123,128 +124,190 @@
         <!-- Internship name / dates header -->
         <div id="internshipDetailHeader" class="internship-detail-header"></div>
 
-        <!-- ① Daily Log -->
-        <div class="card log-composer">
-          <div class="log-composer-header">
-            <p class="section-eyebrow">① Daily Log</p>
-            <input type="date" id="logDate" class="log-date-inline" />
-          </div>
-          <form id="logForm" autocomplete="off">
-
-            <div class="log-field-block">
-              <label class="log-field-label" for="logTask">Tasks Completed <span class="required">*</span></label>
-              <textarea id="logTask" rows="3" placeholder="What did you work on today? Describe your tasks and contributions." required></textarea>
-            </div>
-
-            <div class="log-field-block">
-              <label class="log-field-label" for="logBlockers">Questions / Blockers <span class="opt-label">(optional)</span></label>
-              <textarea id="logBlockers" rows="2" placeholder="Any blockers, open questions, or things you need help with?"></textarea>
-            </div>
-
-            <!-- Embedded file attachment -->
-            <div class="log-field-block">
-              <label class="log-field-label">Attach Files <span class="opt-label">(optional)</span></label>
-              <div id="logDropZone" class="log-drop-zone">
-                <span class="log-drop-icon">📎</span>
-                <span>Drag & drop files here, or <label for="logFileInput" class="file-browse-link">browse</label></span>
-                <input type="file" id="logFileInput" class="sr-only" multiple />
-              </div>
-              <div id="logPendingFiles" class="log-pending-files"></div>
-            </div>
-
-            <!-- AI-generated Impact Statement -->
-            <div class="log-field-block" style="margin-bottom:0">
-              <div class="impact-label-row">
-                <label class="log-field-label" for="logImpact">Impact Statement</label>
-                <button type="button" id="generateImpactBtn" class="btn btn-secondary btn-sm">Generate ✨</button>
-              </div>
-              <textarea id="logImpact" rows="2" placeholder="AI-generated from your tasks and files, or write your own…"></textarea>
-              <p id="impactGenStatus" class="muted tiny" aria-live="polite" style="margin-top:0.25rem"></p>
-            </div>
-
-            <div class="log-actions">
-              <p id="logError" class="error" style="margin:0"></p>
-              <button type="submit" class="btn">Log it →</button>
-            </div>
-          </form>
+        <!-- Tab bar -->
+        <div class="ws-tab-bar">
+          <button class="ws-tab active" data-tab="logs" type="button">Daily Logs</button>
+          <button class="ws-tab" data-tab="stories" type="button">Stories</button>
+          <button class="ws-tab" data-tab="files" type="button">Files</button>
         </div>
 
-        <!-- Daily log history timeline -->
-        <div id="timelineContainer"></div>
+        <!-- ── Logs Tab ── -->
+        <div id="wsTabLogs" class="ws-tab-panel">
 
-        <!-- Manager Highlights Widget -->
-        <div class="card manager-highlights-card">
-          <div class="manager-highlights-header">
-            <div>
-              <p class="section-eyebrow">Manager Highlights</p>
-              <h2 class="focus-heading">Top 5 to Raise with Your Manager</h2>
-              <p class="page-subheading focus-sub">Auto-pulled from your highest-impact logs. Edit freely — saved per internship.</p>
+          <!-- Week indicator -->
+          <div class="week-indicator-bar">
+            <span class="week-indicator-eyebrow">Current Week</span>
+            <span id="weekIndicatorRange" class="week-indicator-range"></span>
+          </div>
+
+          <!-- Daily Log -->
+          <div class="card log-composer">
+            <div class="log-composer-header">
+              <p class="section-eyebrow">① Daily Log</p>
+              <input type="date" id="logDate" class="log-date-inline" />
             </div>
-            <button id="regenHighlightsBtn" class="btn btn-secondary btn-sm" type="button">↺ Refresh from Logs</button>
+            <form id="logForm" autocomplete="off">
+
+              <div class="log-field-block">
+                <label class="log-field-label" for="logTask">Tasks Completed <span class="required">*</span></label>
+                <textarea id="logTask" rows="3" placeholder="What did you work on today? Describe your tasks and contributions." required></textarea>
+              </div>
+
+              <div class="log-field-block">
+                <label class="log-field-label" for="logBlockers">Questions / Blockers <span class="opt-label">(optional)</span></label>
+                <textarea id="logBlockers" rows="2" placeholder="Any blockers, open questions, or things you need help with?"></textarea>
+              </div>
+
+              <!-- Embedded file attachment -->
+              <div class="log-field-block">
+                <label class="log-field-label">Attach Files <span class="opt-label">(optional)</span></label>
+                <div id="logDropZone" class="log-drop-zone">
+                  <span class="log-drop-icon">📎</span>
+                  <span>Drag &amp; drop files here, or <label for="logFileInput" class="file-browse-link">browse</label></span>
+                  <input type="file" id="logFileInput" class="sr-only" multiple />
+                </div>
+                <div id="logPendingFiles" class="log-pending-files"></div>
+              </div>
+
+              <!-- AI-generated Impact Statement -->
+              <div class="log-field-block" style="margin-bottom:0">
+                <div class="impact-label-row">
+                  <label class="log-field-label" for="logImpact">Impact Statement</label>
+                  <button type="button" id="generateImpactBtn" class="btn btn-secondary btn-sm">Generate ✨</button>
+                </div>
+                <textarea id="logImpact" rows="2" placeholder="AI-generated from your tasks and files, or write your own…"></textarea>
+                <p id="impactGenStatus" class="muted tiny" aria-live="polite" style="margin-top:0.25rem"></p>
+              </div>
+
+              <div class="log-actions">
+                <p id="logError" class="error" style="margin:0"></p>
+                <button type="submit" class="btn">Log it →</button>
+              </div>
+            </form>
           </div>
-          <ol id="managerHighlightsList" class="manager-highlights-list">
-            <li><textarea class="highlight-item" rows="2" placeholder="Add a highlight…" data-index="0"></textarea></li>
-            <li><textarea class="highlight-item" rows="2" placeholder="Add a highlight…" data-index="1"></textarea></li>
-            <li><textarea class="highlight-item" rows="2" placeholder="Add a highlight…" data-index="2"></textarea></li>
-            <li><textarea class="highlight-item" rows="2" placeholder="Add a highlight…" data-index="3"></textarea></li>
-            <li><textarea class="highlight-item" rows="2" placeholder="Add a highlight…" data-index="4"></textarea></li>
-          </ol>
-          <div class="manager-highlights-actions">
-            <button id="saveHighlightsBtn" class="btn btn-secondary btn-sm" type="button">Save Edits</button>
-            <p id="highlightsSaveMsg" class="muted tiny" aria-live="polite"></p>
+
+          <!-- Daily log history timeline -->
+          <div id="timelineContainer"></div>
+
+          <!-- Manager Highlights Widget (no week nav buttons) -->
+          <div class="card manager-highlights-card">
+            <div class="manager-highlights-header">
+              <div>
+                <p class="section-eyebrow">Manager Highlights</p>
+                <h2 class="focus-heading">Top 5 to Raise with Your Manager</h2>
+                <p class="focus-sub" style="font-size:0.82rem;color:var(--text-faint);margin-bottom:0.75rem">Auto-pulled from this week's logs. Edit freely.</p>
+              </div>
+            </div>
+            <ol id="managerHighlightsList" class="manager-highlights-list">
+              <li><textarea class="highlight-item" rows="2" placeholder="Add a highlight…" data-index="0"></textarea></li>
+              <li><textarea class="highlight-item" rows="2" placeholder="Add a highlight…" data-index="1"></textarea></li>
+              <li><textarea class="highlight-item" rows="2" placeholder="Add a highlight…" data-index="2"></textarea></li>
+              <li><textarea class="highlight-item" rows="2" placeholder="Add a highlight…" data-index="3"></textarea></li>
+              <li><textarea class="highlight-item" rows="2" placeholder="Add a highlight…" data-index="4"></textarea></li>
+            </ol>
+            <div class="manager-highlights-actions">
+              <button id="regenHighlightsBtn" class="btn btn-secondary btn-sm" type="button">↺ Refresh from Logs</button>
+              <button id="saveHighlightsBtn" class="btn btn-secondary btn-sm" type="button">Save Edits</button>
+              <p id="highlightsSaveMsg" class="muted tiny" aria-live="polite"></p>
+            </div>
           </div>
+
+          <!-- ② Weekly Manager Update -->
+          <div class="card summary-card">
+            <div class="summary-card-header">
+              <div>
+                <p class="section-eyebrow">② Weekly Manager Update</p>
+                <h2 class="focus-heading">Manager Update</h2>
+                <p class="page-subheading focus-sub">Auto-generated from this week's logs. Edit as needed, then copy or email.</p>
+              </div>
+              <div class="week-nav-row">
+                <button id="prevWeekBtn" class="btn btn-secondary btn-sm" type="button">← Prev</button>
+                <span id="weekNavLabel" class="week-nav-label"></span>
+                <button id="nextWeekBtn" class="btn btn-secondary btn-sm" type="button">Next →</button>
+              </div>
+            </div>
+
+            <div class="two-col" style="margin-bottom:0.75rem">
+              <div class="field-group" style="margin:0">
+                <label for="managerName">Manager's name</label>
+                <input type="text" id="managerName" placeholder="e.g. Jane Smith" />
+              </div>
+              <div class="field-group" style="margin:0">
+                <label for="yourName">Your name</label>
+                <input type="text" id="yourName" placeholder="e.g. Davina Li" />
+              </div>
+            </div>
+
+            <div class="field-group" style="margin-bottom:0.75rem">
+              <label for="yourEmail">Your email <span class="opt-label">(for emailing yourself the update)</span></label>
+              <input type="email" id="yourEmail" placeholder="you@email.com" />
+            </div>
+
+            <div class="two-col" style="margin-bottom:0.75rem">
+              <div class="field-group" style="margin:0">
+                <label for="nextPlansInput">Next week I'm planning to</label>
+                <input type="text" id="nextPlansInput" placeholder="e.g. Finish the dashboard redesign…" />
+              </div>
+              <div class="field-group" style="margin:0">
+                <label for="blockersNoteInput">Things I need from you <span class="opt-label">(optional)</span></label>
+                <input type="text" id="blockersNoteInput" placeholder="e.g. Access to analytics dashboard…" />
+              </div>
+            </div>
+
+            <textarea id="generatedSummary" rows="12" placeholder="Your weekly update will auto-generate from this week's logs above…"></textarea>
+
+            <div class="update-actions">
+              <button id="regenerateSummaryBtn" class="btn btn-secondary" type="button">↺ Regenerate</button>
+              <button id="copySummaryBtn" class="btn btn-secondary" type="button">Copy</button>
+              <button id="emailSummaryBtn" class="btn" type="button">Email to Myself →</button>
+            </div>
+            <p id="summaryMessage" class="muted" style="font-size:0.82rem;margin-top:0.5rem" aria-live="polite"></p>
+          </div>
+
+        </div><!-- /#wsTabLogs -->
+
+        <!-- ── Stories Tab ── -->
+        <div id="wsTabStories" class="ws-tab-panel hidden">
+          <div class="card">
+            <p class="section-eyebrow">Stories &amp; Interview Prep</p>
+            <h2 class="focus-heading">Stories</h2>
+            <p class="focus-sub" style="font-size:0.82rem;color:var(--text-faint);margin-bottom:0.75rem">Document wins, challenges, and moments to reference in future interviews.</p>
+            <form id="storyForm" autocomplete="off">
+              <div class="two-col" style="margin-bottom:0.65rem">
+                <div class="field-group" style="margin:0">
+                  <label for="storyDate">Date</label>
+                  <input type="date" id="storyDate" />
+                </div>
+                <div class="field-group" style="margin:0">
+                  <label for="storyTitle">Title <span class="opt-label">(optional)</span></label>
+                  <input type="text" id="storyTitle" placeholder="e.g. Shipped the redesign" />
+                </div>
+              </div>
+              <div class="field-group">
+                <label for="storyContent">What happened? <span class="required">*</span></label>
+                <textarea id="storyContent" rows="5" placeholder="Tell the story — what happened, what you did, what the outcome was. Be specific." required></textarea>
+              </div>
+              <p id="storyError" class="error"></p>
+              <button type="submit" class="btn btn-sm">Save Story</button>
+            </form>
+          </div>
+          <div id="storiesList" class="stories-list"></div>
         </div>
 
-        <!-- ② Weekly Manager Update -->
-        <div class="card summary-card">
-          <div class="summary-card-header">
-            <div>
-              <p class="section-eyebrow">② Weekly Manager Update</p>
-              <h2 class="focus-heading">Manager Update</h2>
-              <p class="page-subheading focus-sub">Auto-generated from this week's logs. Edit as needed, then copy or email.</p>
+        <!-- ── Files Tab ── -->
+        <div id="wsTabFiles" class="ws-tab-panel hidden">
+          <div class="card">
+            <p class="section-eyebrow">Files</p>
+            <h2 class="focus-heading">Internship Files</h2>
+            <p class="focus-sub" style="font-size:0.82rem;color:var(--text-faint);margin-bottom:0.75rem">Upload and manage files for this internship.</p>
+            <div id="wsFileDropZone" class="log-drop-zone" style="margin-bottom:0.6rem">
+              <span class="log-drop-icon">📁</span>
+              <span>Drag &amp; drop files, or <label for="wsFileInput" class="file-browse-link">browse</label></span>
+              <input type="file" id="wsFileInput" class="sr-only" multiple />
             </div>
-            <div class="week-nav-row">
-              <button id="prevWeekBtn" class="btn btn-secondary btn-sm" type="button">← Prev</button>
-              <span id="weekNavLabel" class="week-nav-label"></span>
-              <button id="nextWeekBtn" class="btn btn-secondary btn-sm" type="button">Next →</button>
-            </div>
+            <p id="wsFileUploadMsg" class="muted tiny" aria-live="polite" style="margin-bottom:0.5rem"></p>
+            <div id="wsFileList" class="ws-file-list"></div>
           </div>
-
-          <div class="two-col" style="margin-bottom:0.75rem">
-            <div class="field-group" style="margin:0">
-              <label for="managerName">Manager's name</label>
-              <input type="text" id="managerName" placeholder="e.g. Jane Smith" />
-            </div>
-            <div class="field-group" style="margin:0">
-              <label for="yourName">Your name</label>
-              <input type="text" id="yourName" placeholder="e.g. Davina Li" />
-            </div>
-          </div>
-
-          <div class="field-group" style="margin-bottom:0.75rem">
-            <label for="yourEmail">Your email <span class="opt-label">(for emailing yourself the update)</span></label>
-            <input type="email" id="yourEmail" placeholder="you@email.com" />
-          </div>
-
-          <div class="two-col" style="margin-bottom:0.75rem">
-            <div class="field-group" style="margin:0">
-              <label for="nextPlansInput">Next week I'm planning to</label>
-              <input type="text" id="nextPlansInput" placeholder="e.g. Finish the dashboard redesign…" />
-            </div>
-            <div class="field-group" style="margin:0">
-              <label for="blockersNoteInput">Things I need from you <span class="opt-label">(optional)</span></label>
-              <input type="text" id="blockersNoteInput" placeholder="e.g. Access to analytics dashboard…" />
-            </div>
-          </div>
-
-          <textarea id="generatedSummary" rows="12" placeholder="Your weekly update will auto-generate from this week's logs above…"></textarea>
-
-          <div class="update-actions">
-            <button id="regenerateSummaryBtn" class="btn btn-secondary" type="button">↺ Regenerate</button>
-            <button id="copySummaryBtn" class="btn btn-secondary" type="button">Copy</button>
-            <button id="emailSummaryBtn" class="btn" type="button">Email to Myself →</button>
-          </div>
-          <p id="summaryMessage" class="muted" style="font-size:0.82rem;margin-top:0.5rem" aria-live="polite"></p>
         </div>
 
       </div><!-- /#workspaceDetail -->

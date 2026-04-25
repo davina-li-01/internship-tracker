@@ -142,7 +142,20 @@ body.dark::after  { background: radial-gradient(circle, rgba(251,146,60,0.12) 0%
   flex-direction: column;
   padding: 1.5rem 0.875rem;
   z-index: 30;
+  transition: width 0.22s ease;
 }
+.sidebar.collapsed { width: 44px; padding: 1rem 0.5rem; align-items: center; overflow: hidden; }
+.sidebar.collapsed .sidebar-brand,
+.sidebar.collapsed .sidebar-nav,
+.sidebar.collapsed .sidebar-footer { display: none; }
+.sidebar.collapsed ~ .main-scroll { margin-left: 44px; }
+.main-scroll { transition: margin-left 0.22s ease; }
+.sidebar-toggle {
+  background: none; border: none; cursor: pointer; font-size: 1rem;
+  padding: 0.3rem 0.4rem; color: var(--text-muted); border-radius: 6px;
+  align-self: flex-start; flex-shrink: 0; margin-bottom: 0.5rem;
+}
+.sidebar-toggle:hover { background: rgba(249,115,22,0.08); color: var(--text); }
 body.dark .sidebar {
   border-right-color: rgba(255,255,255,0.05);
 }
@@ -390,11 +403,11 @@ body.dark .s-btn:hover { background: rgba(255,255,255,0.08); }
 
 /* ── Workspace (index.html) ──────────────────────────────────── */
 .workspace-content {
-  max-width: 680px;
+  max-width: 900px;
   margin: 0 auto;
-  padding: 2.5rem 2rem 5rem;
+  padding: 1.25rem 1.5rem 3rem;
   display: grid;
-  gap: 2rem;
+  gap: 0.85rem;
 }
 
 /* Page header */
@@ -413,7 +426,7 @@ body.dark .s-btn:hover { background: rgba(255,255,255,0.08); }
 
 /* Log Composer */
 .log-composer {
-  padding: 1.35rem 1.5rem 1rem;
+  padding: 1rem;
 }
 #logTask {
   font-size: 1rem;
@@ -598,7 +611,7 @@ body.dark .log-entry:hover { background: rgba(255,255,255,0.07); }
   -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-card);
-  padding: 1.5rem;
+  padding: 1rem;
   box-shadow: var(--glass-shadow);
 }
 
@@ -1217,7 +1230,7 @@ body.dark .auth-tab.active { background: rgba(255,255,255,0.09); }
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.65rem;
 }
 .log-date-inline {
   width: auto;
@@ -1241,8 +1254,8 @@ body.dark .auth-tab.active { background: rgba(255,255,255,0.09); }
 .log-field-block {
   display: grid;
   gap: 0.35rem;
-  margin-bottom: 1rem;
-  padding-bottom: 1rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
   border-bottom: 1px solid rgba(180,140,100,0.09);
 }
 body.dark .log-field-block {
@@ -1281,12 +1294,12 @@ body.dark .log-field-block {
 
 /* Headings inside the new cards */
 .focus-heading {
-  font-size: 1.05rem;
+  font-size: 0.95rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   margin-bottom: 0.2rem;
 }
-.focus-sub { margin-bottom: 1rem; }
+.focus-sub { margin-bottom: 0.65rem; }
 
 /* Optional label inside field labels */
 .opt-label {
@@ -2024,11 +2037,11 @@ body.dark .intern-badge-past   { background: rgba(107,114,128,0.18); color: #9ca
 
 /* ── Detail header ────────────────────────────────────────── */
 .internship-detail-header {
-  margin-bottom: 1.25rem;
+  margin-bottom: 0.75rem;
 }
 .detail-header-content { display: flex; flex-direction: column; gap: 0.2rem; }
 .detail-role {
-  font-size: 1.6rem;
+  font-size: 1.3rem;
   font-weight: 800;
   color: var(--text);
   margin: 0;
@@ -2286,3 +2299,77 @@ body.dark .resume-widget {
   white-space: nowrap;
   border-width: 0;
 }
+
+/* ── Workspace tabs ──────────────────────────────────────────── */
+.ws-tab-bar {
+  display: flex; gap: 0.15rem;
+  background: rgba(180,140,100,0.07);
+  border-radius: 10px; padding: 0.2rem;
+}
+body.dark .ws-tab-bar { background: rgba(255,255,255,0.05); }
+.ws-tab {
+  flex: 1; padding: 0.38rem 0.75rem; border: none;
+  background: transparent; border-radius: 8px;
+  font-size: 0.82rem; font-weight: 600;
+  color: var(--text-muted); cursor: pointer;
+  transition: all 0.15s;
+}
+.ws-tab.active {
+  background: white; color: var(--text);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+body.dark .ws-tab.active { background: rgba(255,255,255,0.1); }
+.ws-tab-panel { display: grid; gap: 0.85rem; }
+.ws-tab-panel.hidden { display: none; }
+
+/* ── Week indicator bar ──────────────────────────────────────── */
+.week-indicator-bar {
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.5rem 0.85rem;
+  background: rgba(249,115,22,0.06);
+  border: 1px solid rgba(249,115,22,0.14);
+  border-radius: 9px; font-size: 0.82rem;
+}
+.week-indicator-eyebrow {
+  font-size: 0.62rem; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--primary);
+}
+.week-indicator-range { font-weight: 600; color: var(--text); }
+
+/* ── Stories ─────────────────────────────────────────────────── */
+.stories-list { display: grid; gap: 0.7rem; }
+.story-card {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px; padding: 0.85rem 1rem;
+}
+.story-card-header {
+  display: flex; justify-content: space-between;
+  align-items: flex-start; gap: 0.5rem; margin-bottom: 0.4rem;
+}
+.story-card-meta { display: flex; flex-direction: column; gap: 0.1rem; }
+.story-card-title { font-weight: 600; font-size: 0.9rem; color: var(--text); }
+.story-card-date { font-size: 0.75rem; color: var(--text-muted); }
+.story-card-body {
+  font-size: 0.84rem; color: var(--text-muted);
+  white-space: pre-wrap; line-height: 1.6;
+  max-height: 120px; overflow: hidden;
+  position: relative;
+}
+.story-card-body.expanded { max-height: none; }
+.story-card-actions { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.4rem; }
+.story-expand-btn { font-size: 0.75rem; color: var(--primary); background: none; border: none; cursor: pointer; padding: 0; font-weight: 500; }
+.story-delete-btn { font-size: 0.75rem; color: var(--danger); background: none; border: none; cursor: pointer; margin-left: auto; }
+
+/* ── Files in workspace ──────────────────────────────────────── */
+.ws-file-list { display: grid; gap: 0.4rem; }
+.ws-file-item {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 0.75rem; padding: 0.5rem 0.75rem;
+  border: 1px solid var(--glass-border); border-radius: 9px;
+  font-size: 0.82rem;
+}
+.ws-file-item-name { font-weight: 500; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-file-item-date { color: var(--text-muted); font-size: 0.75rem; flex-shrink: 0; }
+.ws-file-item-link { color: var(--primary); font-size: 0.75rem; flex-shrink: 0; }

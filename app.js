@@ -237,6 +237,19 @@ function reminderBadge(contact) {
   return "";
 }
 
+// ── Sidebar toggle ────────────────────────────────────────────────────────────
+
+function initSidebarToggle() {
+  const btn = document.getElementById("sidebarToggleBtn");
+  const sidebar = document.querySelector(".sidebar");
+  if (!btn || !sidebar) return;
+  if (localStorage.getItem("interntrack_sidebar_collapsed") === "true") sidebar.classList.add("collapsed");
+  btn.addEventListener("click", () => {
+    sidebar.classList.toggle("collapsed");
+    localStorage.setItem("interntrack_sidebar_collapsed", sidebar.classList.contains("collapsed").toString());
+  });
+}
+
 // ── Theme ─────────────────────────────────────────────────────────────────────
 
 function applyTheme() {
@@ -1417,6 +1430,7 @@ async function navigateToGrid() {
   const detail = document.getElementById("workspaceDetail");
   if (!grid || !detail) return;
   workspaceCurrentInternshipId = "";
+  sessionStorage.removeItem("interntrack_session_workspace_id");
   detail.classList.add("hidden");
   grid.classList.remove("hidden");
   await renderInternshipGrid();
@@ -1427,6 +1441,7 @@ async function navigateToInternship(id) {
   const detail = document.getElementById("workspaceDetail");
   if (!grid || !detail) return;
   workspaceCurrentInternshipId = id;
+  sessionStorage.setItem("interntrack_session_workspace_id", id);
   setActiveInternshipId(id);
   grid.classList.add("hidden");
   detail.classList.remove("hidden");
@@ -1437,6 +1452,8 @@ async function navigateToInternship(id) {
   initResumeWidget(internship);
   weeklyUpdateOffset = 0;
   pendingLogFiles = [];
+  resetWorkspaceTabs();
+  renderWeekIndicator();
   const logDate = document.getElementById("logDate");
   if (logDate) logDate.value = todayDateString();
   await renderWorkspaceTimeline();
@@ -1880,18 +1897,20 @@ async function renderWeeklyUpdate() {
 async function renderManagerHighlights(internshipId) {
   const list = document.getElementById("managerHighlightsList");
   if (!list || !internshipId) return;
-  const items = list.querySelectorAll(".highlight-item");
 
-  const storageKey = "interntrack_highlights_" + internshipId;
-  const saved = (() => { try { return JSON.parse(localStorage.getItem(storageKey) || "null"); } catch { return null; } })();
+  const week       = getWeekRange(0);
+  const items      = list.querySelectorAll(".highlight-item");
+  const storageKey = "interntrack_highlights_" + internshipId + "_" + week.start;
+  const saved      = (() => { try { return JSON.parse(localStorage.getItem(storageKey) || "null"); } catch { return null; } })();
 
   if (saved && Array.isArray(saved) && saved.length === 5) {
     saved.forEach((text, i) => { if (items[i]) items[i].value = text; });
     return;
   }
 
-  const allLogs = await db.getLogs(internshipId);
-  const top5 = [...allLogs].sort((a, b) => scoreImpact(b) - scoreImpact(a)).slice(0, 5);
+  const allLogs  = await db.getLogs(internshipId);
+  const weekLogs = allLogs.filter((l) => isDateInWeek(l.date, week.start, week.end));
+  const top5     = [...weekLogs].sort((a, b) => scoreImpact(b) - scoreImpact(a)).slice(0, 5);
   items.forEach((el, i) => { el.value = top5[i] ? (top5[i].impact || top5[i].task || "") : ""; });
 }
 
@@ -1901,19 +1920,22 @@ function initManagerHighlights() {
   const msgEl    = document.getElementById("highlightsSaveMsg");
   if (!saveBtn) return;
 
+  const currentKey = () => {
+    const week = getWeekRange(0);
+    return "interntrack_highlights_" + workspaceCurrentInternshipId + "_" + week.start;
+  };
+
   saveBtn.addEventListener("click", () => {
-    const id = workspaceCurrentInternshipId;
-    if (!id) return;
+    if (!workspaceCurrentInternshipId) return;
     const values = Array.from(document.querySelectorAll(".highlight-item")).map((el) => el.value.trim());
-    localStorage.setItem("interntrack_highlights_" + id, JSON.stringify(values));
+    localStorage.setItem(currentKey(), JSON.stringify(values));
     if (msgEl) { msgEl.textContent = "Saved!"; setTimeout(() => { msgEl.textContent = ""; }, 2000); }
   });
 
   regenBtn?.addEventListener("click", async () => {
-    const id = workspaceCurrentInternshipId;
-    if (!id) return;
-    localStorage.removeItem("interntrack_highlights_" + id);
-    await renderManagerHighlights(id);
+    if (!workspaceCurrentInternshipId) return;
+    localStorage.removeItem(currentKey());
+    await renderManagerHighlights(workspaceCurrentInternshipId);
     if (msgEl) { msgEl.textContent = "Refreshed from logs."; setTimeout(() => { msgEl.textContent = ""; }, 2000); }
   });
 }
@@ -1931,6 +1953,8 @@ async function initWeeklyUpdate() {
   const nextPlansEl = document.getElementById("nextPlansInput");
   const blockersEl  = document.getElementById("blockersNoteInput");
   if (!regenBtn) return;
+
+  renderWeekIndicator();
 
   const prefs = await db.getPreferences();
   if (managerEl)   managerEl.value   = prefs.manager_name || "";
@@ -1978,6 +2002,167 @@ async function initWeeklyUpdate() {
     const subject = "Weekly Update — " + week.label;
     window.open("mailto:" + encodeURIComponent(email) + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(text), "_blank");
     if (msgEl) { msgEl.textContent = "Opening your email client…"; setTimeout(() => { msgEl.textContent = ""; }, 3000); }
+  });
+}
+
+// ── Workspace tabs ────────────────────────────────────────────────────────────
+
+function initWorkspaceTabs() {
+  const tabBar = document.querySelector(".ws-tab-bar");
+  if (!tabBar) return;
+  tabBar.addEventListener("click", (e) => {
+    const tab = e.target.closest(".ws-tab");
+    if (!tab) return;
+    const target = tab.dataset.tab;
+    tabBar.querySelectorAll(".ws-tab").forEach((t) => t.classList.toggle("active", t === tab));
+    ["logs", "stories", "files"].forEach((id) => {
+      const panel = document.getElementById("wsTab" + id.charAt(0).toUpperCase() + id.slice(1));
+      if (panel) panel.classList.toggle("hidden", id !== target);
+    });
+    if (target === "stories") renderStoriesTab(workspaceCurrentInternshipId);
+    if (target === "files")   renderWsFilesTab(workspaceCurrentInternshipId);
+  });
+}
+
+function resetWorkspaceTabs() {
+  const tabBar = document.querySelector(".ws-tab-bar");
+  if (!tabBar) return;
+  tabBar.querySelectorAll(".ws-tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === "logs"));
+  ["wsTabLogs", "wsTabStories", "wsTabFiles"].forEach((id, i) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle("hidden", i !== 0);
+  });
+}
+
+// ── Week indicator ────────────────────────────────────────────────────────────
+
+function renderWeekIndicator() {
+  const el = document.getElementById("weekIndicatorRange");
+  if (!el) return;
+  el.textContent = getWeekRange(0).label;
+}
+
+// ── Stories tab ───────────────────────────────────────────────────────────────
+
+function getStoriesFromStorage(internshipId) {
+  try { return JSON.parse(localStorage.getItem("interntrack_stories_" + internshipId) || "[]"); } catch { return []; }
+}
+function setStoriesInStorage(internshipId, stories) {
+  localStorage.setItem("interntrack_stories_" + internshipId, JSON.stringify(stories));
+}
+
+function renderStoriesTab(internshipId) {
+  const container = document.getElementById("storiesList");
+  if (!container || !internshipId) return;
+  const stories = getStoriesFromStorage(internshipId).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  if (!stories.length) {
+    container.innerHTML = '<p class="empty" style="padding:0.5rem 0">No stories yet. Document a win or challenge above.</p>';
+    return;
+  }
+  container.innerHTML = stories.map((s) => `
+    <div class="story-card" data-story-id="${escapeHtml(s.id)}">
+      <div class="story-card-header">
+        <div class="story-card-meta">
+          ${s.title ? `<span class="story-card-title">${escapeHtml(s.title)}</span>` : ""}
+          <span class="story-card-date">${s.date ? formatDate(s.date) : "No date"}</span>
+        </div>
+        <button class="story-delete-btn" data-delete-story="${escapeHtml(s.id)}" type="button">Delete</button>
+      </div>
+      <div class="story-card-body">${escapeHtml(s.content)}</div>
+      <div class="story-card-actions">
+        <button class="story-expand-btn" data-expand-story type="button">Show more</button>
+      </div>
+    </div>`).join("");
+  container.querySelectorAll("[data-delete-story]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.deleteStory;
+      const updated = getStoriesFromStorage(internshipId).filter((s) => s.id !== id);
+      setStoriesInStorage(internshipId, updated);
+      renderStoriesTab(internshipId);
+    });
+  });
+  container.querySelectorAll("[data-expand-story]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const body = btn.closest(".story-card")?.querySelector(".story-card-body");
+      if (!body) return;
+      const expanded = body.classList.toggle("expanded");
+      btn.textContent = expanded ? "Show less" : "Show more";
+    });
+  });
+}
+
+function initStoriesTab() {
+  const form      = document.getElementById("storyForm");
+  const dateEl    = document.getElementById("storyDate");
+  const titleEl   = document.getElementById("storyTitle");
+  const contentEl = document.getElementById("storyContent");
+  const errorEl   = document.getElementById("storyError");
+  if (!form) return;
+  if (dateEl) dateEl.value = todayDateString();
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const id = workspaceCurrentInternshipId;
+    if (!id) return;
+    const content = (contentEl?.value || "").trim();
+    if (!content) { if (errorEl) errorEl.textContent = "Content is required."; return; }
+    if (errorEl) errorEl.textContent = "";
+    const story = {
+      id: makeId(),
+      date: dateEl?.value || "",
+      title: (titleEl?.value || "").trim(),
+      content,
+      createdAt: new Date().toISOString()
+    };
+    const stories = getStoriesFromStorage(id);
+    stories.unshift(story);
+    setStoriesInStorage(id, stories);
+    form.reset();
+    if (dateEl) dateEl.value = todayDateString();
+    renderStoriesTab(id);
+  });
+}
+
+// ── Workspace files tab ───────────────────────────────────────────────────────
+
+async function renderWsFilesTab(internshipId) {
+  const list = document.getElementById("wsFileList");
+  if (!list || !internshipId) return;
+  const files = await db.fetchStorageFilesByInternship(internshipId);
+  if (!files.length) {
+    list.innerHTML = '<p class="empty" style="padding:0.5rem 0">No files uploaded yet.</p>';
+    return;
+  }
+  list.innerHTML = files.map((f) => `
+    <div class="ws-file-item">
+      <span class="ws-file-item-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
+      <span class="ws-file-item-date">${f.createdAt ? formatDate(f.createdAt.slice(0, 10)) : ""}</span>
+      ${f.fileUrl ? `<a class="ws-file-item-link" href="${escapeHtml(f.fileUrl)}" target="_blank" rel="noopener">Open ↗</a>` : ""}
+    </div>`).join("");
+}
+
+function initWsFilesTab() {
+  const dropZone  = document.getElementById("wsFileDropZone");
+  const fileInput = document.getElementById("wsFileInput");
+  const msgEl     = document.getElementById("wsFileUploadMsg");
+  if (!dropZone || !fileInput) return;
+
+  async function uploadFiles(fileList) {
+    const id = workspaceCurrentInternshipId;
+    if (!id || !fileList.length) return;
+    if (msgEl) msgEl.textContent = "Uploading…";
+    for (const file of fileList) {
+      await db.uploadFileToStorage(file, { internshipId: id, category: "workspace" });
+    }
+    if (msgEl) { msgEl.textContent = "Uploaded!"; setTimeout(() => { msgEl.textContent = ""; }, 2000); }
+    await renderWsFilesTab(id);
+  }
+
+  fileInput.addEventListener("change", () => { if (fileInput.files?.length) uploadFiles(fileInput.files); fileInput.value = ""; });
+  dropZone.addEventListener("dragover",  (e) => { e.preventDefault(); dropZone.classList.add("log-drop-zone-hover"); });
+  dropZone.addEventListener("dragleave", ()  => dropZone.classList.remove("log-drop-zone-hover"));
+  dropZone.addEventListener("drop", (e) => {
+    e.preventDefault(); dropZone.classList.remove("log-drop-zone-hover");
+    if (e.dataTransfer.files?.length) uploadFiles(e.dataTransfer.files);
   });
 }
 
@@ -2035,12 +2220,17 @@ async function initWorkspace() {
 
   initDetailLog();
   initManagerHighlights();
+  initWorkspaceTabs();
+  initStoriesTab();
+  initWsFilesTab();
   await initWeeklyUpdate();
   await renderInternshipGrid();
 
-  const internships = await db.getInternships();
-  if (internships.length === 1) {
-    await navigateToInternship(internships[0].id);
+  const sessionId = sessionStorage.getItem("interntrack_session_workspace_id");
+  if (sessionId) {
+    const internships = await db.getInternships();
+    const match = internships.find((i) => i.id === sessionId);
+    if (match) await navigateToInternship(match.id);
   }
 }
 
@@ -2052,6 +2242,7 @@ async function initWorkspace() {
 (async () => {
   const user = await requireAuth();
   if (!user) return;
+  initSidebarToggle();
   initThemeToggle();
   initSignOut();
   await initWorkspace();
