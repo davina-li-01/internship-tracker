@@ -1,116 +1,90 @@
 # InternTrack
 
-**InternTrack** is a multi-page internship activity tracker built for students managing internship work, networking contacts, and weekly manager updates — all in one place.
+InternTrack is a website I built to help students keep track of everything that happens during their internship. You can log what you worked on each day, keep track of people you meet, and even generate a weekly update email to send to your manager. Basically it's like a personal journal + contact book just for internships.
+
+---
 
 ## Live Demo
 
-🔗 [https://davinali.github.io/internship-tracker](https://davinali.github.io/internship-tracker)
+[https://davinali.github.io/internship-tracker](https://davinali.github.io/internship-tracker)
 
-> **Note:** The app requires a free account sign-up to use (powered by Supabase Auth). Data is stored securely per user in the cloud.
+You need to make a free account to use it. Your data is saved to the cloud so it won't disappear if you close the tab.
 
 ---
 
 ## Features
 
-- **Multi-internship support** — add and switch between current and past internships
-- **Impact log** — record daily tasks, measurable impact, skills used, and tags
-- **PDF file uploads** — attach PDFs (resumes, offer letters, project docs) to each internship
-- **Weekly summary generator** — one-click formal manager update email pre-filled with your week's logs
-- **Networking CRM** — track contacts with company, role, date met, and follow-up frequency
-- **Interaction timeline** — log every coffee chat, email, or meeting with a contact
-- **Follow-up reminders** — automated nudges when it's time to reconnect (monthly, bimonthly, quarterly)
-- **AI-suggested next steps** — smart follow-up task suggestions based on contact notes and role
-- **Weekly insight quote** — motivational quote from the Quotable API on every load
-- **Light / dark theme toggle** — preference saved in localStorage
-- **Responsive layout** — works on mobile and desktop
-- **User accounts** — sign up, sign in, and sign out via Supabase Auth; all data is private per user
+Here's everything you can do with InternTrack:
 
----
-
-## Pages
-
-| Page | Description |
-|---|---|
-| **Dashboard** (`index.html`) | Log impact, upload PDFs, preview weekly summary, see follow-up alerts |
-| **Networking** (`network.html`) | Add/view contacts, see reminder alerts |
-| **Contact Profile** (`contact.html`) | Full CRM profile — interactions, follow-ups, documents, reminder settings |
-| **Weekly Summary** (`summary.html`) | Generate and copy a formal manager update email |
-| **Auth** (`auth.html`) | Sign up, sign in, forgot password |
+- Add your internships and switch between them if you have more than one
+- Write daily logs of what you worked on, what skills you used, and what impact you made
+- Upload PDFs like your offer letter, resume, or project docs to each internship
+- Click a button and get a pre-written weekly update email ready to send to your manager
+- Add networking contacts (people you met at work or events) with their name, company, and role
+- Log every time you talk to a contact — coffee chats, emails, meetings, etc.
+- Get reminders when it's been too long since you reached out to someone
+- See AI suggestions for what to say or do next with a contact
+- Switch between light mode and dark mode
+- Works on your phone and computer
 
 ---
 
 ## Technologies Used
 
-- **HTML5** — semantic structure, ARIA accessibility attributes
-- **CSS3** — external stylesheet, Flexbox + CSS Grid, media queries for responsive design
-- **Vanilla JavaScript (ES Modules)** — async/await, DOM manipulation, form validation, event handling
-- **Supabase** — cloud Postgres database + Row Level Security + Auth (sign up / sign in / sign out)
-- **Quotable API** (`https://api.quotable.io/random`) — external fetch for weekly insight quotes
-- **localStorage** — active internship selection and light/dark theme preference
-- **FileReader API** — client-side PDF encoding for upload
-
----
-
-## JavaScript Interactivity Checklist
-
-| Requirement | Where |
-|---|---|
-| ✅ DOM manipulation | Logs, contacts, files, contact profiles all rendered dynamically |
-| ✅ Event handling | All forms, buttons, selects, keyboard nav throughout the app |
-| ✅ Form with validation and feedback | Log form, contact form, auth form — all validate and show inline errors |
-| ✅ API integration | `fetchQuote()` calls `api.quotable.io` for weekly insight |
-| ✅ Local storage | Theme preference + active internship ID stored in `localStorage` |
-| ✅ Dynamic filtering/sorting | Logs and contacts sorted by date; follow-up reminders filtered by due/soon status |
-| ✅ Theme toggle | Light/dark toggle in every page nav, persisted in `localStorage` |
+- **HTML** — the structure of every page
+- **CSS** — all the styling and making it look nice, including making it work on mobile
+- **JavaScript** — all the interactive stuff like forms, buttons, and loading data
+- **Supabase** — this is where all the data gets saved (like a Google Sheets but for apps). It also handles login and making sure you can only see your own data
+- **Quotable API** — a free public API that gives a random motivational quote
+- **localStorage** — saves small things in your browser like whether you prefer dark mode
 
 ---
 
 ## AI Tools Used
 
-**GitHub Copilot (Claude Sonnet)** was used extensively throughout this project:
+I used **Claude** (through GitHub Copilot) to help me build this project.
 
-- **Architecture planning** — helped design the 5-table Supabase schema (preferences, internships, logs, files, contacts) and the async ES module data layer (`db.js`)
-- **Code generation** — generated the full `app.js` rewrite converting ~2000 lines of localStorage code to async Supabase calls; generated `supabase.js`, `db.js`, `auth.html`
-- **Debugging** — helped diagnose issues with ES module `import` ordering, Supabase Row Level Security policies, and `async` rendering chains
-- **UI copy** — suggested reminder email templates, follow-up suggestion logic, and empty state messages
+Here's specifically how it helped:
 
-All AI-generated code was reviewed and adapted. Key AI contributions are marked with `// AI-assisted` comments in the source files.
+- Helped me figure out how to set up my database structure with 5 tables (users, internships, logs, files, contacts)
+- Generated a lot of the JavaScript code, especially the parts that connect to Supabase
+- Helped me fix bugs when things weren't loading in the right order or the login wasn't working
+- Suggested wording for things like reminder messages and empty state text
+
+I still had to review all the code, adjust it to fit my project, and make a lot of decisions myself. AI wrote the first draft of a lot of things but I had to actually understand it and make it work together.
 
 ---
 
-## Challenges and How I Solved Them
+## Challenges I Faced
 
-**1. Migrating from localStorage to Supabase mid-project**
-The original app stored all data in localStorage. Switching to async Supabase calls required rewriting every render function to be `async` and restructuring the boot sequence into an async IIFE. Solved by building a dedicated `db.js` abstraction layer first, then updating `app.js` to call it.
+**1. Switching from saving data in the browser to saving it in the cloud**
 
-**2. Writing large JS files via terminal**
-Attempts to write the new `app.js` using terminal heredocs failed catastrophically because backtick template literals and emoji in the JS code confused the shell parser. Solved by writing a small Python file-write script to `/tmp` and running it instead.
+At first I was saving everything in localStorage (basically the browser's memory). But that meant your data would disappear if you switched browsers or cleared your cache. I had to completely rewrite how data gets saved so it uses Supabase instead. This was really hard because I had to change almost every function in my JavaScript file to be "async" (meaning it waits for the data to load before doing anything).
 
-**3. ES module scope on GitHub Pages**
-`type="module"` scripts are deferred automatically and require CORS-safe hosting. GitHub Pages serves files over HTTPS, which satisfies this. Local development required VS Code Live Server instead of opening `file://` URLs directly.
+**2. Writing a really long JavaScript file**
 
-**4. Row Level Security**
-Supabase tables needed RLS policies so each user can only see their own data. Solved by adding `auth.uid() = user_id` policies to all 5 tables via the Supabase SQL editor.
+My main JS file ended up being over 2000 lines. At one point when I tried to write it using the terminal, the file got corrupted because some characters like backticks and emoji confused the terminal. I had to use a Python script to write the file safely instead.
+
+**3. Getting the login system to work**
+
+I wanted each user to only see their own data. Supabase has a feature called Row Level Security that makes this work, but I had to set it up manually for all 5 of my database tables. It took a while to figure out the right settings.
+
+**4. ES Modules not working locally**
+
+My JavaScript uses a newer feature called ES Modules (the import/export system). This doesn't work if you just open the HTML file by double-clicking it — you have to use a local server. I had to use VS Code's Live Server extension for local testing.
 
 ---
 
 ## Future Improvements
 
-- **Internship analytics dashboard** — charts showing log frequency, skills mentioned most, top impact areas (Chart.js)
-- **Email reminder delivery** — send actual follow-up reminder emails via a serverless function (Resend API)
-- **Contact import from LinkedIn** — paste a LinkedIn profile URL and auto-populate contact fields
-- **PWA / offline mode** — make the app installable on mobile with a service worker
-- **AI summary polish** — use OpenAI API to rewrite the weekly summary in a more natural tone
-- **Tag-based log filtering** — filter impact logs by skill tag on the dashboard
+If I had more time, I would add:
 
----
-
-## Run Locally
-
-1. Clone the repository
-2. Open with VS Code and run **Live Server** (needed for ES module `import` to work)
-3. Sign up for an account at the `/auth.html` page
-4. The app uses a shared Supabase project — your data is private via Row Level Security
+- Charts showing how often you logged, what skills came up most, etc.
+- Actually sending reminder emails instead of just showing a reminder on screen
+- A way to import contacts directly from LinkedIn
+- Making it work offline like a real app you can install on your phone
+- Better AI-generated summaries using the OpenAI API
+- Filtering your logs by skill tag so you can find entries faster
 
 ---
 
@@ -118,14 +92,18 @@ Supabase tables needed RLS policies so each user can only see their own data. So
 
 ```
 internship-tracker/
-├── index.html        # Dashboard
-├── network.html      # Networking CRM
-├── summary.html      # Weekly summary generator
-├── contact.html      # Individual contact profile
-├── auth.html         # Sign in / sign up
-├── app.js            # Main application logic (ES module)
-├── db.js             # Supabase data access layer
-├── supabase.js       # Supabase client + auth helpers
-├── styles.css        # All styles (responsive)
+├── index.html        # Main workspace page
+├── network.html      # Networking contacts page
+├── contact.html      # Individual contact profile page
+├── auth.html         # Login and sign up page
+├── files.html        # Files page
+├── css/
+│   └── style.css     # All the styles
+├── js/
+│   ├── main.js       # Main JavaScript logic
+│   ├── db.js         # Functions for reading/writing to Supabase
+│   └── supabase.js   # Supabase connection and login helpers
+├── assets/
+│   └── images/       # Image files
 └── README.md
 ```
