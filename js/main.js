@@ -202,7 +202,8 @@ function normalizeContact(contact = {}) {
       : [],
     companyHistory: Array.isArray(contact.companyHistory)
       ? contact.companyHistory.map((c) => String(c).trim()).filter(Boolean)
-      : []
+      : [],
+    starred: contact.starred === true
   };
 }
 
@@ -673,40 +674,73 @@ async function renderContacts(filterText) {
     list.innerHTML = '<li class="empty">' + (filterText ? 'No contacts match "' + escapeHtml(filterText) + '".' : 'No contacts yet. Add your first contact above.') + '</li>';
     return;
   }
-  // Group into alphabetical buckets by first letter
-  const buckets = new Map();
-  contacts.forEach((c) => {
-    const letter = (c.name[0] || '#').toUpperCase();
-    if (!buckets.has(letter)) buckets.set(letter, []);
-    buckets.get(letter).push(c);
-  });
+
+  function contactCardHtml(contact) {
+    const status = getReminderStatus(contact);
+    const nameParts = (contact.name || '?').trim().split(/\s+/);
+    const initials = nameParts.length >= 2
+      ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
+      : (nameParts[0][0] || '?').toUpperCase();
+    return '<li class="contact-card ' + (status === 'due' ? 'due-item' : status === 'soon' ? 'soon-item' : '') + '" data-open-contact="' + contact.id + '" role="button" tabindex="0">'
+      + '<div class="contact-header">'
+      + '<div class="contact-avatar-sm" aria-hidden="true">' + escapeHtml(initials) + '</div>'
+      + '<div class="contact-summary">'
+      + '<p class="contact-name"><strong>' + escapeHtml(contact.name) + '</strong>'
+      + '<button class="contact-star-btn' + (contact.starred ? ' starred' : '') + '" data-star-contact="' + contact.id + '" type="button" title="' + (contact.starred ? 'Remove star' : 'Star as potential mentor') + '" aria-label="' + (contact.starred ? 'Remove star' : 'Star contact') + '">' + (contact.starred ? '★' : '☆') + '</button>'
+      + '</p>'
+      + '<p class="tiny">' + escapeHtml(contact.role || 'Role not set') + (contact.company ? ' @ <strong>' + escapeHtml(contact.company) + '</strong>' : '') + '</p>'
+      + '</div>'
+      + '<div class="badge-col">' + reminderBadge(contact) + '</div>'
+      + '</div>'
+      + '<div class="contact-meta">'
+      + '<span class="tiny">Last met: ' + formatDate(contact.lastContacted) + '</span>'
+      + (contact.nextReminder ? '<span class="tiny">Next reminder: ' + formatDate(contact.nextReminder.split('T')[0]) + '</span>' : '')
+      + '</div>'
+      + '</li>';
+  }
+
+  const starred = contacts.filter((c) => c.starred);
+  const unstarred = contacts.filter((c) => !c.starred);
+
   let html = '';
-  buckets.forEach((group, letter) => {
-    html += '<li class="contact-alpha-header">' + letter + '</li>';
-    group.forEach((contact) => {
-      const status = getReminderStatus(contact);
-      const freqLabel = getFreqLabel(contact.followUpFrequency);
-      html += '<li class="contact-card ' + (status === 'due' ? 'due-item' : status === 'soon' ? 'soon-item' : '') + '" data-open-contact="' + contact.id + '" role="button" tabindex="0">'
-        + '<div class="contact-header">'
-        + '<div class="contact-summary">'
-        + '<p class="contact-name"><strong>' + escapeHtml(contact.name) + '</strong></p>'
-        + '<p class="tiny">' + escapeHtml(contact.role || 'Role not set') + (contact.company ? ' @ <strong>' + escapeHtml(contact.company) + '</strong>' : '') + '</p>'
-        + '</div>'
-        + '<div class="badge-col">' + reminderBadge(contact) + '</div>'
-        + '</div>'
-        + '<div class="contact-meta">'
-        + '<span class="tiny">Last met: ' + formatDate(contact.lastContacted) + '</span>'
-        + (contact.nextReminder ? '<span class="tiny">Next reminder: ' + formatDate(contact.nextReminder.split('T')[0]) + '</span>' : '')
-        + '<span class="tiny">' + escapeHtml(freqLabel) + '</span>'
-        + '</div>'
-        + '</li>';
+
+  // Potential Mentors section
+  if (starred.length) {
+    html += '<li class="contact-alpha-header mentor-header">★ Potential Mentors</li>';
+    starred.forEach((contact) => { html += contactCardHtml(contact); });
+  }
+
+  // Alphabetical buckets for the rest
+  if (unstarred.length) {
+    const buckets = new Map();
+    unstarred.forEach((c) => {
+      const letter = (c.name[0] || '#').toUpperCase();
+      if (!buckets.has(letter)) buckets.set(letter, []);
+      buckets.get(letter).push(c);
     });
-  });
+    buckets.forEach((group, letter) => {
+      html += '<li class="contact-alpha-header">' + letter + '</li>';
+      group.forEach((contact) => { html += contactCardHtml(contact); });
+    });
+  }
+
   list.innerHTML = html;
+
   list.querySelectorAll('[data-open-contact]').forEach((card) => {
     const open = () => { window.location.href = 'contact.html?id=' + encodeURIComponent(card.dataset.openContact); };
     card.addEventListener('click', open);
     card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') open(); });
+  });
+
+  list.querySelectorAll('[data-star-contact]').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const allContacts = await db.getContacts();
+      const contact = allContacts.find((c) => c.id === btn.dataset.starContact);
+      if (!contact) return;
+      await db.saveContact(normalizeContact({ ...contact, starred: !contact.starred }));
+      await renderContacts(filterText);
+    });
   });
 }
 
@@ -933,7 +967,8 @@ async function initContactPage() {
       + '<div class="cp-identity">'
       + '<div class="cp-name-row">'
       + '<input type="text" id="cpNameInput" class="cp-name cp-name-input" value="' + escapeHtml(c.name) + '" aria-label="Contact name" />'
-      + '<div class="cp-hero-badges">' + reminderBadge(c) + '<span class="cp-freq-badge">' + escapeHtml(freqLabel) + '</span></div>'
+      + '<button class="cp-star-btn' + (c.starred ? ' starred' : '') + '" id="cpStarBtn" type="button" title="' + (c.starred ? 'Remove star' : 'Star as potential mentor') + '" aria-label="' + (c.starred ? 'Remove star' : 'Star contact') + '">' + (c.starred ? '★' : '☆') + '</button>'
+      + (reminderBadge(c) ? '<div class="cp-hero-badges">' + reminderBadge(c) + '</div>' : '')
       + '</div>'
       + (c.role ? '<p class="cp-role">' + escapeHtml(c.role) + '</p>' : '')
       + '<div class="cp-companies">' + (c.company ? '<span class="cp-company-pill current">' + escapeHtml(c.company) + '</span>' : '<span class="muted" style="font-size:0.82rem">No company set</span>') + '</div>'
@@ -1017,6 +1052,10 @@ async function initContactPage() {
       const newName = e.target.value.trim();
       if (!newName) { e.target.value = (await freshContact())?.name || ""; return; }
       await save((c) => ({ ...c, name: newName }));
+    });
+    root.querySelector("#cpStarBtn").addEventListener("click", async () => {
+      await save((c) => ({ ...c, starred: !c.starred }));
+      await renderPage();
     });
     root.querySelector("#cpOpenReminderBtn").addEventListener("click", async () => { showReminderModal(await freshContact()); });
     root.querySelector("#cpDeleteBtn").addEventListener("click", async () => {

@@ -782,6 +782,53 @@ body.dark .list-item { background: rgba(255,255,255,0.04); border-color: rgba(25
 }
 .contact-alpha-header:first-child { padding-top: 0; }
 body.dark .contact-alpha-header { border-bottom-color: rgba(255,255,255,0.06); }
+.contact-alpha-header.mentor-header {
+  color: #d97706;
+  border-bottom-color: rgba(217,119,6,0.2);
+}
+body.dark .contact-alpha-header.mentor-header { color: #fbbf24; border-bottom-color: rgba(251,191,36,0.2); }
+
+/* ── Star buttons ────────────────────────────────────────────── */
+.contact-star-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1;
+  color: #c8c0b8;
+  padding: 0 0.2rem;
+  flex-shrink: 0;
+  transition: color 0.15s, transform 0.12s;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+.contact-star-btn:hover { color: #d97706; transform: scale(1.2); }
+.contact-star-btn.starred { color: #d97706; }
+body.dark .contact-star-btn { color: #555; }
+body.dark .contact-star-btn.starred { color: #fbbf24; }
+body.dark .contact-star-btn:hover { color: #fbbf24; }
+
+/* Profile-page star (next to name in hero) */
+.cp-star-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.25rem;
+  line-height: 1;
+  color: #c8c0b8;
+  padding: 0 0.15rem;
+  flex-shrink: 0;
+  transition: color 0.15s, transform 0.12s;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+.cp-star-btn:hover { color: #d97706; transform: scale(1.15); }
+.cp-star-btn.starred { color: #d97706; }
+body.dark .cp-star-btn { color: #555; }
+body.dark .cp-star-btn.starred { color: #fbbf24; }
+body.dark .cp-star-btn:hover { color: #fbbf24; }
 
 /* ── Weekly connection cards ─────────────────────────────────── */
 .weekly-contact-card {
@@ -836,10 +883,18 @@ body.dark .contact-card { background: rgba(255,255,255,0.04); border-color: rgba
 .contact-card:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(180,100,30,0.1); background: rgba(255,255,255,0.92); }
 body.dark .contact-card:hover { background: rgba(255,255,255,0.08); }
 .contact-card:focus { box-shadow: 0 0 0 2px var(--primary); }
-.contact-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; }
+.contact-header { display: flex; justify-content: space-between; align-items: center; gap: 0.65rem; }
+.contact-avatar-sm {
+  width: 38px; height: 38px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+  color: #fff; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.02em;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; user-select: none;
+}
+body.dark .contact-avatar-sm { background: linear-gradient(135deg, #b86b2a 0%, #d97706 100%); }
 .contact-summary { flex: 1; min-width: 0; }
 .badge-col { flex-shrink: 0; }
-.contact-name { font-size: 1rem; margin: 0; }
+.contact-name { font-size: 1rem; margin: 0; display: flex; align-items: center; gap: 0; }
 .contact-meta { display: flex; flex-wrap: wrap; gap: 0.3rem 0.9rem; margin-top: 0.35rem; }
 .contact-hint { margin-top: 0.4rem; opacity: 0.35; font-size: 0.78rem; }
 
@@ -1036,6 +1091,7 @@ body.dark .auth-tab.active { background: rgba(255,255,255,0.09); }
 .auth-form { display: grid; gap: 0.1rem; }
 .auth-form .btn { margin-top: 0.6rem; width: 100%; padding: 0.75rem; font-size: 0.95rem; border-radius: 12px; }
 .auth-form .btn-secondary { width: 100%; margin-top: 0.4rem; }
+.auth-confirm-icon { font-size: 2rem; text-align: center; margin-bottom: 0.5rem; }
 .hidden { display: none !important; }
 
 /* ── Sidebar internship panel legacy compat ──────────────────── */

@@ -74,20 +74,43 @@
         </div>
       </div>
 
+      <!-- Confirm email panel -->
+      <div id="confirmPanel" class="auth-form hidden">
+        <p style="font-size:1rem;font-weight:700;margin-bottom:0.25rem">Check your email</p>
+        <p class="muted" style="font-size:0.85rem;margin-bottom:0.5rem">We sent a confirmation link to <strong id="confirmEmailDisplay"></strong>. Click it to activate your account, then come back here to sign in.</p>
+        <p class="muted" style="font-size:0.82rem;margin-bottom:0.85rem">Don't see it? Check your spam folder.</p>
+        <p id="resendError" class="error" aria-live="polite"></p>
+        <p id="resendSuccess" class="success" aria-live="polite"></p>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+          <button class="btn btn-secondary" type="button" id="resendConfirmBtn" style="flex:1">Resend confirmation email</button>
+          <button class="btn btn-secondary" type="button" id="backToSignInBtn" style="flex:1">Back to Sign In</button>
+        </div>
+      </div>
+
     </div>
   </main>
 
   <script type="module">
-    import { supabase, getUser } from "./supabase.js";
+    import { supabase, getUser } from "./js/supabase.js";
 
     // Already logged in → go to workspace
     getUser().then((user) => { if (user) window.location.href = "index.html"; });
 
-    const tabSignIn  = document.getElementById("tabSignIn");
-    const tabSignUp  = document.getElementById("tabSignUp");
-    const signInForm = document.getElementById("signInForm");
-    const signUpForm = document.getElementById("signUpForm");
-    const resetPanel = document.getElementById("resetPanel");
+    const tabSignIn    = document.getElementById("tabSignIn");
+    const tabSignUp    = document.getElementById("tabSignUp");
+    const signInForm   = document.getElementById("signInForm");
+    const signUpForm   = document.getElementById("signUpForm");
+    const resetPanel   = document.getElementById("resetPanel");
+    const confirmPanel = document.getElementById("confirmPanel");
+
+    let pendingConfirmEmail = "";
+
+    function hideAll() {
+      signInForm.classList.add("hidden");
+      signUpForm.classList.add("hidden");
+      resetPanel.classList.add("hidden");
+      confirmPanel.classList.add("hidden");
+    }
 
     function showTab(tab) {
       const isSignIn = tab === "signin";
@@ -95,27 +118,45 @@
       tabSignUp.classList.toggle("active", !isSignIn);
       tabSignIn.setAttribute("aria-selected", String(isSignIn));
       tabSignUp.setAttribute("aria-selected", String(!isSignIn));
-      signInForm.classList.toggle("hidden", !isSignIn);
-      signUpForm.classList.toggle("hidden", isSignIn);
-      resetPanel.classList.add("hidden");
+      hideAll();
+      if (isSignIn) signInForm.classList.remove("hidden");
+      else signUpForm.classList.remove("hidden");
     }
+
+    function showConfirmPanel(email) {
+      pendingConfirmEmail = email;
+      document.getElementById("confirmEmailDisplay").textContent = email;
+      hideAll();
+      confirmPanel.classList.remove("hidden");
+    }
+
     tabSignIn.addEventListener("click", () => showTab("signin"));
     tabSignUp.addEventListener("click", () => showTab("signup"));
 
     // ── Sign In ──────────────────────────────────────────────────
     signInForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const btn = document.getElementById("siBtn");
+      const btn   = document.getElementById("siBtn");
       const errEl = document.getElementById("siError");
+      const email = document.getElementById("siEmail").value.trim();
       errEl.textContent = "";
       btn.disabled = true; btn.textContent = "Signing in…";
       const { error } = await supabase.auth.signInWithPassword({
-        email: document.getElementById("siEmail").value.trim(),
+        email,
         password: document.getElementById("siPassword").value
       });
       if (error) {
-        errEl.textContent = error.message;
-        btn.disabled = false; btn.textContent = "Sign In";
+        const msg = error.message || "";
+        // Email not confirmed — offer to resend
+        if (msg.toLowerCase().includes("email not confirmed") || msg.toLowerCase().includes("not confirmed")) {
+          showConfirmPanel(email);
+        } else if (msg.toLowerCase().includes("invalid login") || msg.toLowerCase().includes("invalid credentials")) {
+          errEl.textContent = "Incorrect email or password. Double-check and try again.";
+          btn.disabled = false; btn.textContent = "Sign In";
+        } else {
+          errEl.textContent = msg;
+          btn.disabled = false; btn.textContent = "Sign In";
+        }
       } else {
         window.location.href = "index.html";
       }
@@ -124,39 +165,73 @@
     // ── Sign Up ──────────────────────────────────────────────────
     signUpForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const btn = document.getElementById("suBtn");
-      const errEl = document.getElementById("suError");
+      const btn       = document.getElementById("suBtn");
+      const errEl     = document.getElementById("suError");
       const successEl = document.getElementById("suSuccess");
+      const email     = document.getElementById("suEmail").value.trim();
+      const password  = document.getElementById("suPassword").value;
       errEl.textContent = ""; successEl.textContent = "";
+
+      if (password.length < 6) {
+        errEl.textContent = "Password must be at least 6 characters.";
+        return;
+      }
+
       btn.disabled = true; btn.textContent = "Creating account…";
       const { data, error } = await supabase.auth.signUp({
-        email: document.getElementById("suEmail").value.trim(),
-        password: document.getElementById("suPassword").value,
+        email,
+        password,
         options: { data: { full_name: document.getElementById("suName").value.trim() } }
       });
+
       if (error) {
-        errEl.textContent = error.message;
+        const msg = error.message || "";
+        if (msg.toLowerCase().includes("already registered") || msg.toLowerCase().includes("already exists") || msg.toLowerCase().includes("user already")) {
+          errEl.textContent = "An account with this email already exists. Try signing in instead.";
+        } else {
+          errEl.textContent = msg;
+        }
         btn.disabled = false; btn.textContent = "Create Account";
       } else if (data.session) {
+        // Email confirmation disabled — signed in immediately
         window.location.href = "index.html";
       } else {
-        successEl.textContent = "Account created! Check your email to confirm, then sign in.";
-        btn.disabled = false; btn.textContent = "Create Account";
+        // Email confirmation required
+        showConfirmPanel(email);
       }
+    });
+
+    // ── Confirm email panel ──────────────────────────────────────
+    document.getElementById("resendConfirmBtn").addEventListener("click", async () => {
+      const errEl     = document.getElementById("resendError");
+      const successEl = document.getElementById("resendSuccess");
+      const btn       = document.getElementById("resendConfirmBtn");
+      errEl.textContent = ""; successEl.textContent = "";
+      if (!pendingConfirmEmail) { errEl.textContent = "No email to resend to."; return; }
+      btn.disabled = true; btn.textContent = "Sending…";
+      const { error } = await supabase.auth.resend({ type: "signup", email: pendingConfirmEmail });
+      btn.disabled = false; btn.textContent = "Resend confirmation email";
+      if (error) { errEl.textContent = error.message; }
+      else { successEl.textContent = "Sent! Check your inbox (and spam)."; }
+    });
+
+    document.getElementById("backToSignInBtn").addEventListener("click", () => {
+      showTab("signin");
+      const siEmail = document.getElementById("siEmail");
+      if (siEmail && pendingConfirmEmail) siEmail.value = pendingConfirmEmail;
     });
 
     // ── Forgot password ──────────────────────────────────────────
     document.getElementById("forgotBtn").addEventListener("click", () => {
-      signInForm.classList.add("hidden");
+      hideAll();
       resetPanel.classList.remove("hidden");
     });
     document.getElementById("cancelResetBtn").addEventListener("click", () => {
-      resetPanel.classList.add("hidden");
-      signInForm.classList.remove("hidden");
+      showTab("signin");
     });
     document.getElementById("sendResetBtn").addEventListener("click", async () => {
-      const email = document.getElementById("resetEmail").value.trim();
-      const errEl = document.getElementById("resetError");
+      const email     = document.getElementById("resetEmail").value.trim();
+      const errEl     = document.getElementById("resetError");
       const successEl = document.getElementById("resetSuccess");
       errEl.textContent = ""; successEl.textContent = "";
       if (!email) { errEl.textContent = "Enter your email."; return; }
