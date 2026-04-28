@@ -1059,11 +1059,14 @@ async function initContactPage() {
     root.querySelector("#cpStarBtn").addEventListener("click", async () => {
       const btn = root.querySelector("#cpStarBtn");
       const nowStarred = !btn.classList.contains("starred");
+      // Optimistic update
       btn.textContent = nowStarred ? "★" : "☆";
       btn.classList.toggle("starred", nowStarred);
       btn.title = nowStarred ? "Remove star" : "Star as potential mentor";
       btn.setAttribute("aria-label", nowStarred ? "Remove star" : "Star contact");
+      // Persist to DB, then re-render so the star state always matches the DB
       await save((current) => ({ ...current, starred: nowStarred }));
+      await renderPage();
     });
     root.querySelector("#cpOpenReminderBtn").addEventListener("click", async () => { showReminderModal(await freshContact()); });
     root.querySelector("#cpDeleteBtn").addEventListener("click", async () => {

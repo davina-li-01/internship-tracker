@@ -25,7 +25,6 @@ Here's everything you can do with InternTrack:
 - Get reminders when it's been too long since you reached out to someone
 - See AI suggestions for what to say or do next with a contact
 - Switch between light mode and dark mode
-- Works on your phone and computer
 
 ---
 
