@@ -735,10 +735,13 @@ async function renderContacts(filterText) {
   list.querySelectorAll('[data-star-contact]').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
+      const nowStarred = !btn.classList.contains('starred');
+      btn.textContent = nowStarred ? '★' : '☆';
+      btn.classList.toggle('starred', nowStarred);
       const allContacts = await db.getContacts();
       const contact = allContacts.find((c) => c.id === btn.dataset.starContact);
       if (!contact) return;
-      await db.saveContact(normalizeContact({ ...contact, starred: !contact.starred }));
+      await db.saveContact(normalizeContact({ ...contact, starred: nowStarred }));
       await renderContacts(filterText);
     });
   });
@@ -1054,7 +1057,11 @@ async function initContactPage() {
       await save((c) => ({ ...c, name: newName }));
     });
     root.querySelector("#cpStarBtn").addEventListener("click", async () => {
-      await save((c) => ({ ...c, starred: !c.starred }));
+      const btn = root.querySelector("#cpStarBtn");
+      const nowStarred = !c.starred;
+      btn.textContent = nowStarred ? "★" : "☆";
+      btn.classList.toggle("starred", nowStarred);
+      await save(() => ({ ...c, starred: nowStarred }));
       await renderPage();
     });
     root.querySelector("#cpOpenReminderBtn").addEventListener("click", async () => { showReminderModal(await freshContact()); });
@@ -1371,6 +1378,8 @@ let workspaceCurrentInternshipId = "";
 let weeklyUpdateOffset = 0;
 let pendingLogFiles = [];
 let refreshActivePageData = async () => {};
+let editingLogId = null;
+let timelineLogs = [];
 
 // ── Week helpers ──────────────────────────────────────────────────────────────
 
@@ -1820,6 +1829,65 @@ function initDetailLog() {
   };
 }
 
+// ── Log edit modal ────────────────────────────────────────────────────────────
+
+function openEditLogModal(log) {
+  document.getElementById("editLogModal")?.remove();
+  editingLogId = log.id;
+
+  const overlay = document.createElement("div");
+  overlay.id = "editLogModal";
+  overlay.className = "modal-overlay";
+  overlay.innerHTML =
+    '<div class="modal-card edit-log-modal-card">'
+    + '<div class="modal-header">'
+    + '<h3 class="modal-title">Edit Log</h3>'
+    + '<button type="button" id="editLogModalClose" class="modal-close-btn" aria-label="Close">✕</button>'
+    + '</div>'
+    + '<form id="editLogForm" autocomplete="off">'
+    + '<div class="log-field-block"><label class="log-field-label">Date</label>'
+    + '<input type="date" id="editLogDate" value="' + escapeHtml(log.date || "") + '" /></div>'
+    + '<div class="log-field-block"><label class="log-field-label">Tasks Completed <span class="required">*</span></label>'
+    + '<textarea id="editLogTask" rows="3">' + escapeHtml(log.task || "") + '</textarea></div>'
+    + '<div class="log-field-block"><label class="log-field-label">Questions / Blockers</label>'
+    + '<textarea id="editLogBlockers" rows="2">' + escapeHtml(log.blockers || "") + '</textarea></div>'
+    + '<div class="log-field-block" style="margin-bottom:0"><label class="log-field-label">Impact Statement</label>'
+    + '<textarea id="editLogImpact" rows="2">' + escapeHtml(log.impact || "") + '</textarea></div>'
+    + '<p id="editLogError" class="error" style="margin-top:0.4rem" aria-live="polite"></p>'
+    + '<div class="modal-actions">'
+    + '<button type="button" id="editLogCancelBtn" class="btn btn-secondary">Cancel</button>'
+    + '<button type="submit" class="btn">Save Changes</button>'
+    + '</div>'
+    + '</form>'
+    + '</div>';
+  document.body.appendChild(overlay);
+
+  const close = () => { overlay.remove(); editingLogId = null; };
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector("#editLogModalClose").addEventListener("click", close);
+  overlay.querySelector("#editLogCancelBtn").addEventListener("click", close);
+
+  overlay.querySelector("#editLogForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const activeId = workspaceCurrentInternshipId;
+    if (!activeId) return;
+    const entry = normalizeLog({
+      id:       editingLogId,
+      date:     overlay.querySelector("#editLogDate").value     || todayDateString(),
+      task:     overlay.querySelector("#editLogTask").value     || "",
+      impact:   overlay.querySelector("#editLogImpact").value   || "",
+      blockers: overlay.querySelector("#editLogBlockers").value || ""
+    });
+    const errEl = overlay.querySelector("#editLogError");
+    if (!entry.task) { errEl.textContent = "Task is required."; return; }
+    const saved = await db.saveLog(entry, activeId);
+    if (!saved) { errEl.textContent = "Failed to save. Check console for details."; return; }
+    close();
+    await renderWorkspaceTimeline();
+    await renderWeeklyUpdate();
+  });
+}
+
 // ── Workspace timeline ────────────────────────────────────────────────────────
 
 async function renderWorkspaceTimeline() {
@@ -1834,6 +1902,7 @@ async function renderWorkspaceTimeline() {
     db.getLogs(activeId),
     db.fetchStorageFilesByInternship(activeId)
   ]);
+  timelineLogs = allLogs;
   if (!allLogs.length) {
     container.innerHTML = '<p class="timeline-empty">No logs yet. Use the form above to record your first entry.</p>';
     return;
@@ -1877,19 +1946,41 @@ async function renderWorkspaceTimeline() {
             '<a class="log-file-chip" href="' + escapeHtml(f.fileUrl) + '" target="_blank" rel="noopener">📄 ' + escapeHtml(f.name) + '</a>'
           ).join("") + '</div>'
         : "";
-      return '<div class="log-row">'
+      return '<div class="log-row" data-log-id="' + escapeHtml(log.id) + '">'
         + '<span class="log-row-date">' + formatDate(log.date) + "</span>"
         + '<div class="log-row-body">'
         + '<p class="log-task">' + escapeHtml(log.task) + "</p>"
         + (log.impact ? '<p class="log-impact"><span class="entry-arrow">→</span> ' + escapeHtml(log.impact) + "</p>" : "")
         + (log.blockers ? '<span class="log-blocker-badge">⚠ ' + escapeHtml(log.blockers) + "</span>" : "")
         + filesHtml
-        + "</div></div>";
+        + "</div>"
+        + '<div class="log-row-actions">'
+        + '<button type="button" class="log-action-btn" data-edit-log="' + escapeHtml(log.id) + '">Edit</button>'
+        + '<button type="button" class="log-action-btn log-action-delete" data-delete-log="' + escapeHtml(log.id) + '">Delete</button>'
+        + "</div>"
+        + "</div>";
     }).join("");
     html += '<div class="week-section"><p class="week-label">' + weekLabel + "</p>"
       + '<div class="week-entries">' + rows + "</div></div>";
   });
   container.innerHTML = html;
+
+  container.querySelectorAll("[data-delete-log]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!window.confirm("Delete this log entry?")) return;
+      if (editingLogId === btn.dataset.deleteLog) document.getElementById("editLogModal")?.remove();
+      await db.deleteLog(btn.dataset.deleteLog);
+      await renderWorkspaceTimeline();
+      await renderWeeklyUpdate();
+    });
+  });
+
+  container.querySelectorAll("[data-edit-log]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const log = timelineLogs.find((l) => l.id === btn.dataset.editLog);
+      if (log) openEditLogModal(log);
+    });
+  });
 }
 
 // ── Weekly Manager Update ─────────────────────────────────────────────────────
@@ -2090,6 +2181,28 @@ function setStoriesInStorage(internshipId, stories) {
   localStorage.setItem("interntrack_stories_" + internshipId, JSON.stringify(stories));
 }
 
+function openStoryModal(story) {
+  document.getElementById("storyViewModal")?.remove();
+  const overlay = document.createElement("div");
+  overlay.id = "storyViewModal";
+  overlay.className = "modal-overlay";
+  overlay.innerHTML =
+    '<div class="modal-card story-modal-card">'
+    + '<div class="modal-header">'
+    + '<div>'
+    + (story.title ? '<h3 class="modal-title">' + escapeHtml(story.title) + '</h3>' : '<h3 class="modal-title">Story</h3>')
+    + (story.date ? '<p class="story-card-date" style="margin-top:0.15rem">' + formatDate(story.date) + '</p>' : '')
+    + '</div>'
+    + '<button type="button" id="storyModalClose" class="modal-close-btn" aria-label="Close">✕</button>'
+    + '</div>'
+    + '<div class="story-modal-body">' + escapeHtml(story.content) + '</div>'
+    + '</div>';
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector("#storyModalClose").addEventListener("click", close);
+}
+
 function renderStoriesTab(internshipId) {
   const container = document.getElementById("storiesList");
   if (!container || !internshipId) return;
@@ -2122,10 +2235,10 @@ function renderStoriesTab(internshipId) {
   });
   container.querySelectorAll("[data-expand-story]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const body = btn.closest(".story-card")?.querySelector(".story-card-body");
-      if (!body) return;
-      const expanded = body.classList.toggle("expanded");
-      btn.textContent = expanded ? "Show less" : "Show more";
+      const card = btn.closest(".story-card");
+      const storyId = card?.dataset.storyId;
+      const story = getStoriesFromStorage(internshipId).find((s) => s.id === storyId);
+      if (story) openStoryModal(story);
     });
   });
 }

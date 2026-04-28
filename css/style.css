@@ -943,6 +943,48 @@ body.dark .modal-card { background: rgba(28,21,13,0.97); border-color: rgba(255,
 .email-draft { resize: none; font-size: 0.83rem; line-height: 1.65; }
 .modal-close { width: 100%; }
 
+/* Modal header row (title + close button) */
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+.modal-title { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
+.modal-close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  color: var(--muted);
+  line-height: 1;
+  padding: 0.1rem 0.25rem;
+  flex-shrink: 0;
+  border-radius: 6px;
+  transition: background 0.12s, color 0.12s;
+}
+.modal-close-btn:hover { background: rgba(180,140,100,0.1); color: var(--text); }
+body.dark .modal-close-btn:hover { background: rgba(255,255,255,0.08); }
+
+/* Edit log modal */
+.edit-log-modal-card { max-width: 520px; }
+.edit-log-modal-card .log-field-block { display: grid; gap: 0.3rem; }
+.edit-log-modal-card .log-field-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.edit-log-modal-card textarea,
+.edit-log-modal-card input[type="date"] { width: 100%; box-sizing: border-box; }
+
+/* Story view modal */
+.story-modal-card { max-width: 560px; }
+.story-modal-body {
+  font-size: 0.88rem;
+  line-height: 1.7;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
 /* ── Timeline (contact page) ─────────────────────────────────── */
 .timeline { display: grid; gap: 0.85rem; max-height: 300px; overflow-y: auto; padding-right: 0.25rem; }
 .timeline-item { display: grid; grid-template-columns: 18px 1fr; gap: 0.5rem; align-items: start; }
@@ -1520,6 +1562,35 @@ body.dark .log-row { border-bottom-color: rgba(255,255,255,0.05); }
 body.dark .log-blocker-badge {
   background: rgba(252,211,77,0.1);
 }
+
+/* Edit/delete actions — right side of each log row, reveal on hover */
+.log-row-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex-shrink: 0;
+  align-self: flex-start;
+  padding-top: 0.1rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.log-row:hover .log-row-actions { opacity: 1; }
+.log-action-btn {
+  background: none;
+  border: 1px solid rgba(180,140,100,0.25);
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.7rem;
+  color: var(--muted);
+  padding: 0.15rem 0.5rem;
+  white-space: nowrap;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.log-action-btn:hover { color: var(--primary); border-color: var(--primary); }
+.log-action-delete:hover { color: #dc2626; border-color: #dc2626; }
+body.dark .log-action-btn { border-color: rgba(255,255,255,0.1); color: #888; }
+body.dark .log-action-btn:hover { color: var(--primary); border-color: var(--primary); }
+body.dark .log-action-delete:hover { color: #f87171; border-color: #f87171; }
 
 /* Week section header in simplified timeline */
 .week-section {
@@ -2409,11 +2480,12 @@ body.dark .ws-tab.active { background: rgba(255,255,255,0.1); }
 .story-card-date { font-size: 0.75rem; color: var(--text-muted); }
 .story-card-body {
   font-size: 0.84rem; color: var(--text-muted);
-  white-space: pre-wrap; line-height: 1.6;
-  max-height: 120px; overflow: hidden;
-  position: relative;
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
-.story-card-body.expanded { max-height: none; }
 .story-card-actions { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.4rem; }
 .story-expand-btn { font-size: 0.75rem; color: var(--primary); background: none; border: none; cursor: pointer; padding: 0; font-weight: 500; }
 .story-delete-btn { font-size: 0.75rem; color: var(--danger); background: none; border: none; cursor: pointer; margin-left: auto; }
