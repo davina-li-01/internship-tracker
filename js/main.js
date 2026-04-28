@@ -1058,11 +1058,12 @@ async function initContactPage() {
     });
     root.querySelector("#cpStarBtn").addEventListener("click", async () => {
       const btn = root.querySelector("#cpStarBtn");
-      const nowStarred = !c.starred;
+      const nowStarred = !btn.classList.contains("starred");
       btn.textContent = nowStarred ? "★" : "☆";
       btn.classList.toggle("starred", nowStarred);
-      await save(() => ({ ...c, starred: nowStarred }));
-      await renderPage();
+      btn.title = nowStarred ? "Remove star" : "Star as potential mentor";
+      btn.setAttribute("aria-label", nowStarred ? "Remove star" : "Star contact");
+      await save((current) => ({ ...current, starred: nowStarred }));
     });
     root.querySelector("#cpOpenReminderBtn").addEventListener("click", async () => { showReminderModal(await freshContact()); });
     root.querySelector("#cpDeleteBtn").addEventListener("click", async () => {
