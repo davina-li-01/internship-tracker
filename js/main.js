@@ -1407,8 +1407,8 @@ function isDateInWeek(dateStr, start, end) {
 
 // ── API key management ────────────────────────────────────────────────────────
 
-function getApiKey() { return localStorage.getItem("interntrack_anthropic_key") || ""; }
-function setApiKey(key) { localStorage.setItem("interntrack_anthropic_key", key || ""); }
+function getApiKey() { return localStorage.getItem("interntrack_gemini_key") || ""; }
+function setApiKey(key) { localStorage.setItem("interntrack_gemini_key", key || ""); }
 
 function promptForApiKey() {
   return new Promise((resolve) => {
@@ -1418,10 +1418,10 @@ function promptForApiKey() {
     modal.id = "apiKeyModal";
     modal.className = "modal-overlay";
     modal.innerHTML = '<div class="modal-card">'
-      + '<h3>Add Anthropic API Key</h3>'
-      + '<p class="muted" style="font-size:0.85rem;margin-bottom:0.75rem">Your key is stored only in your browser (localStorage) and is sent directly to the Anthropic API for AI generation features.</p>'
+      + '<h3>Add Gemini API Key</h3>'
+      + '<p class="muted" style="font-size:0.85rem;margin-bottom:0.75rem">Get a free key at <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a>. Your key is stored only in your browser and sent directly to Google\'s Gemini API.</p>'
       + '<div class="field-group" style="margin-bottom:0.75rem"><label>API Key</label>'
-      + '<input type="password" id="apiKeyInput" placeholder="sk-ant-…" style="font-family:monospace" /></div>'
+      + '<input type="password" id="apiKeyInput" placeholder="AIza…" style="font-family:monospace" /></div>'
       + '<div class="modal-actions">'
       + '<button class="btn" id="apiKeySave" type="button">Save & Continue</button>'
       + '<button class="btn btn-secondary" id="apiKeyCancel" type="button">Cancel</button>'
@@ -1441,31 +1441,28 @@ function promptForApiKey() {
   });
 }
 
-async function callAnthropicAPI(prompt, maxTokens) {
+async function callGeminiAPI(prompt, maxTokens) {
   maxTokens = maxTokens || 300;
   const key = getApiKey();
   if (!key) return null;
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true"
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: maxTokens,
-        messages: [{ role: "user", content: prompt }]
-      })
-    });
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + encodeURIComponent(key),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: maxTokens }
+        })
+      }
+    );
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
       throw new Error(err?.error?.message || "API error " + response.status);
     }
     const data = await response.json();
-    return data.content?.[0]?.text || "";
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
   } catch (err) {
     console.error("[AI]", err.message);
     return null;
@@ -1678,7 +1675,7 @@ function initResumeWidget(internship) {
       + ", generate 4-6 resume bullet points.\n\nEach bullet should:\n- Start with a strong action verb\n- Be concise (one line)\n- Quantify impact where mentioned\n- Sound professional\n\nWork log:\n" + logLines
       + "\n\nReturn only the bullet points, one per line, each starting with a dash (-). No headers or extra text.";
 
-    const result = await callAnthropicAPI(prompt, 600);
+    const result = await callGeminiAPI(prompt, 600);
     if (wGenerate) { wGenerate.disabled = false; wGenerate.textContent = "Regenerate ✨"; }
 
     if (!result) {
@@ -1786,7 +1783,7 @@ function initDetailLog() {
       + (blockers ? "\nQuestions/blockers: " + blockers : "")
       + (fileNames ? "\nFiles worked with: " + fileNames : "")
       + "\n\nReturn only the impact statement. Start with an action verb. Be specific and professional. No quotation marks.";
-    const result = await callAnthropicAPI(prompt, 150);
+    const result = await callGeminiAPI(prompt, 150);
     if (genBtn) { genBtn.disabled = false; genBtn.textContent = "Generate ✨"; }
     if (result) {
       if (logImpact) logImpact.value = result.trim();
@@ -2111,7 +2108,46 @@ async function initWeeklyUpdate() {
 
   prevBtn?.addEventListener("click",  async () => { weeklyUpdateOffset--; await renderWeeklyUpdate(); });
   nextBtn?.addEventListener("click",  async () => { if (weeklyUpdateOffset < 0) { weeklyUpdateOffset++; await renderWeeklyUpdate(); } });
-  regenBtn?.addEventListener("click", async () => { await savePrefs(); await renderWeeklyUpdate(); });
+  regenBtn?.addEventListener("click", async () => {
+    await savePrefs();
+    const area   = document.getElementById("generatedSummary");
+    const msgElR = document.getElementById("summaryMessage");
+    if (!getApiKey()) {
+      await promptForApiKey();
+      if (!getApiKey()) { await renderWeeklyUpdate(); return; }
+    }
+    const activeId = workspaceCurrentInternshipId || getActiveInternshipId();
+    if (!activeId) { await renderWeeklyUpdate(); return; }
+    const week     = getWeekRange(weeklyUpdateOffset);
+    const allLogs  = await db.getLogs(activeId);
+    const weekLogs = allLogs.filter((l) => isDateInWeek(l.date, week.start, week.end));
+    const manager  = (document.getElementById("managerName")?.value  || "").trim() || "Manager";
+    const yourName = (document.getElementById("yourName")?.value     || "").trim() || "[Your Name]";
+    const nextPlan = (document.getElementById("nextPlansInput")?.value || "").trim();
+    const blockers = (document.getElementById("blockersNoteInput")?.value || "").trim();
+    if (area) area.value = "Generating with AI…";
+    if (regenBtn) { regenBtn.disabled = true; regenBtn.textContent = "Generating…"; }
+    const logLines = weekLogs.map((l) =>
+      "- " + l.date + ": " + l.task + (l.impact ? " → " + l.impact : "") + (l.blockers ? " (blocker: " + l.blockers + ")" : "")
+    ).join("\n") || "No logs recorded for this week.";
+    const aiPrompt = "You are writing a professional weekly status update email from an intern to their manager.\n"
+      + "Manager name: " + manager + "\n"
+      + "Intern name: " + yourName + "\n"
+      + "Week: " + week.label + "\n"
+      + (nextPlan ? "Next week plans: " + nextPlan + "\n" : "")
+      + (blockers ? "Blockers/needs: " + blockers + "\n" : "")
+      + "Work logs:\n" + logLines + "\n\n"
+      + "Write a concise, professional weekly update email. Include a subject line, greeting, 3-5 bullet highlights of what was accomplished, \"Next week\" section, and a closing. Use the intern's actual log data. Keep it under 250 words. No markdown formatting.";
+    const result = await callGeminiAPI(aiPrompt, 400);
+    if (regenBtn) { regenBtn.disabled = false; regenBtn.textContent = "↺ Regenerate"; }
+    if (result) {
+      if (area) area.value = result.trim();
+      if (msgElR) { msgElR.textContent = "Generated with Gemini AI ✨"; setTimeout(() => { msgElR.textContent = ""; }, 3000); }
+    } else {
+      await renderWeeklyUpdate();
+      if (msgElR) { msgElR.textContent = "AI unavailable — showing template instead."; setTimeout(() => { msgElR.textContent = ""; }, 3000); }
+    }
+  });
 
   copyBtn?.addEventListener("click", async () => {
     const area = document.getElementById("generatedSummary");
