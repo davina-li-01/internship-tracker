@@ -244,10 +244,61 @@ function initSidebarToggle() {
   const btn = document.getElementById("sidebarToggleBtn");
   const sidebar = document.querySelector(".sidebar");
   if (!btn || !sidebar) return;
-  if (localStorage.getItem("interntrack_sidebar_collapsed") === "true") sidebar.classList.add("collapsed");
+
+  const mobileQuery = window.matchMedia("(max-width: 992px)");
+  let overlay = document.querySelector(".mobile-nav-overlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.className = "mobile-nav-overlay";
+    document.body.appendChild(overlay);
+  }
+
+  const closeMobileNav = () => {
+    document.body.classList.remove("mobile-nav-open");
+    btn.setAttribute("aria-expanded", "false");
+  };
+
+  const openMobileNav = () => {
+    document.body.classList.add("mobile-nav-open");
+    btn.setAttribute("aria-expanded", "true");
+  };
+
+  const handleDesktopState = () => {
+    if (mobileQuery.matches) {
+      sidebar.classList.remove("collapsed");
+      btn.setAttribute("aria-expanded", document.body.classList.contains("mobile-nav-open") ? "true" : "false");
+      return;
+    }
+    closeMobileNav();
+    if (localStorage.getItem("interntrack_sidebar_collapsed") === "true") {
+      sidebar.classList.add("collapsed");
+    }
+    btn.setAttribute("aria-expanded", sidebar.classList.contains("collapsed") ? "false" : "true");
+  };
+
+  handleDesktopState();
+  mobileQuery.addEventListener("change", handleDesktopState);
+
   btn.addEventListener("click", () => {
+    if (mobileQuery.matches) {
+      if (document.body.classList.contains("mobile-nav-open")) closeMobileNav();
+      else openMobileNav();
+      return;
+    }
     sidebar.classList.toggle("collapsed");
     localStorage.setItem("interntrack_sidebar_collapsed", sidebar.classList.contains("collapsed").toString());
+    btn.setAttribute("aria-expanded", sidebar.classList.contains("collapsed") ? "false" : "true");
+  });
+
+  overlay.addEventListener("click", closeMobileNav);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeMobileNav();
+  });
+
+  sidebar.querySelectorAll(".s-link").forEach((link) => {
+    link.addEventListener("click", () => {
+      if (mobileQuery.matches) closeMobileNav();
+    });
   });
 }
 
