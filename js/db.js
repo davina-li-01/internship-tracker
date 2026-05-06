@@ -288,7 +288,6 @@ function contactToRow(contact, userId) {
     interests: contact.interests || "",
     reminder_enabled: contact.reminderEnabled || false,
     next_reminder: contact.nextReminder || null,
-    starred: contact.starred || false,
     interactions: contact.interactions || [],
     company_history: contact.companyHistory || [],
     follow_ups: contact.followUps || []
