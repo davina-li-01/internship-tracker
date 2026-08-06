@@ -8,7 +8,7 @@ It started out as a general internship tracker (daily logs, weekly manager updat
 
 ## Live Demo
 
-[https://davinali.github.io/internship-tracker](https://davinali.github.io/internship-tracker)
+[[https://davinali.github.io/internship-tracker](https://davina-li-01.github.io/internship-tracker/)]
 
 You need to make a free account to use it. Your data is saved to the cloud so it won't disappear if you close the tab.
 
