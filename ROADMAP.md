@@ -30,12 +30,26 @@ rely on the banner.
 
 ---
 
+### 5. 🔴 Replace the "Allow all (dev)" policies  ← SECURITY
+`contacts`, `internships` and `logs` each carry a policy defined as
+`for all to public using (true) with check (true)`. That is no protection at all:
+anyone holding the publishable key — which ships in `js/supabase.js` and is served
+publicly from GitHub Pages — can read, modify or delete every row.
+
+Demonstrated against a replica: before the fix a signed-in user could see another
+user's contacts; after it, each user sees only their own and anon sees nothing.
+
+Run `supabase/fix-rls.sql`. It also scopes the storage policies to each user's own
+folder (the dashboard-created ones only checked the bucket), makes `contacts.user_id`
+`not null` with a foreign key, and adds the missing index on it.
+
+---
+
 ## 🟠 Worth doing soon
 
-### 5. Back up the real schema
-There is currently **no schema definition in the repo**. If the project is lost again,
-the structure goes with it. Generate one from the live database rather than by hand —
-the last hand-written attempt did not match reality.
+### ~~6. Back up the real schema~~ ✅ done
+`supabase/schema.sql` — reconstructed from the live database, verified against
+Postgres 15, idempotent across repeat runs.
 
 ### 6. Decide the fate of the vestigial tables
 `internships`, `logs`, `interactions`, and `follow_ups` still exist but nothing reads or
