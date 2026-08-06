@@ -10,7 +10,7 @@ It started out as a general internship tracker (daily logs, weekly manager updat
 
 ## Live Demo
 
-[https://davina-li-01.github.io/internship-tracker/](https://davina-li-01.github.io/internship-tracker/)
+[https://davina-li-01.github.io/orbit/](https://davina-li-01.github.io/orbit/)
 
 You need to make a free account to use it. Your data is saved to the cloud so it won't disappear if you close the tab.
 
@@ -129,7 +129,7 @@ See [ROADMAP.md](ROADMAP.md) for the full list. The big ones:
 ## Project Structure
 
 ```
-internship-tracker/
+orbit/
 ├── index.html        # Mission Control — stats, health rings, who to reach out to
 ├── contacts.html     # My Network — everyone, searchable and filterable
 ├── network.html      # Networking Log — capture widget + chronological feed

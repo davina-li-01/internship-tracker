@@ -55,21 +55,24 @@ returned live contact data.
 `supabase/schema.sql` — reconstructed from the live database, verified against
 Postgres 15, idempotent across repeat runs.
 
-### 6. Decide the fate of the vestigial tables
-`internships`, `logs`, `interactions`, and `follow_ups` still exist but nothing reads or
-writes them. Either drop them or document why they are kept. Right now they are a trap
-for future-you.
+### ~~7. Drop the vestigial tables~~ ✅ done
+`internships`, `logs`, `interactions` and `follow_ups` removed by
+`supabase/drop-legacy-tables.sql`. Conversations and follow-ups live in jsonb columns on
+`contacts`. Two orphan `internship_id` columns remain on `contacts` and `storage_files`;
+drop statements are commented at the bottom of that file.
 
-### 7. Repo cleanup
-- `app.js.bak` — 76KB snapshot of the pre-Supabase app
-- Dead CSS for internship components (~200 lines)
-- Repo/directory is still named `internship-tracker` while the app is Orbit
+### ~~8. Repo cleanup~~ ✅ mostly done
+- ~~`app.js.bak`~~ deleted
+- ~~Dead CSS~~ ~24KB removed
+- ~~Repo renamed to `orbit`~~ — live at https://davina-li-01.github.io/orbit/
+- The local folder is still `internship-tracker`. Cosmetic; renaming it moves your editor
+  and terminal paths, so it is only worth doing if it bothers you.
 
 ---
 
 ## 🟢 Features discussed
 
-### 8. Google Calendar auto-logging  ★ highest leverage
+### 9. Google Calendar auto-logging  ★ highest leverage
 The whole app depends on remembering to log touchpoints manually — which is exactly the
 habit that fails. Auto-logging from calendar events fixes the core weakness.
 
@@ -81,13 +84,13 @@ create a conversation and roll the cadence forward.
 **Costs to accept:** only works for contacts whose email you saved; Google requires app
 verification before non-test users can grant the scope; needs a token-refresh story.
 
-### 9. AI talking points
+### 10. AI talking points
 `generateFollowUpSuggestions()` is currently a keyword heuristic — it pattern-matches
 action verbs in your notes. It works, but the output is literal. Replacing it with a real
 model call would make "things to bring up next" genuinely useful. This was always the
 plan; the manual MVP is in place.
 
-### 10. Smaller ideas
+### 11. Smaller ideas
 - Company logos on profiles (needs an external logo API — deliberately skipped)
 - A `starred` / "key people" tier (needs `alter table contacts add column starred boolean`)
 - Trend over time: is my network getting healthier or worse?
@@ -95,19 +98,17 @@ plan; the manual MVP is in place.
 
 ---
 
----
-
 ## Agreed sequence
 
 You picked all four tracks. Suggested order, since some depend on others:
 
-1. **Finish the blockers** (#1, #2, #5) — mostly your dashboard, ~10 minutes. Everything
+1. ~~**Finish the blockers**~~ ✅ all done — mostly your dashboard, ~10 minutes. Everything
    else sits on top of a working database.
-2. **Polish + repo cleanup** (#7) — while using it day to day. Cheap, and it surfaces the
+2. **Polish** — use it daily and fix what feels wrong — while using it day to day. Cheap, and it surfaces the
    real UX problems that speculation won't.
-3. **AI talking points** (#9) — self-contained, no external auth, immediately visible
+3. **AI talking points** (#10) — self-contained, no external auth, immediately visible
    payoff. Good first "real feature."
-4. **Google Calendar** (#8) — last, because it is the biggest and needs Google Cloud
+4. **Google Calendar** (#9) — last, because it is the biggest and needs Google Cloud
    setup, OAuth verification, and a token-refresh story. Also benefits from having more
    real contacts with emails saved, which #2 will produce.
 

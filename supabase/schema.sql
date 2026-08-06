@@ -12,8 +12,9 @@
 --      Restoring from this file gives you the secure version; `fix-rls.sql`
 --      migrates an existing database to match.
 --
---   2. The `internships`, `logs`, `interactions` and `follow_ups` tables are
---      recorded at the bottom for completeness but are NOT used by the app.
+--   2. The `internships`, `logs`, `interactions` and `follow_ups` tables that
+--      existed when this was captured have since been dropped
+--      (`drop-legacy-tables.sql`). They are deliberately not recreated here.
 --      Conversations, company history and follow-ups live in jsonb columns on
 --      `contacts`.
 --
@@ -126,52 +127,7 @@ create policy "orbit delete" on storage.objects
     and (storage.foldername(name))[1] = auth.uid()::text
   );
 
--- ═══ Legacy tables — present in the database, unused by the app ══════════════
--- Recorded so this file is a complete picture. See fix-rls.sql for the drop
--- statements if you decide to remove them.
-
-create table if not exists public.internships (
-  id         uuid primary key,
-  user_id    uuid not null,
-  name       text,
-  company    text not null default ''::text,
-  start_date date,
-  end_date   date,
-  created_at timestamp
-);
-
-create table if not exists public.logs (
-  id            uuid primary key default gen_random_uuid(),
-  internship_id uuid not null,
-  user_id       uuid references auth.users(id) on delete cascade,
-  date          date,
-  task          text,
-  impact        text,
-  blockers      text default ''::text,
-  skills        text default ''::text,
-  tags          text default ''::text,
-  created_at    timestamp
-);
-
-create table if not exists public.interactions (
-  id         uuid primary key default gen_random_uuid(),
-  contact_id uuid references public.contacts(id) on delete cascade,
-  date       date,
-  type       text,
-  notes      text,
-  outcome    text,
-  created_at timestamptz default now()
-);
-
-create table if not exists public.follow_ups (
-  id         uuid primary key default gen_random_uuid(),
-  contact_id uuid references public.contacts(id) on delete cascade,
-  text       text,
-  completed  boolean default false,
-  created_at timestamptz default now()
-);
-
-alter table public.internships  enable row level security;
-alter table public.logs         enable row level security;
-alter table public.interactions enable row level security;
-alter table public.follow_ups   enable row level security;
+-- ═══ Legacy tables — dropped 2026-08-06 ═════════════════════════════════════
+-- `internships`, `logs`, `interactions` and `follow_ups` were removed by
+-- supabase/drop-legacy-tables.sql. They are intentionally NOT recreated here:
+-- restoring from this file should give you the current app, not its history.
