@@ -3,154 +3,121 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>InternTrack — Networking</title>
+  <title>Orbit — Networking Log</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body data-page="network">
-<script>if(localStorage.getItem('interntrack_theme')==='dark')document.body.classList.add('dark');</script>
+<script>if((localStorage.getItem('orbit_theme')||localStorage.getItem('interntrack_theme'))==='dark')document.body.classList.add('dark');</script>
 
   <div class="app-layout">
 
-    <!-- ── Sidebar ───────────────────────────────────── -->
     <aside class="sidebar">
-      <button id="sidebarToggleBtn" class="sidebar-toggle" type="button" title="Toggle sidebar">☰</button>
-      <div class="sidebar-brand">InternTrack</div>
+      <div class="sidebar-head">
+        <button id="sidebarBrand" class="sidebar-brand" type="button"
+                aria-label="Expand sidebar" title="Expand sidebar">
+          <span class="brand-mark" aria-hidden="true">◍</span>
+          <span class="brand-open" aria-hidden="true">»</span>
+          <span class="brand-word">Orbit</span>
+        </button>
+        <button id="sidebarToggleBtn" class="sidebar-close" type="button"
+                aria-label="Collapse sidebar" title="Collapse sidebar">«</button>
+      </div>
 
       <nav class="sidebar-nav">
-        <a href="index.html" class="s-link">Workspace</a>
-        <a href="network.html" class="s-link active">Networking</a>
-        <a href="files.html" class="s-link">Files</a>
+        <a href="index.html" class="s-link"><span class="s-icon"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="2.5" width="6" height="6" rx="1.5"/><rect x="11.5" y="2.5" width="6" height="6" rx="1.5"/><rect x="2.5" y="11.5" width="6" height="6" rx="1.5"/><rect x="11.5" y="11.5" width="6" height="6" rx="1.5"/></svg></span><span class="s-text">Dashboard</span></a>
+        <a href="contacts.html" class="s-link"><span class="s-icon"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="6" r="2.6"/><circle cx="4.5" cy="14.5" r="2.2"/><circle cx="15.5" cy="14.5" r="2.2"/><path d="M8.2 7.8 6 12.6M11.8 7.8 14 12.6M6.7 14.5h6.6"/></svg></span><span class="s-text">My Network</span></a>
+
+        <div class="s-group">
+          <div class="s-row">
+            <a href="network.html" class="s-link active"><span class="s-icon"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3.5" y="2.5" width="13" height="15" rx="2"/><path d="M6.8 6.8h6.4M6.8 10h6.4M6.8 13.2h3.6"/></svg></span><span class="s-text">Networking Log</span></a>
+            <button class="s-caret" type="button" aria-expanded="false"
+                    aria-controls="navNetworkSub" aria-label="Show sub-pages">▾</button>
+          </div>
+          <div class="s-sub" id="navNetworkSub">
+            <a href="files.html" class="s-sublink"><span class="s-icon"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11 2.5H5.5A1.5 1.5 0 0 0 4 4v12a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 16 16V7.5z"/><path d="M11 2.5V7.5H16"/></svg></span><span class="s-text">Files</span></a>
+          </div>
+        </div>
       </nav>
 
       <div class="sidebar-footer">
+        <button id="settingsBtn" class="s-btn" type="button">Settings</button>
         <button id="themeToggle" class="s-btn" type="button">Dark Mode</button>
         <button id="signOutBtn" class="s-btn" type="button">Sign Out</button>
       </div>
     </aside>
 
-    <!-- ── Main Scroll ───────────────────────────────── -->
     <div class="main-scroll">
+      <div class="page-content">
 
-      <!-- Active internship context banner -->
-      <div id="activeInternshipBanner" class="active-internship-banner"></div>
+        <div class="page-header">
+          <h1 class="page-heading">Networking Log</h1>
+          <p class="page-subheading">Every connection, most recent touchpoint first.</p>
+        </div>
 
-      <div class="network-content">
+        <div class="card">
+          <h2 class="card-title">Log a connection</h2>
+          <!-- Rendered by contactWidgetHtml() in js/main.js -->
+          <div id="contactWidget"></div>
+        </div>
 
-        <!-- Left: Add contact + contacts list -->
-        <div class="network-left">
+        <!-- Search across the top, filters down the right -->
+        <div class="log-layout">
 
-          <div class="card">
-            <h2>Add Contact</h2>
-            <form id="contactForm" autocomplete="off">
-
-              <div class="two-col">
-                <div class="field-group">
-                  <label for="contactName">Name <span class="required">*</span></label>
-                  <input type="text" id="contactName" placeholder="Full name" required />
-                </div>
-                <div class="field-group">
-                  <label for="contactRole">Role / Title</label>
-                  <input type="text" id="contactRole" placeholder="Software Engineer" />
-                </div>
-              </div>
-
-              <div class="two-col">
-                <div class="field-group">
-                  <label for="contactCompany">Company <span class="required">*</span></label>
-                  <input type="text" id="contactCompany" placeholder="Company name" required />
-                </div>
-                <div class="field-group">
-                  <label for="contactEmail">Email <span class="required">*</span></label>
-                  <input type="email" id="contactEmail" placeholder="email@example.com" required />
-                </div>
-              </div>
-
-              <div class="two-col">
-                <div class="field-group">
-                  <label for="dateMet">Last met <span class="required">*</span></label>
-                  <input type="date" id="dateMet" required />
-                </div>
-                <div class="field-group">
-                  <label for="followUpFrequency">Follow-up reminder</label>
-                  <select id="followUpFrequency">
-                    <option value="none">No reminders</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="biweekly">Every 2 weeks</option>
-                    <option value="monthly" selected>Monthly</option>
-                    <option value="quarterly">Quarterly</option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="field-group">
-                <label for="contactNotes">Notes</label>
-                <textarea id="contactNotes" rows="2" placeholder="How you met, key topics, advice given…"></textarea>
-              </div>
-
-              <p id="contactError" class="error"></p>
-              <p id="contactSuccess" class="success"></p>
-              <div class="row">
-                <button type="submit" class="btn">Add Contact</button>
-              </div>
-            </form>
+          <div class="card log-main">
+            <input type="search" id="contactFilter" class="log-search"
+                   placeholder="Search name, role, company, industry, notes…"
+                   aria-label="Search the log" />
+            <ul id="connectionList" class="connection-list"></ul>
           </div>
 
-          <div class="card">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:0.75rem;margin-bottom:0.85rem;flex-wrap:wrap">
-              <h2 style="margin:0">Your Network</h2>
-              <input
-                type="search"
-                id="contactFilter"
-                placeholder="Filter by name, role, company…"
-                style="flex:1;min-width:160px;max-width:260px;padding:0.42rem 0.75rem;font-size:0.82rem"
-              />
+          <aside class="card log-filters" aria-label="Filters">
+            <h2 class="filters-title">Filters</h2>
+
+            <div class="field-group">
+              <label for="logIndustry">Industry</label>
+              <select id="logIndustry"><option value="">All industries</option></select>
             </div>
-            <ul id="contactList" class="list"></ul>
-          </div>
 
-        </div><!-- /.network-left -->
-
-        <!-- Right: Reminders + weekly connections -->
-        <div class="network-right">
-
-          <div class="card">
-            <h2>Upcoming Reminders</h2>
-            <ul id="networkFollowUps" class="list"></ul>
-          </div>
-
-          <div class="card">
-            <h2>Weekly Connections</h2>
-            <div id="weeklyConnections"></div>
-          </div>
-
-          <div class="card">
-            <div class="calendar-header-row">
-              <h2 style="margin:0">Contact Calendar</h2>
-              <div class="calendar-nav">
-                <button class="btn btn-secondary cal-nav-btn" id="calPrevBtn" type="button">‹</button>
-                <span id="calMonthLabel" class="cal-month-label"></span>
-                <button class="btn btn-secondary cal-nav-btn" id="calNextBtn" type="button">›</button>
-              </div>
+            <div class="field-group">
+              <label for="logStatus">Status</label>
+              <select id="logStatus">
+                <option value="">Any status</option>
+                <option value="good">In touch</option>
+                <option value="warning">Reach out soon</option>
+                <option value="critical">Overdue</option>
+                <option value="none">No schedule</option>
+              </select>
             </div>
-            <div id="calendarGrid" class="calendar-grid"></div>
-            <p id="calTooltip" class="cal-tooltip"></p>
-          </div>
 
-        </div><!-- /.network-right -->
+            <div class="field-group">
+              <label for="logSort">Sort by</label>
+              <select id="logSort">
+                <option value="recent">Most recent first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="name">Name A–Z</option>
+              </select>
+            </div>
+
+            <button id="logClearFilters" class="btn btn-secondary btn-sm" type="button">Clear filters</button>
+            <p id="logCount" class="filter-count"></p>
+          </aside>
+
+        </div>
 
       </div>
     </div>
 
     <nav class="mobile-bottom-nav" aria-label="Primary">
-      <a href="index.html" class="s-link">Workspace</a>
-      <a href="network.html" class="s-link active">Networking</a>
+      <a href="index.html" class="s-link">Dashboard</a>
+      <a href="contacts.html" class="s-link">Network</a>
+      <a href="network.html" class="s-link active">Log</a>
       <a href="files.html" class="s-link">Files</a>
     </nav>
 
-  </div><!-- /.app-layout -->
+  </div>
 
   <script type="module" src="js/main.js"></script>
 </body>

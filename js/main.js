@@ -1,44 +1,24 @@
 /**
- * app.js — InternTrack main application logic
+ * main.js — Orbit: a networking tracker
  *
  * ES module. All data access goes through db.js (Supabase).
- * UI state (active internship, theme) is kept in localStorage only.
+ * UI state (theme, sidebar) is kept in localStorage only.
  *
- * Page-level init functions are guarded by requireAuth() at boot.
- * Each page calls only the init functions relevant to its DOM.
+ * Pages:
+ *   index.html    — Dashboard: KPI row, health rings, who to reach out to
+ *   contacts.html — My Network: everyone, searchable and filterable
+ *   network.html  — Networking Log: capture widget + chronological log
+ *   files.html    — Files (nested under Networking Log)
+ *   contact.html  — One connection's profile
  *
- * AI-assisted: architecture, async refactor, follow-up suggestion logic,
- * reminder modal, contact page dynamic render. See README for details.
+ * Every init function returns early when its root element is absent, so the
+ * single boot sequence at the bottom works unchanged across all pages.
  */
 import { requireAuth, supabase } from "./supabase.js";
 import * as db from "./db.js";
 
-// ── Active internship (UI state — localStorage only) ──────────────────────────
-// Only the selected internship ID is kept in localStorage.
-// All actual internship data lives in Supabase.
-
-function getActiveInternshipId() {
-  return localStorage.getItem("interntrack_active_internship_id") || "";
-}
-
-function setActiveInternshipId(id) {
-  localStorage.setItem("interntrack_active_internship_id", id || "");
-}
-
-function hasActiveInternship() {
-  return Boolean(getActiveInternshipId());
-}
-
-function requireActiveInternship(errorEl, message = "Please add or select an internship first.") {
-  if (hasActiveInternship()) return true;
-  if (errorEl) errorEl.textContent = message;
-  return false;
-}
-
 // ── Utilities ─────────────────────────────────────────────────────────────────
-// Pure helper functions — no side effects, no async.
 
-/** Generate a unique ID using crypto.randomUUID when available. */
 function makeId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -48,24 +28,18 @@ function makeId() {
 
 function formatDate(value) {
   if (!value) return "No date";
-  const parsed = new Date(`${value}T00:00:00`);
+  const parsed = new Date(`${String(value).slice(0, 10)}T00:00:00`);
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString();
 }
 
 function parseDateOnly(value) {
   if (!value) return null;
-  const d = new Date(`${value}T00:00:00`);
+  const d = new Date(`${String(value).slice(0, 10)}T00:00:00`);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
 function todayDateString() {
   return new Date().toISOString().split("T")[0];
-}
-
-function splitTags(tagsValue) {
-  if (Array.isArray(tagsValue)) return tagsValue.map((t) => String(t).trim()).filter(Boolean);
-  if (typeof tagsValue === "string") return tagsValue.split(",").map((t) => t.trim()).filter(Boolean);
-  return [];
 }
 
 function escapeHtml(value = "") {
@@ -77,42 +51,58 @@ function escapeHtml(value = "") {
     .replaceAll("'", "&#39;");
 }
 
-function isDateWithinLastDays(value, days = 7) {
+/** Whole days between a date-only string and today. Negative means future. */
+function daysSince(value) {
   const date = parseDateOnly(value);
-  if (!date) return false;
-  const now = new Date();
-  const start = new Date(now);
-  start.setDate(now.getDate() - (days - 1));
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(now);
-  end.setHours(23, 59, 59, 999);
-  return date >= start && date <= end;
+  if (!date) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((today - date) / 86400000);
 }
 
-// ── Normalizers ───────────────────────────────────────────────────────────────
-// Each normalizer fills in defaults and ensures consistent shape before
-// saving to Supabase. Called on both read (db.js) and write paths.
-
-function normalizeLog(log = {}) {
-  return {
-    id: log.id || makeId(),
-    date: log.date || "",
-    task: (log.task || log.text || "").trim(),
-    impact: (log.impact || "").trim(),
-    skills: (log.skills || "").trim(),
-    tags: splitTags(log.tags),
-    blockers: (log.blockers || "").trim()
-  };
+function isDateWithinLastDays(value, days = 7) {
+  const elapsed = daysSince(value);
+  return elapsed !== null && elapsed >= 0 && elapsed < days;
 }
 
-/** Human-readable labels for follow-up reminder frequencies. */
+function relativeDayLabel(value) {
+  const elapsed = daysSince(value);
+  if (elapsed === null) return "no date";
+  if (elapsed === 0) return "today";
+  if (elapsed === 1) return "yesterday";
+  if (elapsed < 0) return `in ${Math.abs(elapsed)} days`;
+  if (elapsed < 30) return `${elapsed} days ago`;
+  const months = Math.round(elapsed / 30);
+  if (months < 12) return `${months} month${months === 1 ? "" : "s"} ago`;
+  const years = Math.round(elapsed / 365);
+  return `${years} year${years === 1 ? "" : "s"} ago`;
+}
+
+function initialsFor(name) {
+  const parts = (name || "?").trim().split(/\s+/);
+  return parts.length >= 2
+    ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    : (parts[0][0] || "?").toUpperCase();
+}
+
+// ── Reach-out cadence ─────────────────────────────────────────────────────────
+// Deliberately avoids the word "tracking" everywhere it faces the user.
+
 const FREQUENCY_LABELS = {
-  weekly: "Weekly",
+  weekly: "Every week",
   biweekly: "Every 2 weeks",
-  monthly: "Monthly",
+  monthly: "Every month",
   bimonthly: "Every 2 months",
-  quarterly: "Quarterly",
-  none: "No reminders"
+  quarterly: "Every 3 months",
+  none: "No schedule"
+};
+
+const FREQUENCY_DAYS = {
+  weekly: 7,
+  biweekly: 14,
+  monthly: 30,
+  bimonthly: 60,
+  quarterly: 90
 };
 
 function getFreqLabel(freq) {
@@ -120,23 +110,138 @@ function getFreqLabel(freq) {
     const days = parseInt(freq.slice(7), 10);
     return "Every " + days + " day" + (days !== 1 ? "s" : "");
   }
-  return FREQUENCY_LABELS[freq] || "No reminders";
+  return FREQUENCY_LABELS[freq] || "No schedule";
+}
+
+function getIntervalDays(freq) {
+  if (freq && freq.startsWith("custom:")) {
+    const days = parseInt(freq.slice(7), 10);
+    return Number.isNaN(days) || days <= 0 ? 0 : days;
+  }
+  return FREQUENCY_DAYS[freq] || 0;
 }
 
 function calculateNextReminder(lastContacted, frequency) {
-  if (!lastContacted || frequency === "none") return "";
-  const date = new Date(lastContacted);
-  if (frequency === "weekly") date.setDate(date.getDate() + 7);
-  else if (frequency === "biweekly") date.setDate(date.getDate() + 14);
-  else if (frequency === "monthly") date.setMonth(date.getMonth() + 1);
-  else if (frequency === "bimonthly") date.setMonth(date.getMonth() + 2);
-  else if (frequency === "quarterly") date.setMonth(date.getMonth() + 3);
-  else if (frequency.startsWith("custom:")) {
-    const days = parseInt(frequency.slice(7), 10);
-    if (!isNaN(days) && days > 0) date.setDate(date.getDate() + days);
-  }
+  const interval = getIntervalDays(frequency);
+  if (!lastContacted || !interval) return "";
+  const date = parseDateOnly(lastContacted) || new Date(lastContacted);
+  if (Number.isNaN(date.getTime())) return "";
+  date.setDate(date.getDate() + interval);
   return date.toISOString();
 }
+
+// ── Relationship health ───────────────────────────────────────────────────────
+// A connection is "scheduled" when it has a cadence and reminders are on.
+// Health decays linearly from 100% right after a touchpoint to 0% once the
+// whole interval has elapsed.
+
+function getHealth(contact) {
+  const interval = getIntervalDays(contact.followUpFrequency);
+  const last = contact.lastContacted || contact.dateMet;
+  const elapsed = daysSince(last);
+
+  if (!interval || !contact.reminderEnabled || elapsed === null) {
+    return { scheduled: false, pct: 0, band: "none", elapsed, interval: 0, daysLeft: null };
+  }
+
+  const pct = Math.max(0, Math.min(100, Math.round((1 - elapsed / interval) * 100)));
+  // "Overdue" must mean the deadline actually passed, not merely that the
+  // remaining percentage is small. A 90-day cadence at day 80 is down to 11%
+  // but still has 10 days left — calling that overdue contradicts the detail.
+  const band = elapsed > interval ? "critical" : pct >= 60 ? "good" : "warning";
+  return { scheduled: true, pct, band, elapsed, interval, daysLeft: interval - elapsed };
+}
+
+/**
+ * Status vocabulary. Every status is shown as icon + label + number so meaning
+ * never rides on color alone — required because the amber sits below 3:1 on
+ * this app's light surface.
+ */
+const BAND_META = {
+  good:     { label: "In touch",       icon: "●", short: "In touch" },
+  warning:  { label: "Reach out soon", icon: "◐", short: "Soon" },
+  critical: { label: "Overdue",        icon: "▲", short: "Overdue" },
+  none:     { label: "No schedule",    icon: "○", short: "No schedule" }
+};
+
+function healthBarHtml(health) {
+  const meta = BAND_META[health.band];
+  if (!health.scheduled) {
+    return '<div class="health health-none">'
+      + '<span class="health-label muted"><span class="health-icon" aria-hidden="true">'
+      + meta.icon + '</span> ' + meta.label + '</span>'
+      + '</div>';
+  }
+  const detail = health.daysLeft >= 0
+    ? `${health.daysLeft} day${health.daysLeft === 1 ? "" : "s"} left`
+    : `${Math.abs(health.daysLeft)} day${Math.abs(health.daysLeft) === 1 ? "" : "s"} over`;
+  return '<div class="health">'
+    + '<div class="health-track">'
+    + '<div class="health-fill fill-' + health.band + '" style="width:' + health.pct + '%"></div>'
+    + '</div>'
+    + '<span class="health-label text-' + health.band + '">'
+    + '<span class="health-icon" aria-hidden="true">' + meta.icon + '</span> ' + meta.label + '</span>'
+    + '<span class="health-detail">' + detail + '</span>'
+    + '</div>';
+}
+
+function statusChip(health) {
+  const meta = BAND_META[health.band];
+  return '<span class="status-chip chip-' + health.band + '">'
+    + '<span aria-hidden="true">' + meta.icon + '</span> ' + escapeHtml(meta.short) + '</span>';
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────────
+// A ring is a meter: one ratio against a limit. Rounded data-ends, a recessive
+// track, and the value printed in the middle so the arc is never the only cue.
+
+function ringHtml({ pct, band, caption, sub }) {
+  const radius = 42;
+  const circumference = 2 * Math.PI * radius;
+  const safePct = Math.max(0, Math.min(100, pct));
+  const filled = (safePct / 100) * circumference;
+  // At 0% the round line-cap would still paint a stray dot at 12 o'clock, so
+  // the arc is omitted entirely rather than drawn with a zero-length dash.
+  const arc = safePct > 0
+    ? '<circle class="ring-fill ring-' + band + '" cx="50" cy="50" r="' + radius + '"'
+      + ' stroke-dasharray="' + filled.toFixed(2) + ' ' + (circumference - filled).toFixed(2) + '"'
+      + ' transform="rotate(-90 50 50)" />'
+    : "";
+  return '<figure class="ring-fig">'
+    + '<svg class="ring" viewBox="0 0 100 100" role="img"'
+    + ' aria-label="' + escapeHtml(caption) + ': ' + safePct + ' percent">'
+    + '<circle class="ring-track" cx="50" cy="50" r="' + radius + '" />'
+    + arc
+    + '<text class="ring-value" x="50" y="50">' + safePct + '%</text>'
+    + '</svg>'
+    + '<figcaption><span class="ring-caption">' + escapeHtml(caption) + '</span>'
+    + (sub ? '<span class="ring-sub">' + escapeHtml(sub) + '</span>' : '')
+    + '</figcaption>'
+    + '</figure>';
+}
+
+/** Part-to-whole across the three statuses — a stacked bar, not a pie. */
+function splitBarHtml(counts) {
+  const total = counts.good + counts.warning + counts.critical;
+  if (!total) return "";
+  const seg = (band) => counts[band]
+    ? '<div class="split-seg fill-' + band + '" style="flex:' + counts[band] + '"'
+      + ' title="' + BAND_META[band].label + ': ' + counts[band] + '"></div>'
+    : "";
+  return '<div class="split-wrap">'
+    + '<div class="split-bar">' + seg("good") + seg("warning") + seg("critical") + '</div>'
+    + '<ul class="split-legend">'
+    + ["good", "warning", "critical"].map((band) =>
+        '<li class="split-legend-item">'
+        + '<span class="legend-dot dot-' + band + '" aria-hidden="true"></span>'
+        + '<span class="legend-label">' + BAND_META[band].label + '</span>'
+        + '<span class="legend-count">' + counts[band] + '</span>'
+        + '</li>').join("")
+    + '</ul>'
+    + '</div>';
+}
+
+// ── Normalizers ───────────────────────────────────────────────────────────────
 
 function normalizeInteraction(item = {}) {
   return {
@@ -145,15 +250,6 @@ function normalizeInteraction(item = {}) {
     type: item.type || "check-in",
     notes: (item.notes || "").trim(),
     outcome: (item.outcome || "").trim()
-  };
-}
-
-function normalizeContactDocument(doc = {}) {
-  return {
-    id: doc.id || makeId(),
-    name: doc.name || "Untitled.pdf",
-    data: doc.data || "",
-    date: doc.date || todayDateString()
   };
 }
 
@@ -185,6 +281,7 @@ function normalizeContact(contact = {}) {
     email: (contact.email || "").trim(),
     company: (contact.company || "").trim(),
     role: (contact.role || "").trim(),
+    industry: (contact.industry || "").trim(),
     dateMet: contact.dateMet || "",
     lastContacted,
     followUpFrequency: frequency,
@@ -194,25 +291,12 @@ function normalizeContact(contact = {}) {
     interests: (contact.interests || "").trim(),
     adviceGiven: (contact.adviceGiven || "").trim(),
     interactions: sortedInteractions,
-    documents: Array.isArray(contact.documents)
-      ? contact.documents.map(normalizeContactDocument)
-      : [],
     followUps: Array.isArray(contact.followUps)
       ? contact.followUps.map(normalizeFollowUpItem)
       : [],
     companyHistory: Array.isArray(contact.companyHistory)
       ? contact.companyHistory.map((c) => String(c).trim()).filter(Boolean)
-      : [],
-    starred: contact.starred === true
-  };
-}
-
-function normalizeFile(file = {}) {
-  return {
-    id: file.id || makeId(),
-    name: file.name || "Untitled.pdf",
-    data: file.data || "",
-    date: file.date || todayDateString()
+      : []
   };
 }
 
@@ -230,18 +314,25 @@ function getReminderStatus(contact) {
   return "ok";
 }
 
-function reminderBadge(contact) {
-  const status = getReminderStatus(contact);
-  if (status === "due") return '<span class="badge badge-due">Due</span>';
-  if (status === "soon") return '<span class="badge badge-soon">Soon</span>';
-  if (status === "ok") return '<span class="badge badge-ok">Up to date</span>';
-  return "";
+/** Scheduled connections that have slipped, most overdue first. */
+function needsAttention(contacts) {
+  return contacts
+    .map((c) => ({ contact: c, health: getHealth(c) }))
+    .filter((x) => x.health.scheduled && x.health.band !== "good")
+    .sort((a, b) => a.health.pct - b.health.pct);
 }
 
-// ── Sidebar toggle ────────────────────────────────────────────────────────────
+function countByBand(contacts) {
+  const counts = { good: 0, warning: 0, critical: 0, none: 0 };
+  contacts.forEach((c) => { counts[getHealth(c).band]++; });
+  return counts;
+}
+
+// ── Sidebar ───────────────────────────────────────────────────────────────────
 
 function initSidebarToggle() {
   const btn = document.getElementById("sidebarToggleBtn");
+  const brand = document.getElementById("sidebarBrand");
   const sidebar = document.querySelector(".sidebar");
   if (!btn || !sidebar) return;
 
@@ -257,7 +348,6 @@ function initSidebarToggle() {
     document.body.classList.remove("mobile-nav-open");
     btn.setAttribute("aria-expanded", "false");
   };
-
   const openMobileNav = () => {
     document.body.classList.add("mobile-nav-open");
     btn.setAttribute("aria-expanded", "true");
@@ -270,34 +360,61 @@ function initSidebarToggle() {
       return;
     }
     closeMobileNav();
-    if (localStorage.getItem("interntrack_sidebar_collapsed") === "true") {
-      sidebar.classList.add("collapsed");
-    }
+    if (localStorage.getItem("orbit_sidebar_collapsed") === "true") sidebar.classList.add("collapsed");
     btn.setAttribute("aria-expanded", sidebar.classList.contains("collapsed") ? "false" : "true");
   };
 
   handleDesktopState();
   mobileQuery.addEventListener("change", handleDesktopState);
 
+  const setCollapsed = (collapsed) => {
+    sidebar.classList.toggle("collapsed", collapsed);
+    localStorage.setItem("orbit_sidebar_collapsed", String(collapsed));
+    btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  };
+
+  // The « button closes it; the logo re-opens it (and shows » on hover).
   btn.addEventListener("click", () => {
     if (mobileQuery.matches) {
       if (document.body.classList.contains("mobile-nav-open")) closeMobileNav();
       else openMobileNav();
       return;
     }
-    sidebar.classList.toggle("collapsed");
-    localStorage.setItem("interntrack_sidebar_collapsed", sidebar.classList.contains("collapsed").toString());
-    btn.setAttribute("aria-expanded", sidebar.classList.contains("collapsed") ? "false" : "true");
+    setCollapsed(true);
+  });
+
+  brand?.addEventListener("click", () => {
+    if (mobileQuery.matches) {
+      if (document.body.classList.contains("mobile-nav-open")) closeMobileNav();
+      else openMobileNav();
+      return;
+    }
+    // Only acts as a re-open affordance; when expanded the logo is inert.
+    if (sidebar.classList.contains("collapsed")) setCollapsed(false);
   });
 
   overlay.addEventListener("click", closeMobileNav);
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeMobileNav();
-  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMobileNav(); });
 
-  sidebar.querySelectorAll(".s-link").forEach((link) => {
-    link.addEventListener("click", () => {
-      if (mobileQuery.matches) closeMobileNav();
+  sidebar.querySelectorAll(".s-link, .s-sublink").forEach((link) => {
+    link.addEventListener("click", () => { if (mobileQuery.matches) closeMobileNav(); });
+  });
+}
+
+function initNavDropdown() {
+  document.querySelectorAll(".s-group").forEach((group) => {
+    const caret = group.querySelector(".s-caret");
+    if (!caret) return;
+    const startOpen = group.querySelector(".s-sublink.active")
+      || localStorage.getItem("orbit_nav_open") === "true";
+    group.classList.toggle("open", Boolean(startOpen));
+    caret.setAttribute("aria-expanded", String(Boolean(startOpen)));
+    caret.addEventListener("click", (e) => {
+      e.preventDefault();
+      const open = !group.classList.contains("open");
+      group.classList.toggle("open", open);
+      caret.setAttribute("aria-expanded", String(open));
+      localStorage.setItem("orbit_nav_open", String(open));
     });
   });
 }
@@ -305,7 +422,10 @@ function initSidebarToggle() {
 // ── Theme ─────────────────────────────────────────────────────────────────────
 
 function applyTheme() {
-  const theme = localStorage.getItem("interntrack_theme") || "light";
+  // Fall back to the pre-rename key so an existing dark preference survives.
+  const theme = localStorage.getItem("orbit_theme")
+    || localStorage.getItem("interntrack_theme")
+    || "light";
   document.body.classList.toggle("dark", theme === "dark");
   const toggle = document.getElementById("themeToggle");
   if (toggle) toggle.textContent = theme === "dark" ? "Light Mode" : "Dark Mode";
@@ -318,82 +438,51 @@ function initThemeToggle() {
   applyTheme();
   toggle.addEventListener("click", () => {
     const next = document.body.classList.contains("dark") ? "light" : "dark";
-    localStorage.setItem("interntrack_theme", next);
+    localStorage.setItem("orbit_theme", next);
     applyTheme();
   });
 }
 
-// ── PDF helper ────────────────────────────────────────────────────────────────
+// ── Talking-point suggestions ─────────────────────────────────────────────────
 
-function readPdfFile(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(new Error("File read failed"));
-    reader.readAsDataURL(file);
-  });
-}
-
-// ── Follow-up suggestions ─────────────────────────────────────────────────────
-
-/** Supported interaction types for the timeline log form. */
 const INTERACTION_TYPES = ["coffee chat", "meeting", "check-in", "email", "phone call", "event"];
 
-/**
- * AI-assisted: Generate personalised follow-up suggestions based on
- * contact interests, role, notes, and interaction history.
- * Returns up to 5 de-duplicated suggestion strings.
- */
 function generateFollowUpSuggestions(contact) {
   const name = contact.name || "them";
   const sentences = [];
 
-  // Pull sentences from recent interactions (most recent 3)
-  const recentInteractions = (contact.interactions || []).slice(0, 3);
-  for (const interaction of recentInteractions) {
-    for (const field of [interaction.notes, interaction.outcome]) {
-      if (!field) continue;
-      // Split on sentence boundaries
-      field.split(/[.!?\n]+/).forEach((s) => {
-        const trimmed = s.trim();
-        if (trimmed.length > 8) sentences.push({ text: trimmed, source: "interaction" });
-      });
-    }
+  for (const interaction of (contact.interactions || []).slice(0, 3)) {
+    if (!interaction.notes) continue;
+    interaction.notes.split(/[.!?\n]+/).forEach((s) => {
+      const trimmed = s.trim();
+      if (trimmed.length > 8) sentences.push({ text: trimmed, source: "interaction" });
+    });
   }
-
-  // Pull sentences from contact-level notes
   if (contact.notes) {
     contact.notes.split(/[.!?\n]+/).forEach((s) => {
       const trimmed = s.trim();
       if (trimmed.length > 8) sentences.push({ text: trimmed, source: "notes" });
     });
   }
-
   if (!sentences.length) return ["Send " + name + " a quick check-in message"];
 
-  // Score sentences: prefer ones that suggest ongoing topics or action items
   const actionWords = /\b(mentioned|said|working on|planning|considering|wants to|will|might|should|asked|wondering|interested in|excited about|worried about|discussed|brought up|follow up|check back|update|revisit|explore|look into|thinking about|decided|going to|hope|looking for|applied|interviewing|offered|accepted|waiting|heard back|need to|want to)\b/i;
 
   const scored = sentences.map((s) => ({
     ...s,
     score: (actionWords.test(s.text) ? 2 : 0) + (s.source === "interaction" ? 1 : 0)
   }));
-
   scored.sort((a, b) => b.score - a.score);
 
-  // Format as follow-up talking points
   const seen = new Set();
   const suggestions = [];
   for (const s of scored) {
     const key = s.text.toLowerCase().slice(0, 40);
     if (seen.has(key)) continue;
     seen.add(key);
-    // Capitalize first letter
-    const text = s.text.charAt(0).toUpperCase() + s.text.slice(1);
-    suggestions.push("Follow up on: " + text);
+    suggestions.push("Follow up on: " + s.text.charAt(0).toUpperCase() + s.text.slice(1));
     if (suggestions.length >= 5) break;
   }
-
   return suggestions;
 }
 
@@ -401,7 +490,7 @@ function generateFollowUpSuggestions(contact) {
 
 function renderFollowUpItems(followUps) {
   if (!followUps || !followUps.length) {
-    return '<p class="empty">No next steps yet. Add one manually or use Suggest.</p>';
+    return '<p class="empty">No talking points yet. Add one, or use Suggest.</p>';
   }
   const sorted = [...followUps].sort((a, b) => {
     if (a.completed !== b.completed) return a.completed ? 1 : -1;
@@ -413,52 +502,23 @@ function renderFollowUpItems(followUps) {
     '    <input type="checkbox" class="fu-checkbox" data-fu-id="' + item.id + '" ' + (item.completed ? "checked" : "") + ' />',
     '    <span class="followup-text">' + escapeHtml(item.text) + '</span>',
     '  </label>',
-    '  <div class="followup-right">',
-    '    <span class="fu-tag ' + (item.source === "ai" ? "fu-tag-ai" : "fu-tag-manual") + '">' + (item.source === "ai" ? "AI" : "Manual") + '</span>',
-    '    <button class="btn btn-secondary fu-delete" type="button" data-fu-id="' + item.id + '" title="Delete">X</button>',
-    '  </div>',
+    '  <button class="fu-delete" type="button" data-fu-id="' + item.id + '" title="Delete" aria-label="Delete talking point">✕</button>',
     '</div>'
   ].join("\n")).join("\n");
 }
 
-function renderContactDocuments(docs) {
-  if (!docs.length) return '<p class="empty">No documents uploaded yet.</p>';
-  return docs.map((doc) => [
-    '<div class="row wrap doc-row">',
-    '  <span><strong>' + escapeHtml(doc.name) + '</strong> <span class="tiny">' + formatDate(doc.date) + '</span></span>',
-    '  <div class="row">',
-    '    <a class="btn btn-secondary" href="' + doc.data + '" target="_blank" rel="noopener">Open</a>',
-    '    <a class="btn btn-secondary" href="' + doc.data + '" download="' + escapeHtml(doc.name) + '">Download</a>',
-    '    <button class="btn btn-secondary" type="button" data-remove-doc="' + doc.id + '">Remove</button>',
-    '  </div>',
-    '</div>'
-  ].join("\n")).join("\n");
-}
-
-// ── Storage file card helpers ─────────────────────────────────────────────────
-// Shared by the Files page, Contact profile docs section, and workspace panel.
-
-const FILE_CATEGORY_META = {
-  project:      { label: "Project",      cls: "file-tag-project" },
-  conversation: { label: "Conversation", cls: "file-tag-conversation" },
-  general:      { label: "General",      cls: "file-tag-general" }
-};
-
-function renderStorageFileCard(file) {
-  const meta = FILE_CATEGORY_META[file.category] || FILE_CATEGORY_META.general;
-  const dateStr = file.createdAt
-    ? new Date(file.createdAt).toLocaleDateString()
-    : "";
-  return '<div class="file-card"'
-    + ' data-file-id="' + escapeHtml(file.id) + '"'
-    + ' data-storage-path="' + escapeHtml(file.storagePath) + '">'
+function renderStorageFileCard(file, contact) {
+  const dateStr = file.createdAt ? new Date(file.createdAt).toLocaleDateString() : "";
+  return '<div class="file-card" data-file-id="' + escapeHtml(file.id) + '">'
     + '<div class="file-card-icon">📄</div>'
     + '<div class="file-card-body">'
     + '<p class="file-card-name" title="' + escapeHtml(file.name) + '">' + escapeHtml(file.name) + '</p>'
+    + (contact
+      ? '<p class="file-card-link">' + escapeHtml(contact.name)
+        + (contact.company ? ' · ' + escapeHtml(contact.company) : '') + '</p>'
+      : '<p class="file-card-link muted">Not linked</p>')
     + (dateStr ? '<p class="file-card-date">' + dateStr + '</p>' : '')
     + '</div>'
-    + '<div class="file-card-footer">'
-    + '<span class="file-tag ' + meta.cls + '">' + meta.label + '</span>'
     + '<div class="file-card-actions">'
     + '<button class="file-action-btn file-open-btn" type="button"'
     + ' data-file-url="' + escapeHtml(file.fileUrl) + '" title="Open file">Open</button>'
@@ -466,15 +526,9 @@ function renderStorageFileCard(file) {
     + ' data-file-id="' + escapeHtml(file.id) + '"'
     + ' data-storage-path="' + escapeHtml(file.storagePath) + '" title="Delete file">✕</button>'
     + '</div>'
-    + '</div>'
     + '</div>';
 }
 
-/**
- * Attach open/delete listeners to .file-card elements inside `container`.
- * `onDelete` is called (async) after a successful delete so the caller can
- * re-render the list without a full page reload.
- */
 function attachStorageFileCardListeners(container, onDelete) {
   container.querySelectorAll(".file-open-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -490,67 +544,174 @@ function attachStorageFileCardListeners(container, onDelete) {
   });
 }
 
+/** Each conversation is a <details> so it can be opened and closed. */
 function renderInteractionTimeline(interactions) {
-  if (!interactions || !interactions.length) return '<p class="empty">No interactions logged yet.</p>';
-  return interactions.map((item) => {
-    const hasNotes = item.notes || item.outcome;
-    const notesBody = [
-      item.notes ? '<p>' + escapeHtml(item.notes) + '</p>' : '',
-      item.outcome ? '<p class="tiny"><span class="label">Outcome:</span> ' + escapeHtml(item.outcome) + '</p>' : ''
-    ].filter(Boolean).join('');
-    return [
-      '<div class="timeline-item">',
-      '  <div class="timeline-dot"></div>',
-      '  <div class="timeline-body">',
-      '    <p class="timeline-date">' + formatDate(item.date) + ' <span class="tag">' + escapeHtml(item.type) + '</span></p>',
-      hasNotes ? '    <details class="timeline-notes"><summary>Meeting notes</summary>' + notesBody + '</details>' : '',
-      '  </div>',
-      '</div>'
-    ].filter(Boolean).join("\n");
+  if (!interactions || !interactions.length) return '<p class="empty">No conversations logged yet.</p>';
+  return interactions.map((item, i) => {
+    const summary = '<summary class="convo-summary">'
+      + '<span class="convo-caret" aria-hidden="true">▸</span>'
+      + '<span class="convo-date">' + formatDate(item.date) + '</span>'
+      + '<span class="tag">' + escapeHtml(item.type) + '</span>'
+      + (item.notes ? '' : '<span class="tiny muted">no notes</span>')
+      + '</summary>';
+    const body = item.notes
+      ? '<p class="convo-note">' + escapeHtml(item.notes) + '</p>'
+      : '<p class="convo-note muted">No notes were saved for this conversation.</p>';
+    // Newest conversation starts open; the rest stay collapsed.
+    return '<details class="convo"' + (i === 0 ? " open" : "") + '>' + summary + body + '</details>';
   }).join("\n");
 }
 
-// ── Summary builder ───────────────────────────────────────────────────────────
-// Builds a plain-text weekly manager update from impact logs.
-// AI-assisted: email template structure and scoring heuristic.
-
-/** Score a log entry by richness — used to pick the "key highlight". */
-function scoreImpact(log) {
-  return (log.impact || "").length + (log.skills || "").length * 0.2 + log.tags.length * 3;
+/** <datalist> of every company already in the network, for autocomplete. */
+function companyDatalist(contacts, id) {
+  const names = new Set();
+  contacts.forEach((c) => {
+    if (c.company) names.add(c.company);
+    (c.companyHistory || []).forEach((co) => names.add(co));
+  });
+  return '<datalist id="' + id + '">'
+    + [...names].sort().map((n) => '<option value="' + escapeHtml(n) + '"></option>').join("")
+    + '</datalist>';
 }
 
-function buildSummary({ logs, managerName, yourName, nextSteps }) {
-  const safeManager = (managerName || "").trim() || "Manager";
-  const safeName = (yourName || "").trim() || "Your Name";
-  const safeNextSteps = (nextSteps || "").trim();
-  if (!logs.length) {
-    return "Hi " + safeManager + ",\n\nThis week I:\n\nCompleted: No impact logs submitted.\nAchieved: No impact details submitted.\nLearned: No skills noted yet.\n\nKey highlight:\nNo key highlight yet.\n\nNext steps:\n" + (safeNextSteps || "Continue building momentum next week.") + "\n\nBest,\n" + safeName;
-  }
-  const completed = logs.map((log) => log.task + " (" + log.date + ")").join("; ");
-  const achieved = logs.map((log) => log.impact).filter(Boolean).join("; ");
-  const learned = logs.map((log) => log.skills).filter(Boolean).join("; ");
-  const best = [...logs].sort((a, b) => scoreImpact(b) - scoreImpact(a))[0];
-  return "Hi " + safeManager + ",\n\nThis week I:\n\nCompleted: " + completed + "\nAchieved: " + (achieved || "No impact details recorded.") + "\nLearned: " + (learned || "No skills recorded.") + "\n\nKey highlight:\n" + (best ? best.impact || "No key highlight recorded." : "No key highlight recorded.") + "\n\nNext steps:\n" + (safeNextSteps || "Continue progressing on current priorities.") + "\n\nBest,\n" + safeName;
+function industryDatalist(contacts, id) {
+  const names = new Set();
+  contacts.forEach((c) => { if (c.industry) names.add(c.industry); });
+  const common = ["Technology", "Finance", "Healthcare", "Consulting", "Education",
+                  "Media", "Retail", "Non-profit", "Government", "Real Estate"];
+  common.forEach((n) => names.add(n));
+  return '<datalist id="' + id + '">'
+    + [...names].sort().map((n) => '<option value="' + escapeHtml(n) + '"></option>').join("")
+    + '</datalist>';
 }
 
-/**
- * Fetch a random motivational quote from the Quotable public API.
- * Falls back to a static string on error so the UI never breaks.
- * API integration requirement — external fetch (api.quotable.io).
- */
-async function fetchQuote() {
-  try {
-    const response = await fetch("https://api.quotable.io/random");
-    if (!response.ok) throw new Error("Quote unavailable");
-    const data = await response.json();
-    return '"' + data.content + '" — ' + data.author;
-  } catch {
-    return "Weekly Insight for Growth is unavailable right now. Keep showing up consistently.";
-  }
+// ── Capture widget ────────────────────────────────────────────────────────────
+// One form, used inline on the Networking Log and inside the dashboard modal.
+// Fields use classes, not ids, so two copies can coexist on a page.
+
+function contactWidgetHtml(contacts = []) {
+  const freqOptions = Object.entries(FREQUENCY_LABELS)
+    .map(([v, l]) => '<option value="' + v + '"' + (v === "monthly" ? " selected" : "") + '>' + l + '</option>')
+    .join("");
+  const listId = "cwCompanies_" + Math.random().toString(36).slice(2, 8);
+  const indId = "cwIndustries_" + Math.random().toString(36).slice(2, 8);
+
+  return '<form class="cw-form" autocomplete="off">'
+    + companyDatalist(contacts, listId)
+    + industryDatalist(contacts, indId)
+    + '<div class="cw-grid">'
+    + '<div class="field-group"><label>Name <span class="required">*</span></label>'
+    + '<input type="text" class="cw-name" placeholder="Full name" required /></div>'
+    + '<div class="field-group"><label>Role / Title</label>'
+    + '<input type="text" class="cw-role" placeholder="Product Manager" /></div>'
+    + '<div class="field-group"><label>Company</label>'
+    + '<input type="text" class="cw-company" list="' + listId + '" placeholder="Where they work" /></div>'
+    + '<div class="field-group"><label>Industry</label>'
+    + '<input type="text" class="cw-industry" list="' + indId + '" placeholder="Technology" /></div>'
+    + '<div class="field-group"><label>Email</label>'
+    + '<input type="email" class="cw-email" placeholder="email@example.com" /></div>'
+    + '<div class="field-group"><label>When you connected <span class="required">*</span></label>'
+    + '<input type="date" class="cw-date" required /></div>'
+    + '<div class="field-group"><label>Reach out again?</label>'
+    + '<select class="cw-freq">' + freqOptions + '</select></div>'
+    + '</div>'
+    + '<div class="field-group"><label>Notes — what to bring up next time</label>'
+    + '<textarea class="cw-notes" rows="2" placeholder="What you talked about, what they are working on, what to ask next…"></textarea></div>'
+    + '<p class="error cw-error" aria-live="polite"></p>'
+    + '<p class="success cw-success" aria-live="polite"></p>'
+    + '<button type="submit" class="btn cw-submit">Add to network</button>'
+    + '</form>';
 }
 
-// ── Reminder modal ────────────────────────────────────────────────────────────
-// AI-assisted: modal structure and email draft template.
+function wireContactWidget(root, onSaved) {
+  const form = root.querySelector(".cw-form");
+  if (!form) return;
+
+  const dateEl = form.querySelector(".cw-date");
+  if (dateEl && !dateEl.value) dateEl.value = todayDateString();
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const errEl = form.querySelector(".cw-error");
+    const okEl = form.querySelector(".cw-success");
+    const submitBtn = form.querySelector(".cw-submit");
+    errEl.textContent = "";
+    okEl.textContent = "";
+
+    const frequency = form.querySelector(".cw-freq").value || "none";
+    const connectedOn = form.querySelector(".cw-date").value || todayDateString();
+    const contact = normalizeContact({
+      name: form.querySelector(".cw-name").value,
+      role: form.querySelector(".cw-role").value,
+      company: form.querySelector(".cw-company").value,
+      industry: form.querySelector(".cw-industry").value,
+      email: form.querySelector(".cw-email").value,
+      dateMet: connectedOn,
+      lastContacted: connectedOn,
+      followUpFrequency: frequency,
+      reminderEnabled: frequency !== "none",
+      notes: form.querySelector(".cw-notes").value,
+      interactions: []
+    });
+
+    if (!contact.name) { errEl.textContent = "A name is required."; return; }
+    if (!contact.dateMet) { errEl.textContent = "Please set when you connected."; return; }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Saving…";
+    const saved = await db.saveContact(contact);
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Add to network";
+
+    if (!saved) {
+      errEl.textContent = "Could not save. Open the console (F12) for the Supabase error.";
+      return;
+    }
+
+    form.reset();
+    if (dateEl) dateEl.value = todayDateString();
+    okEl.textContent = contact.name + " added to your network.";
+    setTimeout(() => { okEl.textContent = ""; }, 3000);
+    if (onSaved) await onSaved(saved);
+  });
+}
+
+function openQuickAddModal(contacts, onSaved) {
+  document.getElementById("quickAddModal")?.remove();
+
+  const modal = document.createElement("div");
+  modal.id = "quickAddModal";
+  modal.className = "modal-overlay";
+  modal.innerHTML = '<div class="modal-card quick-add-card">'
+    + '<div class="quick-add-header">'
+    + '<h3>Add someone to your network</h3>'
+    + '<button class="icon-btn" id="quickAddClose" type="button" aria-label="Close">✕</button>'
+    + '</div>'
+    + contactWidgetHtml(contacts)
+    + '</div>';
+  document.body.appendChild(modal);
+
+  const close = () => modal.remove();
+  modal.querySelector("#quickAddClose").addEventListener("click", close);
+  modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+  document.addEventListener("keydown", function onEsc(e) {
+    if (e.key === "Escape") { close(); document.removeEventListener("keydown", onEsc); }
+  });
+
+  wireContactWidget(modal, async (saved) => {
+    if (onSaved) await onSaved(saved);
+    setTimeout(close, 900);
+  });
+  modal.querySelector(".cw-name")?.focus();
+}
+
+function initQuickAddButton(getContacts, onSaved) {
+  const btn = document.getElementById("quickAddBtn");
+  if (!btn) return;
+  btn.addEventListener("click", () => openQuickAddModal(getContacts(), onSaved));
+}
+
+// ── Reach-out modal ───────────────────────────────────────────────────────────
 
 function buildReminderEmailText(contact, yourName) {
   const name = contact.name || "there";
@@ -558,59 +719,64 @@ function buildReminderEmailText(contact, yourName) {
   return "Subject: Great catching up!\n\nHi " + name + ",\n\nHope you have been doing well! I wanted to reconnect and see how things have been going on your end.\n\nWould love to catch up soon.\n\nBest,\n" + safeName;
 }
 
-async function showReminderModal(contact) {
-  const existing = document.getElementById("reminderModal");
-  if (existing) existing.remove();
+async function showReminderModal(contact, onChanged) {
+  document.getElementById("reminderModal")?.remove();
+
   const prefs = await db.getPreferences();
-  const yourName = prefs.your_name || "";
-  const emailText = buildReminderEmailText(contact, yourName);
-  const freqLabel = getFreqLabel(contact.followUpFrequency);
+  const emailText = buildReminderEmailText(contact, prefs.your_name || "");
   const nextStr = contact.nextReminder ? formatDate(contact.nextReminder.split("T")[0]) : "Not set";
+
   const modal = document.createElement("div");
   modal.id = "reminderModal";
   modal.className = "modal-overlay";
   modal.innerHTML = '<div class="modal-card">'
-    + '<h3>Time to reconnect with <strong>' + escapeHtml(contact.name) + '</strong></h3>'
-    + '<p class="muted">Frequency: ' + escapeHtml(freqLabel) + ' · Next: ' + nextStr + '</p>'
+    + '<div class="quick-add-header">'
+    + '<h3>Reach out to <strong>' + escapeHtml(contact.name) + '</strong></h3>'
+    + '<button class="icon-btn" id="modalClose" type="button" aria-label="Close">✕</button>'
+    + '</div>'
+    + '<p class="muted">' + escapeHtml(getFreqLabel(contact.followUpFrequency)) + ' · Next: ' + nextStr + '</p>'
     + '<div class="modal-actions">'
-    + '<button class="btn" id="modalMarkDone" type="button">Mark as done</button>'
+    + '<button class="btn" id="modalMarkDone" type="button">I reached out</button>'
     + '<button class="btn btn-secondary" id="modalLater" type="button">Remind me in 3 days</button>'
-    + '<button class="btn btn-secondary" id="modalTurnOff" type="button">Turn off reminders</button>'
+    + '<button class="btn btn-secondary" id="modalTurnOff" type="button">Remove schedule</button>'
     + '</div>'
     + '<div class="modal-email">'
-    + '<p class="label">Copy reminder email draft:</p>'
+    + '<p class="label">Draft message</p>'
     + '<textarea class="email-draft" readonly rows="8">' + escapeHtml(emailText) + '</textarea>'
-    + '<button class="btn btn-secondary" id="modalCopyEmail" type="button">Copy email</button>'
+    + '<button class="btn btn-secondary" id="modalCopyEmail" type="button">Copy</button>'
     + '<p id="modalCopyMsg" class="success" aria-live="polite"></p>'
     + '</div>'
-    + '<button class="btn btn-secondary modal-close" id="modalClose" type="button">Close</button>'
     + '</div>';
   document.body.appendChild(modal);
 
-  const refresh = async () => {
-    await renderContacts();
-    await renderFollowUpAlerts("dashboardFollowUps");
-    await renderFollowUpAlerts("networkFollowUps");
-    await renderProgressWidget();
-    modal.remove();
-  };
+  const finish = async () => { modal.remove(); if (onChanged) await onChanged(); };
 
   modal.querySelector("#modalMarkDone").addEventListener("click", async () => {
-    await db.saveContact(normalizeContact({ ...contact, lastContacted: todayDateString(), nextReminder: calculateNextReminder(new Date().toISOString(), contact.followUpFrequency) }));
-    await refresh();
+    const today = todayDateString();
+    await db.saveContact(normalizeContact({
+      ...contact,
+      lastContacted: today,
+      nextReminder: calculateNextReminder(today, contact.followUpFrequency)
+    }));
+    await finish();
   });
   modal.querySelector("#modalLater").addEventListener("click", async () => {
-    await db.saveContact(normalizeContact({ ...contact, nextReminder: new Date(Date.now() + 3 * 86400000).toISOString() }));
-    await refresh();
+    await db.saveContact(normalizeContact({
+      ...contact,
+      nextReminder: new Date(Date.now() + 3 * 86400000).toISOString()
+    }));
+    await finish();
   });
   modal.querySelector("#modalTurnOff").addEventListener("click", async () => {
-    await db.saveContact(normalizeContact({ ...contact, reminderEnabled: false, followUpFrequency: "none" }));
-    await refresh();
+    await db.saveContact(normalizeContact({
+      ...contact, reminderEnabled: false, followUpFrequency: "none"
+    }));
+    await finish();
   });
   modal.querySelector("#modalCopyEmail").addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(emailText);
-      modal.querySelector("#modalCopyMsg").textContent = "Email copied to clipboard!";
+      modal.querySelector("#modalCopyMsg").textContent = "Copied to clipboard.";
     } catch {
       modal.querySelector("#modalCopyMsg").textContent = "Copy failed — please copy manually.";
     }
@@ -619,367 +785,359 @@ async function showReminderModal(contact) {
   modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
 }
 
-// ── Render functions ──────────────────────────────────────────────────────────
+// ── Shared row renderers ──────────────────────────────────────────────────────
 
-async function renderFollowUpAlerts(listId, emptyText) {
-  emptyText = emptyText || "No follow-ups due.";
-  const list = document.getElementById(listId);
-  if (!list) return;
-  const contacts = (await db.getContacts()) || [];
-  const now = new Date();
-  now.setHours(23, 59, 59, 999);
-  const soon = new Date(now.getTime() + 7 * 86400000);
-  const due = contacts.filter((c) => c.reminderEnabled && c.nextReminder && new Date(c.nextReminder) <= now);
-  const soonList = contacts.filter((c) => {
-    if (!c.reminderEnabled || !c.nextReminder) return false;
-    const next = new Date(c.nextReminder);
-    return next > now && next <= soon;
+function personRowHtml(contact, health, { showReconnect = false } = {}) {
+  return '<li class="person-row" data-open-contact="' + escapeHtml(contact.id) + '" role="button" tabindex="0">'
+    + '<div class="person-avatar" aria-hidden="true">' + escapeHtml(initialsFor(contact.name)) + '</div>'
+    + '<div class="person-main">'
+    + '<p class="person-name">' + escapeHtml(contact.name) + '</p>'
+    + '<p class="tiny">' + escapeHtml(contact.role || "Role not set")
+    + (contact.company ? ' @ <strong>' + escapeHtml(contact.company) + '</strong>' : '') + '</p>'
+    + '<p class="tiny muted">Last connected ' + relativeDayLabel(contact.lastContacted)
+    + (health.scheduled ? ' · ' + escapeHtml(getFreqLabel(contact.followUpFrequency)) : '') + '</p>'
+    + (contact.industry ? '<span class="token token-industry">' + escapeHtml(contact.industry) + '</span>' : '')
+    + '</div>'
+    + '<div class="person-side">'
+    + healthBarHtml(health)
+    + (showReconnect && health.scheduled
+      ? '<button class="btn btn-secondary btn-sm" type="button" data-remind-contact="'
+        + escapeHtml(contact.id) + '">Reach out</button>'
+      : '')
+    + '</div>'
+    + '</li>';
+}
+
+function wirePersonRows(root, contacts, onChanged) {
+  root.querySelectorAll("[data-open-contact]").forEach((row) => {
+    const open = () => {
+      window.location.href = "contact.html?id=" + encodeURIComponent(row.dataset.openContact);
+    };
+    row.addEventListener("click", open);
+    row.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
+    });
   });
-  const combined = [...due.map((c) => ({ contact: c, status: "due" })), ...soonList.map((c) => ({ contact: c, status: "soon" }))];
-  if (!combined.length) {
-    list.innerHTML = '<li class="empty">' + escapeHtml(emptyText) + '</li>';
-    return;
-  }
-  list.innerHTML = combined.map(({ contact, status }) =>
-    '<li class="list-item ' + (status === "due" ? "due-item" : "soon-item") + '">'
-    + '<div class="reminder-row">'
-    + '<span>' + (status === "due" ? "Time to reconnect with" : "Coming up:") + ' <strong>' + escapeHtml(contact.name) + '</strong> <span class="tiny">(' + formatDate(contact.nextReminder) + ')</span></span>'
-    + '<button class="btn btn-secondary reminder-trigger" type="button" data-contact-id="' + contact.id + '">Manage</button>'
-    + '</div></li>'
-  ).join("");
-  list.querySelectorAll(".reminder-trigger").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (btn.dataset.contactId) window.location.href = "contact.html?id=" + encodeURIComponent(btn.dataset.contactId);
+  root.querySelectorAll("[data-remind-contact]").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const contact = contacts.find((c) => c.id === btn.dataset.remindContact);
+      if (contact) await showReminderModal(contact, onChanged);
     });
   });
 }
 
+// ── Dashboard ─────────────────────────────────────────────────────────────────
 
-async function renderWeeklyConnections(listId) {
-  const list = document.getElementById(listId);
-  if (!list) return;
-  const contacts = (await db.getContacts()) || [];
-  // All contacts met in the last 7 days, sorted A→Z
-  const people = contacts
-    .filter((c) => isDateWithinLastDays(c.dateMet, 7))
-    .sort((a, b) => a.name.localeCompare(b.name));
-  if (!people.length) {
-    list.innerHTML = '<p class="empty">No new contacts added in the last 7 days.</p>';
-    return;
+async function initDashboard() {
+  const root = document.getElementById("dashboardContent");
+  if (!root) return;
+
+  let cached = [];
+
+  async function render() {
+    const contacts = (await db.getContacts()) || [];
+    cached = contacts;
+
+    if (!contacts.length) {
+      root.innerHTML = '<div class="card dash-empty">'
+        + '<p class="dash-empty-icon">🛰️</p>'
+        + '<h2>Your orbit starts here</h2>'
+        + '<p class="muted">Add the people you meet, choose how often you want to reach out, '
+        + 'and this page will show you who is drifting away.</p>'
+        + '<a href="network.html" class="btn">Add your first connection</a>'
+        + '</div>';
+      return;
+    }
+
+    const counts = countByBand(contacts);
+    const total = contacts.length;
+    const scheduled = counts.good + counts.warning + counts.critical;
+    // Denominators are the WHOLE network, so the four tiles always add up to
+    // everyone you know — "0 of 0" was meaningless when nobody had a schedule.
+    const healthPct = scheduled ? Math.round((counts.good / scheduled) * 100) : 0;
+    const coveragePct = total ? Math.round((scheduled / total) * 100) : 0;
+    const attention = needsAttention(contacts);
+
+    const kpiHtml = '<div class="kpi-row">'
+      + kpiTile("good", "In touch", counts.good, total, "on schedule and current")
+      + kpiTile("warning", "Reach out soon", counts.warning, total, "window closing")
+      + kpiTile("critical", "Overdue", counts.critical, total, "past due")
+      + kpiTile("none", "No schedule", counts.none, total, "not on a cadence")
+      + '</div>';
+
+    // Each chart card is header + centred body, so all three share a baseline
+    // and neither the ring nor the empty state gets pushed into a corner.
+    const chartCard = (title, sub, body, extraClass) =>
+      '<section class="card chart-card' + (extraClass ? " " + extraClass : "") + '">'
+      + '<header class="chart-head">'
+      + '<h2 class="chart-title">' + escapeHtml(title) + '</h2>'
+      + '<p class="chart-sub muted">' + escapeHtml(sub) + '</p>'
+      + '</header>'
+      + '<div class="chart-body">' + body + '</div>'
+      + '</section>';
+
+    const chartsHtml = '<div class="chart-row">'
+      + chartCard("Network health", "Of those on a cadence, how many are current",
+          scheduled
+            ? ringHtml({ pct: healthPct,
+                         band: healthPct >= 60 ? "good" : healthPct >= 25 ? "warning" : "critical",
+                         caption: "In touch", sub: counts.good + " of " + scheduled })
+            : ringHtml({ pct: 0, band: "none", caption: "No cadences yet", sub: "Set one to begin" }))
+      + chartCard("Coverage", "How much of your network is on a cadence",
+          ringHtml({ pct: coveragePct, band: coveragePct > 0 ? "good" : "none",
+                     caption: "On a cadence", sub: scheduled + " of " + total }))
+      + chartCard("Breakdown", "Where your scheduled connections stand",
+          scheduled
+            ? splitBarHtml(counts)
+            : '<p class="empty chart-empty">No cadences set yet — '
+              + 'pick someone in <a href="contacts.html">My Network</a>.</p>',
+          "chart-card-wide")
+      + '</div>';
+
+    const attentionHtml = '<section class="card dash-section">'
+      + '<div class="dash-section-header">'
+      + '<h2>Reach out next</h2>'
+      + '<p class="muted">People on a schedule who are drifting — most overdue first.</p>'
+      + '</div>'
+      + (attention.length
+        ? '<ul class="person-list">'
+          + attention.map(({ contact, health }) => personRowHtml(contact, health, { showReconnect: true })).join("")
+          + '</ul>'
+        : '<p class="empty">You are current with everyone on a schedule. Nice work.</p>')
+      + '</section>';
+
+    root.innerHTML = kpiHtml + chartsHtml + attentionHtml;
+    wirePersonRows(root, contacts, render);
   }
-  list.innerHTML = people.map((person) =>
-    '<div class="weekly-contact-card">'
-    + '<div class="weekly-contact-main">'
-    + '<p class="weekly-contact-name">' + escapeHtml(person.name) + '</p>'
-    + '<p class="tiny">' + escapeHtml(person.role || 'Role not set') + (person.company ? ' @ <strong>' + escapeHtml(person.company) + '</strong>' : '') + '</p>'
-    + '</div>'
-    + '<div class="weekly-contact-meta">'
-    + reminderBadge(person)
-    + '<span class="tiny">Met ' + formatDate(person.dateMet) + '</span>'
-    + '</div>'
-    + '</div>'
-  ).join('');
+
+  function kpiTile(band, label, value, total, sub) {
+    const meta = BAND_META[band];
+    return '<div class="kpi-tile kpi-' + band + '">'
+      + '<div class="kpi-head">'
+      + '<span class="kpi-icon" aria-hidden="true">' + meta.icon + '</span>'
+      + '<span class="kpi-label">' + escapeHtml(label) + '</span>'
+      + '</div>'
+      + '<p class="kpi-value">' + value + '<span class="kpi-total">/' + total + '</span></p>'
+      + '<p class="kpi-sub">' + escapeHtml(sub) + '</p>'
+      + '</div>';
+  }
+
+  await render();
+  initQuickAddButton(() => cached, render);
 }
 
-async function renderProgressWidget() {
-  const statLogs = document.getElementById("statLogs");
-  const statContacts = document.getElementById("statContacts");
-  const statFollowUps = document.getElementById("statFollowUps");
-  if (!statLogs || !statContacts || !statFollowUps) return;
-  const activeId = getActiveInternshipId();
-  const allLogs = activeId ? await db.getLogs(activeId) : [];
-  const allContacts = (await db.getContacts()) || [];
-  const now = new Date();
-  now.setHours(23, 59, 59, 999);
-  statLogs.textContent = String(allLogs.filter((l) => isDateWithinLastDays(l.date, 7)).length);
-  statContacts.textContent = String(allContacts.filter((c) => isDateWithinLastDays(c.dateMet, 7)).length);
-  statFollowUps.textContent = String(allContacts.filter((c) => c.reminderEnabled && c.nextReminder && new Date(c.nextReminder) <= now).length);
+// ── My Network ────────────────────────────────────────────────────────────────
+
+async function initMyNetwork() {
+  const list = document.getElementById("myNetworkList");
+  if (!list) return;
+
+  const searchEl = document.getElementById("networkSearch");
+  const industryEl = document.getElementById("networkIndustry");
+  const statusEl = document.getElementById("networkStatus");
+  const countEl = document.getElementById("networkCount");
+  let cached = [];
+
+  async function load() {
+    cached = (await db.getContacts()) || [];
+    // Industry filter options, derived from the data.
+    if (industryEl && industryEl.options.length <= 1) {
+      [...new Set(cached.map((c) => c.industry).filter(Boolean))].sort().forEach((ind) => {
+        const opt = document.createElement("option");
+        opt.value = ind;
+        opt.textContent = ind;
+        industryEl.appendChild(opt);
+      });
+    }
+    render();
+  }
+
+  function render() {
+    const q = (searchEl?.value || "").trim().toLowerCase();
+    const industry = industryEl?.value || "";
+    const status = statusEl?.value || "";
+
+    let people = cached.filter((c) => {
+      if (industry && c.industry !== industry) return false;
+      if (status && getHealth(c).band !== status) return false;
+      if (!q) return true;
+      return [c.name, c.role, c.company, c.industry, c.notes]
+        .some((f) => f && f.toLowerCase().includes(q));
+    });
+
+    people.sort((a, b) => a.name.localeCompare(b.name));
+
+    if (countEl) {
+      countEl.textContent = people.length === cached.length
+        ? `${cached.length} ${cached.length === 1 ? "person" : "people"}`
+        : `${people.length} of ${cached.length}`;
+    }
+
+    if (!people.length) {
+      list.innerHTML = '<li class="empty">Nobody matches those filters.</li>';
+      return;
+    }
+    list.innerHTML = people
+      .map((c) => personRowHtml(c, getHealth(c), { showReconnect: true }))
+      .join("");
+    wirePersonRows(list, cached, load);
+  }
+
+  searchEl?.addEventListener("input", render);
+  industryEl?.addEventListener("change", render);
+  statusEl?.addEventListener("change", render);
+
+  await load();
+  initQuickAddButton(() => cached, load);
 }
 
-/**
- * Render the contact list on network.html.
- * Sorted A→Z by first name. Optionally filtered by company/role search term.
- */
-async function renderContacts(filterText) {
-  const list = document.getElementById("contactList");
-  if (!list) return;
-  let contacts;
-  try {
-    contacts = (await db.getContacts()) || [];
-  } catch (err) {
-    list.innerHTML = '<li class="empty" style="color:var(--danger)">Error loading contacts — check the console (F12).</li>';
-    return;
-  }
-  // Sort A→Z by name
-  contacts = contacts.sort((a, b) => a.name.localeCompare(b.name));
-  // Apply filter
-  if (filterText && filterText.trim()) {
-    const q = filterText.trim().toLowerCase();
-    contacts = contacts.filter((c) =>
-      (c.name && c.name.toLowerCase().includes(q)) ||
-      (c.role && c.role.toLowerCase().includes(q)) ||
-      (c.company && c.company.toLowerCase().includes(q))
-    );
-  }
-  if (!contacts.length) {
-    list.innerHTML = '<li class="empty">' + (filterText ? 'No contacts match "' + escapeHtml(filterText) + '".' : 'No contacts yet. Add your first contact above.') + '</li>';
-    return;
+// ── Networking Log ────────────────────────────────────────────────────────────
+
+async function initNetworkingLog() {
+  const widgetRoot = document.getElementById("contactWidget");
+  const list = document.getElementById("connectionList");
+  if (!widgetRoot || !list) return;
+
+  const filterEl = document.getElementById("contactFilter");
+  const industryEl = document.getElementById("logIndustry");
+  const statusEl = document.getElementById("logStatus");
+  const sortEl = document.getElementById("logSort");
+  const clearEl = document.getElementById("logClearFilters");
+  const countEl = document.getElementById("logCount");
+  let cached = [];
+
+  async function reload() {
+    try {
+      cached = (await db.getContacts()) || [];
+    } catch {
+      list.innerHTML = '<li class="empty" style="color:var(--danger)">Error loading connections — check the console (F12).</li>';
+      return;
+    }
+    if (industryEl && industryEl.options.length <= 1) {
+      [...new Set(cached.map((c) => c.industry).filter(Boolean))].sort().forEach((ind) => {
+        const opt = document.createElement("option");
+        opt.value = ind;
+        opt.textContent = ind;
+        industryEl.appendChild(opt);
+      });
+    }
+    renderList();
   }
 
-  function contactCardHtml(contact) {
-    const status = getReminderStatus(contact);
-    const nameParts = (contact.name || '?').trim().split(/\s+/);
-    const initials = nameParts.length >= 2
-      ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
-      : (nameParts[0][0] || '?').toUpperCase();
-    return '<li class="contact-card ' + (status === 'due' ? 'due-item' : status === 'soon' ? 'soon-item' : '') + '" data-open-contact="' + contact.id + '" role="button" tabindex="0">'
-      + '<div class="contact-header">'
-      + '<div class="contact-avatar-sm" aria-hidden="true">' + escapeHtml(initials) + '</div>'
-      + '<div class="contact-summary">'
-      + '<p class="contact-name"><strong>' + escapeHtml(contact.name) + '</strong>'
-      + '<button class="contact-star-btn' + (contact.starred ? ' starred' : '') + '" data-star-contact="' + contact.id + '" type="button" title="' + (contact.starred ? 'Remove star' : 'Star as potential mentor') + '" aria-label="' + (contact.starred ? 'Remove star' : 'Star contact') + '">' + (contact.starred ? '★' : '☆') + '</button>'
-      + '</p>'
-      + '<p class="tiny">' + escapeHtml(contact.role || 'Role not set') + (contact.company ? ' @ <strong>' + escapeHtml(contact.company) + '</strong>' : '') + '</p>'
+  function renderList() {
+    const filterText = filterEl ? filterEl.value.trim().toLowerCase() : "";
+    const industry = industryEl?.value || "";
+    const status = statusEl?.value || "";
+    const sort = sortEl?.value || "recent";
+
+    let contacts = cached.filter((c) => {
+      if (industry && c.industry !== industry) return false;
+      if (status && getHealth(c).band !== status) return false;
+      if (!filterText) return true;
+      return [c.name, c.role, c.company, c.industry, c.notes]
+        .some((f) => f && f.toLowerCase().includes(filterText));
+    });
+
+    if (countEl) {
+      countEl.textContent = contacts.length === cached.length
+        ? `${cached.length} ${cached.length === 1 ? "entry" : "entries"}`
+        : `${contacts.length} of ${cached.length}`;
+    }
+
+    if (!contacts.length) {
+      list.innerHTML = '<li class="empty">'
+        + (cached.length ? 'Nobody matches those filters.'
+                         : 'No connections logged yet — add your first one above.')
+        + '</li>';
+      return;
+    }
+
+    contacts = [...contacts];
+    if (sort === "name") {
+      contacts.sort((a, b) => a.name.localeCompare(b.name));
+    } else {
+      contacts.sort((a, b) => String(b.lastContacted || "").localeCompare(String(a.lastContacted || "")));
+      if (sort === "oldest") contacts.reverse();
+    }
+
+    // Month headers only make sense while sorted by date.
+    const grouped = sort !== "name";
+    let html = "";
+    let currentGroup = "";
+    for (const contact of contacts) {
+      if (grouped) {
+        const group = monthLabel(contact.lastContacted);
+        if (group !== currentGroup) {
+          currentGroup = group;
+          html += '<li class="connection-group">' + escapeHtml(group) + '</li>';
+        }
+      }
+      html += connectionRowHtml(contact);
+    }
+    list.innerHTML = html;
+    wirePersonRows(list, cached, reload);
+  }
+
+  function monthLabel(value) {
+    const date = parseDateOnly(value);
+    if (!date) return "No date recorded";
+    return date.toLocaleString("default", { month: "long", year: "numeric" });
+  }
+
+  function connectionRowHtml(contact) {
+    const health = getHealth(contact);
+    const date = parseDateOnly(contact.lastContacted);
+    return '<li class="connection-row" data-open-contact="' + escapeHtml(contact.id) + '" role="button" tabindex="0">'
+      + '<div class="connection-date">'
+      + '<span class="connection-day">' + (date ? date.getDate() : "—") + '</span>'
+      + '<span class="tiny muted">' + escapeHtml(relativeDayLabel(contact.lastContacted)) + '</span>'
       + '</div>'
-      + '<div class="badge-col">' + reminderBadge(contact) + '</div>'
-      + '</div>'
-      + '<div class="contact-meta">'
-      + '<span class="tiny">Last met: ' + formatDate(contact.lastContacted) + '</span>'
-      + (contact.nextReminder ? '<span class="tiny">Next reminder: ' + formatDate(contact.nextReminder.split('T')[0]) + '</span>' : '')
+      + '<div class="person-avatar" aria-hidden="true">' + escapeHtml(initialsFor(contact.name)) + '</div>'
+      + '<div class="connection-main">'
+      + '<p class="person-name">' + escapeHtml(contact.name) + ' ' + statusChip(health) + '</p>'
+      + '<p class="tiny">' + escapeHtml(contact.role || "Role not set")
+      + (contact.company ? ' @ <strong>' + escapeHtml(contact.company) + '</strong>' : '') + '</p>'
+      + (contact.industry ? '<span class="token token-industry">' + escapeHtml(contact.industry) + '</span>' : '')
+      + (contact.notes
+        ? '<p class="connection-note">' + escapeHtml(contact.notes.slice(0, 140))
+          + (contact.notes.length > 140 ? '…' : '') + '</p>'
+        : '')
       + '</div>'
       + '</li>';
   }
 
-  const starred = contacts.filter((c) => c.starred);
-  const unstarred = contacts.filter((c) => !c.starred);
+  const seed = (await db.getContacts()) || [];
+  widgetRoot.innerHTML = contactWidgetHtml(seed);
+  wireContactWidget(widgetRoot, reload);
 
-  let html = '';
-
-  // Potential Mentors section
-  if (starred.length) {
-    html += '<li class="contact-alpha-header mentor-header">★ Potential Mentors</li>';
-    starred.forEach((contact) => { html += contactCardHtml(contact); });
-  }
-
-  // Alphabetical buckets for the rest
-  if (unstarred.length) {
-    const buckets = new Map();
-    unstarred.forEach((c) => {
-      const letter = (c.name[0] || '#').toUpperCase();
-      if (!buckets.has(letter)) buckets.set(letter, []);
-      buckets.get(letter).push(c);
-    });
-    buckets.forEach((group, letter) => {
-      html += '<li class="contact-alpha-header">' + letter + '</li>';
-      group.forEach((contact) => { html += contactCardHtml(contact); });
-    });
-  }
-
-  list.innerHTML = html;
-
-  list.querySelectorAll('[data-open-contact]').forEach((card) => {
-    const open = () => { window.location.href = 'contact.html?id=' + encodeURIComponent(card.dataset.openContact); };
-    card.addEventListener('click', open);
-    card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') open(); });
-  });
-
-  list.querySelectorAll('[data-star-contact]').forEach((btn) => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const nowStarred = !btn.classList.contains('starred');
-      btn.textContent = nowStarred ? '★' : '☆';
-      btn.classList.toggle('starred', nowStarred);
-      const allContacts = await db.getContacts();
-      const contact = allContacts.find((c) => c.id === btn.dataset.starContact);
-      if (!contact) return;
-      await db.saveContact(normalizeContact({ ...contact, starred: nowStarred }));
-      await renderContacts(filterText);
-    });
-  });
-}
-
-
-// ── Contact calendar ──────────────────────────────────────────────────────────
-// Renders a simple month grid (Sun→Sat) with orange dots on days where
-// contacts were first met. Allows month navigation.
-
-let calendarYear  = new Date().getFullYear();
-let calendarMonth = new Date().getMonth(); // 0-indexed
-
-async function renderCalendarView() {
-  const grid     = document.getElementById("calendarGrid");
-  const label    = document.getElementById("calMonthLabel");
-  const tooltip  = document.getElementById("calTooltip");
-  if (!grid) return;
-
-  const contacts = (await db.getContacts()) || [];
-
-  // Build a map: "YYYY-MM-DD" → [contact names]
-  const dayMap = new Map();
-  contacts.forEach((c) => {
-    const d = c.dateMet || c.lastContacted;
-    if (!d) return;
-    const key = d.slice(0, 10); // normalise to YYYY-MM-DD
-    if (!dayMap.has(key)) dayMap.set(key, []);
-    dayMap.get(key).push(c.name);
-  });
-
-  const year  = calendarYear;
-  const month = calendarMonth;
-
-  if (label) {
-    label.textContent = new Date(year, month, 1)
-      .toLocaleString("default", { month: "long", year: "numeric" });
-  }
-
-  // Day-of-week headers
-  const DOW_LABELS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
-  let html = '<div class="cal-row cal-header">'
-    + DOW_LABELS.map((d) => '<span class="cal-cell cal-dow">' + d + '</span>').join("")
-    + '</div>';
-
-  const firstDow   = new Date(year, month, 1).getDay(); // 0=Sun
-  const daysInMon  = new Date(year, month + 1, 0).getDate();
-
-  // Weeks
-  let dayNum = 1;
-  for (let week = 0; week < 6; week++) {
-    if (dayNum > daysInMon) break;
-    html += '<div class="cal-row">';
-    for (let dow = 0; dow < 7; dow++) {
-      const cellDay = week * 7 + dow - firstDow + 1;
-      if (cellDay < 1 || cellDay > daysInMon) {
-        html += '<span class="cal-cell cal-empty"></span>';
-      } else {
-        const key  = year + "-" + String(month + 1).padStart(2, "0") + "-" + String(cellDay).padStart(2, "0");
-        const has  = dayMap.has(key);
-        const names = has ? dayMap.get(key) : [];
-        const isToday = key === todayDateString();
-        html += '<span class="cal-cell'
-          + (isToday ? " cal-today" : "")
-          + (has ? " cal-has-contact" : "")
-          + '" data-cal-key="' + key + '" data-cal-names="' + escapeHtml(names.join(", ")) + '">'
-          + cellDay
-          + (has ? '<span class="cal-dot"></span>' : "")
-          + '</span>';
-        dayNum = cellDay;
-      }
-    }
-    html += '</div>';
-    dayNum++;
-  }
-
-  grid.innerHTML = html;
-
-  // Hover tooltip
-  grid.querySelectorAll(".cal-has-contact").forEach((cell) => {
-    cell.addEventListener("mouseenter", () => {
-      if (tooltip) tooltip.textContent = formatDate(cell.dataset.calKey) + ": " + cell.dataset.calNames;
-    });
-    cell.addEventListener("mouseleave", () => {
-      if (tooltip) tooltip.textContent = "";
-    });
-  });
-}
-
-function initCalendarNav() {
-  const prev = document.getElementById("calPrevBtn");
-  const next = document.getElementById("calNextBtn");
-  if (!prev || !next) return;
-  prev.addEventListener("click", () => {
-    calendarMonth--;
-    if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; }
-    renderCalendarView();
-  });
-  next.addEventListener("click", () => {
-    calendarMonth++;
-    if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; }
-    renderCalendarView();
-  });
-}
-
-// ── Internship panel ──────────────────────────────────────────────────────────
-
-// ── Networking ────────────────────────────────────────────────────────────────
-
-async function initNetworking() {
-  const form = document.getElementById("contactForm");
-  if (!form) return;
-  const error = document.getElementById("contactError");
-  const nameEl = document.getElementById("contactName");
-  const emailEl = document.getElementById("contactEmail");
-  const companyEl = document.getElementById("contactCompany");
-  const roleEl = document.getElementById("contactRole");
-  const dateMetEl = document.getElementById("dateMet");
-  const followUpFrequencyEl = document.getElementById("followUpFrequency");
-  const notesEl = document.getElementById("contactNotes");
-  const filterEl = document.getElementById("contactFilter");
-
-  // Pre-fill date to today
-  if (dateMetEl && !dateMetEl.value) dateMetEl.value = todayDateString();
-
-  // Live filter
-  if (filterEl) {
-    filterEl.addEventListener("input", () => renderContacts(filterEl.value));
-  }
-
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    error.textContent = "";
-    const frequency = (followUpFrequencyEl ? followUpFrequencyEl.value : "") || "none";
-    const dateMet = (dateMetEl ? dateMetEl.value : "") || todayDateString();
-    const contact = normalizeContact({
-      name: nameEl.value,
-      email: emailEl.value,
-      company: companyEl ? companyEl.value : "",
-      role: roleEl ? roleEl.value : "",
-      dateMet,
-      lastContacted: dateMet,
-      followUpFrequency: frequency,
-      reminderEnabled: frequency !== "none",
-      notes: notesEl ? notesEl.value : "",
-      interactions: [],
-      documents: []
-    });
-    if (!contact.name || !contact.email || !contact.dateMet || !contact.company) { error.textContent = "Name, email, company, and date last met are required."; return; }
-    const saved = await db.saveContact(contact);
-    if (!saved) { error.textContent = "Failed to save contact. Check the browser console (F12) for the Supabase error — it's usually a missing table column or RLS policy."; return; }
-    form.reset();
-    if (dateMetEl) dateMetEl.value = todayDateString();
+  filterEl?.addEventListener("input", renderList);
+  industryEl?.addEventListener("change", renderList);
+  statusEl?.addEventListener("change", renderList);
+  sortEl?.addEventListener("change", renderList);
+  clearEl?.addEventListener("click", () => {
     if (filterEl) filterEl.value = "";
-    error.textContent = "";
-    const successEl = document.getElementById("contactSuccess");
-    if (successEl) { successEl.textContent = "Contact added!"; setTimeout(() => { successEl.textContent = ""; }, 3000); }
-    await renderContacts();
-    await renderWeeklyConnections("weeklyConnections");
-    await renderFollowUpAlerts("networkFollowUps");
-    await renderCalendarView();
+    if (industryEl) industryEl.value = "";
+    if (statusEl) statusEl.value = "";
+    if (sortEl) sortEl.value = "recent";
+    renderList();
   });
 
-  refreshActivePageData = async () => {
-    await renderContacts(filterEl ? filterEl.value : "");
-    await renderWeeklyConnections("weeklyConnections");
-    await renderFollowUpAlerts("networkFollowUps");
-    await renderCalendarView();
-  };
-
-  await refreshActivePageData();
+  await reload();
 }
 
-// ── Summary page ──────────────────────────────────────────────────────────────
-
-// ── Contact page ──────────────────────────────────────────────────────────────
+// ── Contact profile ───────────────────────────────────────────────────────────
 
 async function initContactPage() {
   const root = document.getElementById("contactPageContent");
   if (!root) return;
-  const params = new URLSearchParams(window.location.search);
-  const contactId = params.get("id");
-  refreshActivePageData = renderPage;
+
+  const contactId = new URLSearchParams(window.location.search).get("id");
+  let allContacts = [];
 
   async function freshContact() {
-    const contacts = (await db.getContacts()) || [];
-    return contacts.find((c) => c.id === contactId) || null;
+    allContacts = (await db.getContacts()) || [];
+    return allContacts.find((c) => c.id === contactId) || null;
   }
 
   async function save(updateFn) {
@@ -991,240 +1149,340 @@ async function initContactPage() {
   async function renderPage() {
     const c = await freshContact();
     if (!c) {
-      root.innerHTML = '<div class="card"><p class="error">Contact not found. <a href="network.html">Back to Networking</a></p></div>';
+      root.innerHTML = '<div class="card"><p class="error">Connection not found. <a href="contacts.html">Back to My Network</a></p></div>';
       return;
     }
-    const status = getReminderStatus(c);
-    const freqLabel = getFreqLabel(c.followUpFrequency);
-    const interactionTypeOptions = INTERACTION_TYPES.map((t) => '<option value="' + t + '">' + t.charAt(0).toUpperCase() + t.slice(1) + '</option>').join("");
+
+    const health = getHealth(c);
     const isCustomFreq = c.followUpFrequency && c.followUpFrequency.startsWith("custom:");
-    const customFreqDays = isCustomFreq ? c.followUpFrequency.slice(7) : "";
     const freqSelectValue = isCustomFreq ? "custom" : (c.followUpFrequency || "none");
-    const freqOptions = Object.entries(FREQUENCY_LABELS).map(([v, l]) => '<option value="' + v + '"' + (freqSelectValue === v ? ' selected' : '') + '>' + l + '</option>').join("")
-      + '<option value="custom"' + (isCustomFreq ? ' selected' : '') + '>Custom…</option>';
-
-    // ── Avatar initials ──────────────────────────────────────────
-    const nameParts = (c.name || "?").trim().split(/\s+/);
-    const initials = nameParts.length >= 2
-      ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
-      : (nameParts[0][0] || "?").toUpperCase();
-
-    // ── Company pills (current + history) ───────────────────────
+    const freqOptions = Object.entries(FREQUENCY_LABELS)
+      .map(([v, l]) => '<option value="' + v + '"' + (freqSelectValue === v ? " selected" : "") + '>' + l + '</option>')
+      .join("")
+      + '<option value="custom"' + (isCustomFreq ? " selected" : "") + '>Custom…</option>';
     const pastCompanies = (c.companyHistory || []).filter((co) => co !== c.company);
 
     root.innerHTML =
-      // ── Profile hero card ──────────────────────────────────────
-      '<div class="card cp-profile-card">'
-      + '<a href="network.html" class="btn btn-secondary back-btn">← Back to Networking</a>'
-      + '<div class="cp-hero">'
-      + '<div class="cp-avatar" aria-hidden="true">' + escapeHtml(initials) + '</div>'
-      + '<div class="cp-identity">'
-      + '<div class="cp-name-row">'
-      + '<input type="text" id="cpNameInput" class="cp-name cp-name-input" value="' + escapeHtml(c.name) + '" aria-label="Contact name" />'
-      + '<button class="cp-star-btn' + (c.starred ? ' starred' : '') + '" id="cpStarBtn" type="button" title="' + (c.starred ? 'Remove star' : 'Star as potential mentor') + '" aria-label="' + (c.starred ? 'Remove star' : 'Star contact') + '">' + (c.starred ? '★' : '☆') + '</button>'
-      + (reminderBadge(c) ? '<div class="cp-hero-badges">' + reminderBadge(c) + '</div>' : '')
+      '<a href="contacts.html" class="btn btn-secondary back-btn">← Back to My Network</a>'
+
+      // ── Hero: identity on the left, reach-out panel on the right ──────────
+      + '<div class="card profile-hero">'
+      + '<div class="profile-identity">'
+      + '<div class="profile-avatar" aria-hidden="true">' + escapeHtml(initialsFor(c.name)) + '</div>'
+      + '<div class="profile-id-text">'
+      + '<input type="text" id="cpNameInput" class="profile-name-input" value="' + escapeHtml(c.name) + '" aria-label="Name" />'
+      + '<p class="profile-role">' + escapeHtml(c.role || "Role not set") + '</p>'
+
+      + '<div class="company-block">'
+      + '<span class="company-label">Current company</span>'
+      + (c.company
+        ? '<span class="company-current">' + escapeHtml(c.company) + '</span>'
+        : '<span class="company-current company-empty">Not set</span>')
       + '</div>'
-      + (c.role ? '<p class="cp-role">' + escapeHtml(c.role) + '</p>' : '')
-      + '<div class="cp-companies">' + (c.company ? '<span class="cp-company-pill current">' + escapeHtml(c.company) + '</span>' : '<span class="muted" style="font-size:0.82rem">No company set</span>') + '</div>'
-      + (pastCompanies.length ? '<div class="cp-prev-companies-row"><span class="cp-dates-label">Previous:</span><div class="cp-companies">' + pastCompanies.map((co) => '<span class="cp-company-pill past">' + escapeHtml(co) + '</span>').join("") + '</div></div>' : '')
-      + (c.email ? '<a href="mailto:' + escapeHtml(c.email) + '" class="cp-email">✉ ' + escapeHtml(c.email) + '</a>' : '')
+
+      + (c.industry
+        ? '<span class="token token-industry">' + escapeHtml(c.industry) + '</span>'
+        : '')
+
+      + (pastCompanies.length
+        ? '<div class="company-past"><span class="company-label">Previously</span>'
+          + pastCompanies.map((co) =>
+              '<span class="token token-past">' + escapeHtml(co)
+              + '<button class="token-x" type="button" data-remove-company="' + escapeHtml(co) + '" aria-label="Remove ' + escapeHtml(co) + '">✕</button></span>').join("")
+          + '</div>'
+        : '')
+
+      + (c.email ? '<a href="mailto:' + escapeHtml(c.email) + '" class="profile-email">✉ ' + escapeHtml(c.email) + '</a>' : '')
+
+      + '<button class="btn btn-secondary btn-sm add-detail-btn" id="cpToggleEdit" type="button">+ Add role, company or industry</button>'
+
+      // Inline editor replaces the old separate "Roles & Companies" card.
+      + '<div class="inline-edit hidden" id="cpInlineEdit">'
+      + companyDatalist(allContacts, "cpCompanies")
+      + industryDatalist(allContacts, "cpIndustries")
+      + '<div class="inline-edit-grid">'
+      + '<div class="field-group"><label>Role / Title</label>'
+      + '<input type="text" id="cpRole" value="' + escapeHtml(c.role) + '" placeholder="Product Manager" /></div>'
+      + '<div class="field-group"><label>Current company</label>'
+      + '<input type="text" id="cpCompany" list="cpCompanies" value="' + escapeHtml(c.company) + '" placeholder="Where they work now" /></div>'
+      + '<div class="field-group"><label>Industry</label>'
+      + '<input type="text" id="cpIndustry" list="cpIndustries" value="' + escapeHtml(c.industry) + '" placeholder="Technology" /></div>'
+      + '<div class="field-group"><label>Email</label>'
+      + '<input type="email" id="cpEmail" value="' + escapeHtml(c.email) + '" placeholder="email@example.com" /></div>'
       + '</div>'
-      + '<div class="cp-hero-actions">'
-      + '<button class="btn btn-secondary" id="cpOpenReminderBtn" type="button">' + (status !== "none" ? "Manage Reminder" : "Send Email") + '</button>'
-      + '<button class="btn btn-secondary danger-btn" id="cpDeleteBtn" type="button">Delete</button>'
+      + '<div class="inline-edit-actions">'
+      + '<input type="text" id="cpAddPast" list="cpCompanies" placeholder="Add a past company…" />'
+      + '<button class="btn btn-secondary" id="cpAddPastBtn" type="button">Add past</button>'
+      + '</div>'
+      + '<button class="btn" id="cpSaveDetailsBtn" type="button">Save details</button>'
+      + '<p id="cpSaveDetailsMsg" class="success" aria-live="polite"></p>'
+      + '</div>'
+
+      + '</div>'
+      + '</div>'
+
+      // Wide horizontal reach-out strip: ring, facts, and controls in one row.
+      + '<div class="reachout-strip">'
+      + '<div class="reachout-ring">'
+      + ringHtml({
+          pct: health.scheduled ? health.pct : 0,
+          band: health.scheduled ? health.band : "none",
+          caption: BAND_META[health.band].label,
+          sub: health.scheduled
+            ? (health.daysLeft >= 0 ? health.daysLeft + " days left" : Math.abs(health.daysLeft) + " days over")
+            : "Reach out again?"
+        })
+      + '</div>'
+      + '<dl class="reachout-meta">'
+      + '<div><dt>Last connected</dt><dd>' + escapeHtml(relativeDayLabel(c.lastContacted)) + '</dd></div>'
+      + '<div><dt>Next nudge</dt><dd>' + (c.nextReminder ? formatDate(c.nextReminder.split("T")[0]) : "—") + '</dd></div>'
+      + '</dl>'
+      + '<div class="reachout-controls">'
+      + '<div class="field-group"><label for="cpFrequency">Reach out again?</label>'
+      + '<select id="cpFrequency">' + freqOptions + '</select></div>'
+      + '<div class="field-group' + (isCustomFreq ? '' : ' hidden') + '" id="cpCustomDaysGroup">'
+      + '<label for="cpCustomDays">Every how many days?</label>'
+      + '<input type="number" id="cpCustomDays" min="1" max="365" placeholder="30" value="'
+      + escapeHtml(isCustomFreq ? c.followUpFrequency.slice(7) : "") + '" /></div>'
+      + '<div class="reachout-actions">'
+      + '<button class="btn" id="cpSaveReminderBtn" type="button">Save</button>'
+      + '<button class="btn btn-secondary" id="cpOpenReminderBtn" type="button">Draft a message</button>'
+      + '</div>'
+      + '<p id="cpSaveReminderMsg" class="success" aria-live="polite"></p>'
       + '</div>'
       + '</div>'
       + '</div>'
 
-      // ── Two-column body (flat grid, 4 items across 2 cols × 3 rows) ──
-      + '<div class="contact-page-body">'
+      // ── Body ──────────────────────────────────────────────────────────────
+      + '<div class="profile-body">'
 
-      // Col 1, rows 1–2: Log a Conversation
-      + '<section class="card cp-log-card"><h3 class="section-title">Log a Conversation</h3>'
-      + '<div class="two-col"><div class="field-group"><label>Date</label><input type="date" id="cpIntDate" value="' + todayDateString() + '" /></div>'
-      + '<div class="field-group"><label>Type</label><select id="cpIntType">' + interactionTypeOptions + '</select></div></div>'
-      + '<div class="field-group cp-log-notes-group"><label>Notes</label><textarea id="cpIntNotes" placeholder="What did you talk about?"></textarea></div>'
-      + '<div class="field-group cp-log-notes-group"><label>Outcome / Action items</label><textarea id="cpIntOutcome" placeholder="What will you or they do next?"></textarea></div>'
-      + '<div class="field-group"><label>Attach document <span class="cp-section-sub" style="font-weight:400">(optional PDF)</span></label><input type="file" id="cpIntDocInput" accept=".pdf,application/pdf" /></div>'
+      + '<section class="card">'
+      + '<h3 class="section-title">Log a conversation</h3>'
+      + '<div class="two-col">'
+      + '<div class="field-group"><label for="cpIntDate">Date</label>'
+      + '<input type="date" id="cpIntDate" value="' + todayDateString() + '" /></div>'
+      + '<div class="field-group"><label for="cpIntType">Type</label>'
+      + '<select id="cpIntType">'
+      + INTERACTION_TYPES.map((t) => '<option value="' + t + '">' + t.charAt(0).toUpperCase() + t.slice(1) + '</option>').join("")
+      + '</select></div>'
+      + '</div>'
+      + '<div class="field-group"><label for="cpIntNotes">Notes</label>'
+      + '<textarea id="cpIntNotes" rows="5" placeholder="What did you talk about? What should you follow up on?"></textarea></div>'
+      + '<div class="field-group"><label for="cpIntDocInput">Attach a PDF <span class="opt-label">(optional)</span></label>'
+      + '<input type="file" id="cpIntDocInput" accept=".pdf,application/pdf" /></div>'
       + '<p id="cpIntError" class="error" aria-live="polite"></p>'
-      + '<button class="btn" id="cpAddIntBtn" type="button">Save Conversation</button></section>'
+      + '<button class="btn" id="cpAddIntBtn" type="button">Save conversation</button>'
+      + '</section>'
 
-      // Col 2, row 1: Things to Bring Up Next
-      + '<section class="card cp-checkin-card">'
+      + '<section class="card">'
       + '<div class="followup-section-header">'
-      + '<div><h3 class="section-title">Things to Bring Up Next</h3><p class="cp-section-sub">Check off items after discussing them.</p></div>'
-      + '<button class="btn btn-secondary" id="cpSuggestBtn" type="button">✦ Suggest</button>'
+      + '<div><h3 class="section-title">Things to bring up next</h3>'
+      + '<p class="section-sub muted">Check items off once you have discussed them.</p></div>'
+      + '<button class="btn btn-secondary btn-sm" id="cpSuggestBtn" type="button">✦ Suggest</button>'
       + '</div>'
       + '<div id="cpFollowUpList">' + renderFollowUpItems(c.followUps) + '</div>'
-      + '<div class="followup-add-row"><input type="text" id="cpNewFollowUp" placeholder="Add a talking point…" /><button class="btn" id="cpAddFollowUpBtn" type="button">Add</button></div>'
+      + '<div class="followup-add-row">'
+      + '<input type="text" id="cpNewFollowUp" placeholder="Add a talking point…" />'
+      + '<button class="btn" id="cpAddFollowUpBtn" type="button">Add</button>'
+      + '</div>'
       + '<p id="cpFollowUpMsg" class="success" aria-live="polite"></p>'
       + '</section>'
 
-      // Col 2, row 2: Work History
-      + '<section class="card">'
-      + '<h3 class="section-title">Work History</h3>'
-      + '<div class="two-col">'
-      + '<div class="field-group"><label>Current Company</label><input type="text" id="cpCompany" value="' + escapeHtml(c.company) + '" placeholder="e.g. Google" /></div>'
-      + '<div class="field-group"><label>Role / Title</label><input type="text" id="cpRole" value="' + escapeHtml(c.role) + '" placeholder="e.g. Software Engineer" /></div>'
-      + '</div>'
-      + '<div class="field-group">'
-      + '<label>Past Companies <span class="cp-section-sub" style="font-weight:400">(comma-separated)</span></label>'
-      + '<input type="text" id="cpCompanyHistory" value="' + escapeHtml((c.companyHistory || []).join(", ")) + '" placeholder="Meta, Apple, Stripe…" />'
-      + '</div>'
-      + '<button class="btn" id="cpSaveDetailsBtn" type="button">Save</button>'
-      + '<p id="cpSaveDetailsMsg" class="success" aria-live="polite"></p>'
+      + '<section class="card profile-timeline">'
+      + '<h3 class="section-title">Conversation history</h3>'
+      + '<div class="timeline">' + renderInteractionTimeline(c.interactions) + '</div>'
       + '</section>'
 
-      // Col 1, row 3: Interaction Timeline
-      + '<section class="card cp-timeline-col"><h3 class="section-title">Interaction Timeline</h3><div class="timeline" id="cpTimeline">' + renderInteractionTimeline(c.interactions) + '</div></section>'
+      + '</div>'
 
-      // Col 2, row 3: Stay in Touch
-      + '<section class="card cp-reminder-card">'
-      + '<div class="cp-reminder-header">'
-      + '<h3 class="section-title">Stay in Touch</h3>'
-      + '<div class="cp-reminder-toggle-row">'
-      + '<label class="cp-toggle" aria-label="Reminders enabled"><input type="checkbox" id="cpReminderEnabled"' + (c.reminderEnabled ? ' checked' : '') + ' /><span class="cp-toggle-track"></span></label>'
-      + '<span class="cp-toggle-label">Reminders enabled</span>'
-      + '</div>'
-      + '</div>'
-      + '<div class="cp-reminder-meta">'
-      + '<div class="cp-reminder-meta-item"><span class="cp-dates-label">Frequency</span><span class="cp-freq-badge">' + escapeHtml(freqLabel) + '</span></div>'
-      + '<div class="cp-reminder-meta-item"><span class="cp-dates-label">Next reminder</span><span class="cp-date-chip">' + (c.nextReminder ? formatDate(c.nextReminder.split("T")[0]) : "Not set") + '</span></div>'
-      + '</div>'
-      + '<div class="cp-reminder-freq-row" style="margin-top:0.9rem">'
-      + '<label class="cp-reminder-freq-label">Frequency</label>'
-      + '<select id="cpFrequency">' + freqOptions + '</select>'
-      + '<button class="btn" id="cpSaveReminderBtn" type="button">Save</button>'
-      + '</div>'
-      + '<div class="field-group" id="cpCustomDaysGroup"' + (isCustomFreq ? '' : ' style="display:none"') + '><label>Every how many days?</label><input type="number" id="cpCustomDays" min="1" max="365" placeholder="30" value="' + escapeHtml(customFreqDays) + '" /></div>'
-      + '<p id="cpSaveReminderMsg" class="success" aria-live="polite"></p>'
-      + '</section>'
+      // ── Danger zone, at the bottom where it belongs ───────────────────────
+      + '<section class="card danger-zone">'
+      + '<div><h3 class="section-title">Delete this connection</h3>'
+      + '<p class="section-sub muted">Removes ' + escapeHtml(c.name) + ' and their whole history. This cannot be undone.</p></div>'
+      + '<button class="btn danger-btn" id="cpDeleteBtn" type="button">Delete connection</button>'
+      + '</section>';
 
-      + '</div>';
+    wireProfile(c);
+  }
 
-    root.querySelector("#cpNameInput").addEventListener("blur", async (e) => {
+  function wireProfile(c) {
+    const $ = (sel) => root.querySelector(sel);
+
+    $("#cpNameInput").addEventListener("blur", async (e) => {
       const newName = e.target.value.trim();
       if (!newName) { e.target.value = (await freshContact())?.name || ""; return; }
-      await save((c) => ({ ...c, name: newName }));
-    });
-    root.querySelector("#cpStarBtn").addEventListener("click", async () => {
-      const btn = root.querySelector("#cpStarBtn");
-      const nowStarred = !btn.classList.contains("starred");
-      // Optimistic update
-      btn.textContent = nowStarred ? "★" : "☆";
-      btn.classList.toggle("starred", nowStarred);
-      btn.title = nowStarred ? "Remove star" : "Star as potential mentor";
-      btn.setAttribute("aria-label", nowStarred ? "Remove star" : "Star contact");
-      // Persist to DB, then re-render so the star state always matches the DB
-      await save((current) => ({ ...current, starred: nowStarred }));
-      await renderPage();
-    });
-    root.querySelector("#cpOpenReminderBtn").addEventListener("click", async () => { showReminderModal(await freshContact()); });
-    root.querySelector("#cpDeleteBtn").addEventListener("click", async () => {
-      const contact = await freshContact();
-      if (!contact || !window.confirm("Delete " + contact.name + " and all their data?")) return;
-      await db.deleteContact(contactId);
-      window.location.href = "network.html";
-    });
-    root.querySelector("#cpAddIntBtn").addEventListener("click", async () => {
-      const errEl = root.querySelector("#cpIntError");
-      errEl.textContent = "";
-      const date = root.querySelector("#cpIntDate").value;
-      const type = root.querySelector("#cpIntType").value;
-      const notes = root.querySelector("#cpIntNotes").value.trim();
-      const outcome = root.querySelector("#cpIntOutcome").value.trim();
-      if (!date) { errEl.textContent = "Date is required."; return; }
-      const docInput = root.querySelector("#cpIntDocInput");
-      const docFile = docInput?.files?.[0];
-      if (docFile && docFile.type !== "application/pdf") { errEl.textContent = "Only PDF files are allowed."; return; }
-      const interaction = normalizeInteraction({ date, type, notes, outcome });
-      await save((c) => {
-        const newInteractions = [interaction, ...c.interactions].sort((a, b) => b.date.localeCompare(a.date));
-        return { ...c, interactions: newInteractions, lastContacted: newInteractions[0].date, nextReminder: calculateNextReminder(newInteractions[0].date, c.followUpFrequency) };
-      });
-      if (docFile) {
-        const uploadResult = await db.uploadFileToStorage(docFile, { contactId, category: "conversation" });
-        if (!uploadResult) errEl.textContent = "Conversation saved but document upload failed.";
-      }
-      const fresh = await freshContact();
-      const hasOpen = (fresh ? fresh.followUps || [] : []).some((f) => !f.completed);
-      await renderPage();
-      if (!hasOpen) {
-        const msg = root.querySelector("#cpFollowUpMsg");
-        if (msg) { msg.textContent = "Interaction saved! Use Suggest Follow-Ups to generate next steps."; setTimeout(() => { if (msg) msg.textContent = ""; }, 4000); }
-      }
-    });
-    root.querySelector("#cpSaveDetailsBtn").addEventListener("click", async () => {
-      const newCompany = root.querySelector("#cpCompany").value.trim();
-      const newRole = root.querySelector("#cpRole").value.trim();
-      const historyRaw = root.querySelector("#cpCompanyHistory").value;
-      const newHistory = historyRaw.split(",").map((s) => s.trim()).filter(Boolean);
-      await save((c) => ({ ...c, company: newCompany, role: newRole, companyHistory: newHistory }));
-      const msg = root.querySelector("#cpSaveDetailsMsg");
-      msg.textContent = "Details saved!";
-      setTimeout(() => { if (msg) msg.textContent = ""; }, 2000);
-      await renderPage();
-    });
-    const freqSelect = root.querySelector("#cpFrequency");
-    const customDaysGroup = root.querySelector("#cpCustomDaysGroup");
-    if (freqSelect && customDaysGroup) {
-      freqSelect.addEventListener("change", () => {
-        customDaysGroup.style.display = freqSelect.value === "custom" ? "" : "none";
-      });
-    }
-    root.querySelector("#cpSaveReminderBtn").addEventListener("click", async () => {
-      let newFreq = root.querySelector("#cpFrequency").value;
-      if (newFreq === "custom") {
-        const days = parseInt(root.querySelector("#cpCustomDays")?.value, 10);
-        newFreq = (!isNaN(days) && days > 0) ? "custom:" + days : "none";
-      }
-      const enabled = root.querySelector("#cpReminderEnabled").checked;
-      await save((c) => ({ ...c, followUpFrequency: newFreq, reminderEnabled: enabled && newFreq !== "none", nextReminder: calculateNextReminder(c.lastContacted || c.dateMet, newFreq) }));
-      const msg = root.querySelector("#cpSaveReminderMsg");
-      msg.textContent = "Saved!";
-      setTimeout(() => { if (msg) msg.textContent = ""; }, 2000);
-      await renderPage();
-    });
-    const addFollowUp = async () => {
-      const input = root.querySelector("#cpNewFollowUp");
-      const text = input ? input.value.trim() : "";
-      if (!text) return;
-      await save((c) => ({ ...c, followUps: [normalizeFollowUpItem({ text, source: "manual" }), ...(c.followUps || [])] }));
-      if (input) input.value = "";
-      await refreshFollowUpList();
-    };
-    root.querySelector("#cpAddFollowUpBtn").addEventListener("click", addFollowUp);
-    root.querySelector("#cpNewFollowUp").addEventListener("keydown", (e) => { if (e.key === "Enter") addFollowUp(); });
-    root.querySelector("#cpSuggestBtn").addEventListener("click", async () => {
-      const fresh = await freshContact();
-      if (!fresh) return;
-      const suggestions = generateFollowUpSuggestions(fresh);
-      const existingTexts = new Set((fresh.followUps || []).map((f) => f.text.toLowerCase()));
-      const deduped = suggestions.map((text) => normalizeFollowUpItem({ text, source: "ai" })).filter((f) => !existingTexts.has(f.text.toLowerCase()));
-      const msg = root.querySelector("#cpFollowUpMsg");
-      if (!deduped.length) { if (msg) { msg.textContent = "All suggestions already added!"; setTimeout(() => { if (msg) msg.textContent = ""; }, 2500); } return; }
-      await save((c) => ({ ...c, followUps: [...deduped, ...(c.followUps || [])] }));
-      await refreshFollowUpList();
-      if (msg) { msg.textContent = deduped.length + " suggestion" + (deduped.length !== 1 ? "s" : "") + " added!"; setTimeout(() => { if (msg) msg.textContent = ""; }, 2500); }
+      await save((cur) => ({ ...cur, name: newName }));
     });
 
-    async function refreshFollowUpList() {
+    const inlineEdit = $("#cpInlineEdit");
+    $("#cpToggleEdit").addEventListener("click", () => {
+      // classList.toggle returns true when the class was ADDED — i.e. now hidden.
+      const isHidden = inlineEdit.classList.toggle("hidden");
+      $("#cpToggleEdit").textContent = isHidden ? "+ Add role, company or industry" : "− Hide details";
+      if (!isHidden) $("#cpRole").focus();
+    });
+
+    $("#cpSaveDetailsBtn").addEventListener("click", async () => {
+      const company = $("#cpCompany").value.trim();
+      await save((cur) => {
+        // Moving to a new company pushes the old one into history automatically.
+        const history = [...(cur.companyHistory || [])];
+        if (cur.company && company && cur.company !== company && !history.includes(cur.company)) {
+          history.push(cur.company);
+        }
+        return {
+          ...cur,
+          role: $("#cpRole").value.trim(),
+          company,
+          industry: $("#cpIndustry").value.trim(),
+          email: $("#cpEmail").value.trim(),
+          companyHistory: history
+        };
+      });
+      const msg = $("#cpSaveDetailsMsg");
+      msg.textContent = "Saved!";
+      setTimeout(() => { msg.textContent = ""; }, 2000);
+      await renderPage();
+    });
+
+    const addPast = async () => {
+      const value = $("#cpAddPast").value.trim();
+      if (!value) return;
+      await save((cur) => ({
+        ...cur,
+        companyHistory: cur.companyHistory.includes(value) ? cur.companyHistory : [...cur.companyHistory, value]
+      }));
+      await renderPage();
+    };
+    $("#cpAddPastBtn").addEventListener("click", addPast);
+    $("#cpAddPast").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addPast(); } });
+
+    root.querySelectorAll("[data-remove-company]").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const target = btn.dataset.removeCompany;
+        await save((cur) => ({ ...cur, companyHistory: cur.companyHistory.filter((co) => co !== target) }));
+        await renderPage();
+      });
+    });
+
+    const freqSelect = $("#cpFrequency");
+    const customGroup = $("#cpCustomDaysGroup");
+    freqSelect.addEventListener("change", () => {
+      customGroup.classList.toggle("hidden", freqSelect.value !== "custom");
+    });
+
+    $("#cpSaveReminderBtn").addEventListener("click", async () => {
+      let newFreq = freqSelect.value;
+      if (newFreq === "custom") {
+        const days = parseInt($("#cpCustomDays")?.value, 10);
+        newFreq = (!Number.isNaN(days) && days > 0) ? "custom:" + days : "none";
+      }
+      await save((cur) => ({
+        ...cur,
+        followUpFrequency: newFreq,
+        reminderEnabled: newFreq !== "none",
+        nextReminder: calculateNextReminder(cur.lastContacted || cur.dateMet, newFreq)
+      }));
+      const msg = $("#cpSaveReminderMsg");
+      msg.textContent = "Schedule saved!";
+      setTimeout(() => { msg.textContent = ""; }, 2000);
+      await renderPage();
+    });
+
+    $("#cpOpenReminderBtn").addEventListener("click", async () => {
       const fresh = await freshContact();
-      const listEl = root.querySelector("#cpFollowUpList");
+      if (fresh) await showReminderModal(fresh, renderPage);
+    });
+
+    $("#cpDeleteBtn").addEventListener("click", async () => {
+      const contact = await freshContact();
+      if (!contact || !window.confirm("Delete " + contact.name + " and their whole history?")) return;
+      await db.deleteContact(contactId);
+      window.location.href = "contacts.html";
+    });
+
+    $("#cpAddIntBtn").addEventListener("click", async () => {
+      const errEl = $("#cpIntError");
+      errEl.textContent = "";
+      const date = $("#cpIntDate").value;
+      if (!date) { errEl.textContent = "Date is required."; return; }
+
+      const docFile = $("#cpIntDocInput")?.files?.[0];
+      if (docFile && docFile.type !== "application/pdf") {
+        errEl.textContent = "Only PDF files are allowed."; return;
+      }
+
+      const interaction = normalizeInteraction({
+        date, type: $("#cpIntType").value, notes: $("#cpIntNotes").value.trim()
+      });
+      await save((cur) => {
+        const newInteractions = [interaction, ...cur.interactions].sort((a, b) => b.date.localeCompare(a.date));
+        return {
+          ...cur,
+          interactions: newInteractions,
+          lastContacted: newInteractions[0].date,
+          nextReminder: calculateNextReminder(newInteractions[0].date, cur.followUpFrequency)
+        };
+      });
+      if (docFile) {
+        const uploaded = await db.uploadFileToStorage(docFile, { contactId });
+        if (!uploaded) errEl.textContent = "Conversation saved but the file upload failed.";
+      }
+      await renderPage();
+    });
+
+    const addFollowUp = async () => {
+      const input = $("#cpNewFollowUp");
+      const text = input ? input.value.trim() : "";
+      if (!text) return;
+      await save((cur) => ({ ...cur, followUps: [normalizeFollowUpItem({ text, source: "manual" }), ...(cur.followUps || [])] }));
+      if (input) input.value = "";
+      await refreshFollowUps();
+    };
+    $("#cpAddFollowUpBtn").addEventListener("click", addFollowUp);
+    $("#cpNewFollowUp").addEventListener("keydown", (e) => { if (e.key === "Enter") addFollowUp(); });
+
+    $("#cpSuggestBtn").addEventListener("click", async () => {
+      const fresh = await freshContact();
+      if (!fresh) return;
+      const existing = new Set((fresh.followUps || []).map((f) => f.text.toLowerCase()));
+      const deduped = generateFollowUpSuggestions(fresh)
+        .map((text) => normalizeFollowUpItem({ text, source: "ai" }))
+        .filter((f) => !existing.has(f.text.toLowerCase()));
+      const msg = $("#cpFollowUpMsg");
+      if (!deduped.length) {
+        msg.textContent = "All suggestions already added!";
+        setTimeout(() => { msg.textContent = ""; }, 2500);
+        return;
+      }
+      await save((cur) => ({ ...cur, followUps: [...deduped, ...(cur.followUps || [])] }));
+      await refreshFollowUps();
+      msg.textContent = deduped.length + " suggestion" + (deduped.length !== 1 ? "s" : "") + " added!";
+      setTimeout(() => { msg.textContent = ""; }, 2500);
+    });
+
+    async function refreshFollowUps() {
+      const fresh = await freshContact();
+      const listEl = $("#cpFollowUpList");
       if (listEl && fresh) listEl.innerHTML = renderFollowUpItems(fresh.followUps);
       attachFollowUpListeners();
     }
+
     function attachFollowUpListeners() {
       root.querySelectorAll(".fu-checkbox").forEach((cb) => {
         cb.addEventListener("change", async () => {
-          await save((c) => ({ ...c, followUps: (c.followUps || []).map((f) => f.id !== cb.dataset.fuId ? f : { ...f, completed: cb.checked }) }));
-          await refreshFollowUpList();
+          await save((cur) => ({
+            ...cur,
+            followUps: (cur.followUps || []).map((f) => f.id !== cb.dataset.fuId ? f : { ...f, completed: cb.checked })
+          }));
+          await refreshFollowUps();
         });
       });
       root.querySelectorAll(".fu-delete").forEach((btn) => {
         btn.addEventListener("click", async () => {
-          await save((c) => ({ ...c, followUps: (c.followUps || []).filter((f) => f.id !== btn.dataset.fuId) }));
-          await refreshFollowUpList();
+          await save((cur) => ({ ...cur, followUps: (cur.followUps || []).filter((f) => f.id !== btn.dataset.fuId) }));
+          await refreshFollowUps();
         });
       });
     }
@@ -1234,47 +1492,56 @@ async function initContactPage() {
   await renderPage();
 }
 
-// ── Files page ────────────────────────────────────────────────────────────────
+// ── Files ─────────────────────────────────────────────────────────────────────
 
 async function initFilesPage() {
   const fileGrid = document.getElementById("fileGrid");
   if (!fileGrid) return;
 
-  let activeFilter = "all";
   let allFiles = [];
+  let contacts = [];
+  const byId = new Map();
 
-  // ── Populate dropdowns ───────────────────────────────────────────────────
-  const internshipSelect = document.getElementById("fileInternship");
-  const contactSelect    = document.getElementById("fileContact");
+  const contactSelect = document.getElementById("fileContact");
+  const searchEl = document.getElementById("fileSearch");
+  const industryEl = document.getElementById("fileIndustry");
+  const linkEl = document.getElementById("fileLinkFilter");
 
-  const [internships, contacts] = await Promise.all([db.getInternships(), db.getContacts()]);
-
-  if (internshipSelect) {
-    internships.forEach((i) => {
-      const opt = document.createElement("option");
-      opt.value = i.id;
-      opt.textContent = i.name + (i.company ? " @ " + i.company : "");
-      internshipSelect.appendChild(opt);
-    });
-    const activeId = getActiveInternshipId();
-    if (activeId) internshipSelect.value = activeId;
-  }
+  contacts = (await db.getContacts()) || [];
+  contacts.forEach((c) => byId.set(c.id, c));
+  const sorted = [...contacts].sort((a, b) => a.name.localeCompare(b.name));
 
   if (contactSelect) {
-    contacts.forEach((c) => {
+    sorted.forEach((c) => {
       const opt = document.createElement("option");
       opt.value = c.id;
       opt.textContent = c.name + (c.company ? " @ " + c.company : "");
       contactSelect.appendChild(opt);
     });
   }
+  if (linkEl) {
+    sorted.forEach((c) => {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = c.name;
+      linkEl.appendChild(opt);
+    });
+  }
+  if (industryEl) {
+    [...new Set(contacts.map((c) => c.industry).filter(Boolean))].sort().forEach((ind) => {
+      const opt = document.createElement("option");
+      opt.value = ind;
+      opt.textContent = ind;
+      industryEl.appendChild(opt);
+    });
+  }
 
-  // ── Drag & drop ──────────────────────────────────────────────────────────
-  const dropZone  = document.getElementById("fileDropZone");
+  // ── Upload ───────────────────────────────────────────────────────────────
+  const dropZone = document.getElementById("fileDropZone");
   const fileInput = document.getElementById("fileInput");
-  const preview   = document.getElementById("fileDropPreview");
-  const errEl     = document.getElementById("fileUploadError");
-  const msgEl     = document.getElementById("fileUploadMsg");
+  const preview = document.getElementById("fileDropPreview");
+  const errEl = document.getElementById("fileUploadError");
+  const msgEl = document.getElementById("fileUploadMsg");
   let pendingFile = null;
 
   function validateAndPreview(file) {
@@ -1293,102 +1560,75 @@ async function initFilesPage() {
   }
 
   if (dropZone) {
-    dropZone.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      dropZone.classList.add("file-drop-zone-hover");
-    });
-    dropZone.addEventListener("dragleave", () => {
-      dropZone.classList.remove("file-drop-zone-hover");
-    });
+    dropZone.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.classList.add("file-drop-zone-hover"); });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("file-drop-zone-hover"));
     dropZone.addEventListener("drop", (e) => {
       e.preventDefault();
       dropZone.classList.remove("file-drop-zone-hover");
       validateAndPreview(e.dataTransfer.files[0]);
     });
-    dropZone.addEventListener("click", () => {
-      if (fileInput) fileInput.click();
-    });
+    dropZone.addEventListener("click", () => fileInput && fileInput.click());
     dropZone.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (fileInput) fileInput.click(); }
     });
   }
+  if (fileInput) fileInput.addEventListener("change", () => validateAndPreview(fileInput.files[0]));
 
-  if (fileInput) {
-    fileInput.addEventListener("change", () => validateAndPreview(fileInput.files[0]));
-  }
-
-  // ── Upload ───────────────────────────────────────────────────────────────
   const uploadBtn = document.getElementById("fileUploadBtn");
   if (uploadBtn) {
     uploadBtn.addEventListener("click", async () => {
       if (errEl) errEl.textContent = "";
       if (msgEl) msgEl.textContent = "";
-
       const file = pendingFile || (fileInput && fileInput.files[0]);
-      if (!file) { if (errEl) errEl.textContent = "Please select a PDF file first."; return; }
+      if (!file) { if (errEl) errEl.textContent = "Please select a PDF first."; return; }
       if (file.type !== "application/pdf") { if (errEl) errEl.textContent = "Only PDF files are allowed."; return; }
 
-      const category     = document.getElementById("fileCategory")?.value || "general";
-      const internshipId = internshipSelect?.value || null;
-      const contactId    = contactSelect?.value || null;
-
-      uploadBtn.disabled    = true;
+      uploadBtn.disabled = true;
       uploadBtn.textContent = "Uploading…";
-
-      const result = await db.uploadFileToStorage(file, {
-        category,
-        internshipId: internshipId || null,
-        contactId:    contactId    || null
-      });
-
-      uploadBtn.disabled    = false;
+      const result = await db.uploadFileToStorage(file, { contactId: contactSelect?.value || null });
+      uploadBtn.disabled = false;
       uploadBtn.textContent = "Upload PDF →";
 
       if (!result) {
-        if (errEl) errEl.textContent = "Upload failed. Check the bucket exists and try again.";
+        if (errEl) errEl.textContent = "Upload failed. Check that the storage bucket exists.";
         return;
       }
-
       pendingFile = null;
       if (fileInput) fileInput.value = "";
-      if (preview)  { preview.classList.add("hidden"); preview.textContent = ""; }
+      if (preview) { preview.classList.add("hidden"); preview.textContent = ""; }
       if (dropZone) dropZone.classList.remove("file-drop-zone-ready");
-      if (msgEl)    {
-        msgEl.textContent = "✅ File uploaded successfully!";
+      if (msgEl) {
+        msgEl.textContent = "✅ Uploaded.";
         setTimeout(() => { if (msgEl) msgEl.textContent = ""; }, 3000);
       }
       await loadAndRenderFiles();
     });
   }
 
-  // ── Filter tabs ──────────────────────────────────────────────────────────
-  const filterTabsEl = document.getElementById("fileFilterTabs");
-  if (filterTabsEl) {
-    filterTabsEl.addEventListener("click", (e) => {
-      const tab = e.target.closest(".filter-tab");
-      if (!tab) return;
-      activeFilter = tab.dataset.filter;
-      filterTabsEl.querySelectorAll(".filter-tab").forEach((t) =>
-        t.classList.toggle("filter-tab-active", t === tab)
-      );
-      renderGrid();
-    });
-  }
-
-  // ── Render grid ──────────────────────────────────────────────────────────
+  // ── Filter + render ──────────────────────────────────────────────────────
   function renderGrid() {
-    const filtered = activeFilter === "all"
-      ? allFiles
-      : allFiles.filter((f) => f.category === activeFilter);
+    const q = (searchEl?.value || "").trim().toLowerCase();
+    const industry = industryEl?.value || "";
+    const linkedTo = linkEl?.value || "";
+
+    const filtered = allFiles.filter((f) => {
+      const contact = f.contactId ? byId.get(f.contactId) : null;
+      if (linkedTo === "__none__" && f.contactId) return false;
+      if (linkedTo && linkedTo !== "__none__" && f.contactId !== linkedTo) return false;
+      if (industry && (!contact || contact.industry !== industry)) return false;
+      if (!q) return true;
+      return [f.name, contact?.name, contact?.role, contact?.company, contact?.industry]
+        .some((field) => field && field.toLowerCase().includes(q));
+    });
 
     if (!filtered.length) {
-      const msg = activeFilter === "all"
-        ? "No files uploaded yet."
-        : "No " + activeFilter + " files yet.";
-      fileGrid.innerHTML = '<p class="empty" style="padding:1rem 0">' + msg + '</p>';
+      fileGrid.innerHTML = '<p class="empty" style="padding:1rem 0">'
+        + (allFiles.length ? "No files match those filters." : "No files uploaded yet.") + '</p>';
       return;
     }
-    fileGrid.innerHTML = filtered.map((f) => renderStorageFileCard(f)).join("");
+    fileGrid.innerHTML = filtered
+      .map((f) => renderStorageFileCard(f, f.contactId ? byId.get(f.contactId) : null))
+      .join("");
     attachStorageFileCardListeners(fileGrid, loadAndRenderFiles);
   }
 
@@ -1397,8 +1637,83 @@ async function initFilesPage() {
     renderGrid();
   }
 
+  searchEl?.addEventListener("input", renderGrid);
+  industryEl?.addEventListener("change", renderGrid);
+  linkEl?.addEventListener("change", renderGrid);
+
+  // Funnel button reveals the filter panel; the badge shows when filters are on.
+  const filterToggle = document.getElementById("fileFilterToggle");
+  const filterPanel = document.getElementById("fileFilterPanel");
+  filterToggle?.addEventListener("click", () => {
+    const isHidden = filterPanel.classList.toggle("hidden");
+    filterToggle.setAttribute("aria-expanded", String(!isHidden));
+  });
+
+  document.getElementById("fileClearFilters")?.addEventListener("click", () => {
+    if (industryEl) industryEl.value = "";
+    if (linkEl) linkEl.value = "";
+    renderGrid();
+    filterToggle?.classList.remove("filter-active");
+  });
+
+  const markActive = () => {
+    const on = Boolean(industryEl?.value || linkEl?.value);
+    filterToggle?.classList.toggle("filter-active", on);
+  };
+  industryEl?.addEventListener("change", markActive);
+  linkEl?.addEventListener("change", markActive);
+
   await loadAndRenderFiles();
-  refreshActivePageData = loadAndRenderFiles;
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+// `preferences.your_name` signs the draft messages. Without somewhere to set it
+// every draft went out as "[Your Name]".
+
+async function openSettingsModal() {
+  document.getElementById("settingsModal")?.remove();
+  const prefs = await db.getPreferences();
+
+  const modal = document.createElement("div");
+  modal.id = "settingsModal";
+  modal.className = "modal-overlay";
+  modal.innerHTML = '<div class="modal-card settings-card">'
+    + '<div class="quick-add-header">'
+    + '<h3>Settings</h3>'
+    + '<button class="icon-btn" id="settingsClose" type="button" aria-label="Close">✕</button>'
+    + '</div>'
+    + '<p class="muted settings-intro">Used to sign the draft messages Orbit writes for you.</p>'
+    + '<div class="field-group"><label for="setYourName">Your name</label>'
+    + '<input type="text" id="setYourName" value="' + escapeHtml(prefs.your_name || "") + '" placeholder="Ada Lovelace" /></div>'
+    + '<div class="field-group"><label for="setYourEmail">Your email</label>'
+    + '<input type="email" id="setYourEmail" value="' + escapeHtml(prefs.your_email || "") + '" placeholder="you@example.com" /></div>'
+    + '<p id="settingsMsg" class="success" aria-live="polite"></p>'
+    + '<button class="btn" id="settingsSave" type="button">Save</button>'
+    + '</div>';
+  document.body.appendChild(modal);
+
+  const close = () => modal.remove();
+  modal.querySelector("#settingsClose").addEventListener("click", close);
+  modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+  document.addEventListener("keydown", function onEsc(e) {
+    if (e.key === "Escape") { close(); document.removeEventListener("keydown", onEsc); }
+  });
+
+  modal.querySelector("#settingsSave").addEventListener("click", async () => {
+    await db.savePreferences({
+      your_name: modal.querySelector("#setYourName").value.trim(),
+      your_email: modal.querySelector("#setYourEmail").value.trim()
+    });
+    const msg = modal.querySelector("#settingsMsg");
+    msg.textContent = "Saved!";
+    setTimeout(close, 800);
+  });
+
+  modal.querySelector("#setYourName").focus();
+}
+
+function initSettings() {
+  document.getElementById("settingsBtn")?.addEventListener("click", openSettingsModal);
 }
 
 // ── Sign out ──────────────────────────────────────────────────────────────────
@@ -1412,1092 +1727,31 @@ function initSignOut() {
   });
 }
 
-// ── Check reminders on load ───────────────────────────────────────────────────
+// ── Reach-out nudge on load ───────────────────────────────────────────────────
 
 async function checkRemindersOnLoad() {
   if (document.querySelector("[data-page='contact']")) return;
   setTimeout(async () => {
     const contacts = (await db.getContacts()) || [];
-    const now = new Date();
-    now.setHours(23, 59, 59, 999);
-    const due = contacts.filter((c) => c.reminderEnabled && c.nextReminder && new Date(c.nextReminder) <= now);
-    if (due.length > 0) showReminderModal(due[0]);
-  }, 800);
-}
-
-// ── Workspace ─────────────────────────────────────────────────────────────────
-// Per-internship workspace: grid view → detail view.
-// Each internship is its own "module" with daily log, weekly update, resume widget.
-
-let workspaceCurrentInternshipId = "";
-let weeklyUpdateOffset = 0;
-let pendingLogFiles = [];
-let refreshActivePageData = async () => {};
-let editingLogId = null;
-let timelineLogs = [];
-
-// ── Week helpers ──────────────────────────────────────────────────────────────
-
-function getWeekRange(offset) {
-  offset = offset || 0;
-  const now = new Date();
-  const dow = now.getDay();
-  const mon = new Date(now);
-  mon.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1) + offset * 7);
-  mon.setHours(0, 0, 0, 0);
-  const sun = new Date(mon);
-  sun.setDate(mon.getDate() + 6);
-  return {
-    start: mon.toISOString().split("T")[0],
-    end:   sun.toISOString().split("T")[0],
-    label: formatDate(mon.toISOString().split("T")[0]) + " – " + formatDate(sun.toISOString().split("T")[0])
-  };
-}
-
-function isDateInWeek(dateStr, start, end) {
-  if (!dateStr || !start || !end) return false;
-  return dateStr >= start && dateStr <= end;
-}
-
-// ── API key management ────────────────────────────────────────────────────────
-
-function getApiKey() { return localStorage.getItem("interntrack_gemini_key") || ""; }
-function setApiKey(key) { localStorage.setItem("interntrack_gemini_key", key || ""); }
-
-function promptForApiKey() {
-  return new Promise((resolve) => {
-    const existing = document.getElementById("apiKeyModal");
-    if (existing) { resolve(); return; }
-    const modal = document.createElement("div");
-    modal.id = "apiKeyModal";
-    modal.className = "modal-overlay";
-    modal.innerHTML = '<div class="modal-card">'
-      + '<h3>Add Gemini API Key</h3>'
-      + '<p class="muted" style="font-size:0.85rem;margin-bottom:0.75rem">Get a free key at <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a>. Your key is stored only in your browser and sent directly to Google\'s Gemini API.</p>'
-      + '<div class="field-group" style="margin-bottom:0.75rem"><label>API Key</label>'
-      + '<input type="password" id="apiKeyInput" placeholder="AIza…" style="font-family:monospace" /></div>'
-      + '<div class="modal-actions">'
-      + '<button class="btn" id="apiKeySave" type="button">Save & Continue</button>'
-      + '<button class="btn btn-secondary" id="apiKeyCancel" type="button">Cancel</button>'
-      + '</div>'
-      + '<p id="apiKeyError" class="error" style="margin-top:0.5rem"></p>'
-      + '</div>';
-    document.body.appendChild(modal);
-    modal.querySelector("#apiKeySave").addEventListener("click", () => {
-      const val = (modal.querySelector("#apiKeyInput").value || "").trim();
-      if (!val) { modal.querySelector("#apiKeyError").textContent = "Please enter your API key."; return; }
-      setApiKey(val);
-      modal.remove();
-      resolve();
-    });
-    modal.querySelector("#apiKeyCancel").addEventListener("click", () => { modal.remove(); resolve(); });
-    modal.querySelector("#apiKeyInput").focus();
-  });
-}
-
-async function callGeminiAPI(prompt, maxTokens) {
-  maxTokens = maxTokens || 300;
-  const key = getApiKey();
-  if (!key) return null;
-  try {
-    const response = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + encodeURIComponent(key),
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: maxTokens }
-        })
-      }
-    );
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err?.error?.message || "API error " + response.status);
-    }
-    const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-  } catch (err) {
-    console.error("[AI]", err.message);
-    return null;
-  }
-}
-
-// ── Workspace navigation ──────────────────────────────────────────────────────
-
-async function navigateToGrid() {
-  const grid   = document.getElementById("workspaceGrid");
-  const detail = document.getElementById("workspaceDetail");
-  if (!grid || !detail) return;
-  workspaceCurrentInternshipId = "";
-  sessionStorage.removeItem("interntrack_session_workspace_id");
-  detail.classList.add("hidden");
-  grid.classList.remove("hidden");
-  await renderInternshipGrid();
-}
-
-async function navigateToInternship(id) {
-  const grid   = document.getElementById("workspaceGrid");
-  const detail = document.getElementById("workspaceDetail");
-  if (!grid || !detail) return;
-  workspaceCurrentInternshipId = id;
-  sessionStorage.setItem("interntrack_session_workspace_id", id);
-  setActiveInternshipId(id);
-  grid.classList.add("hidden");
-  detail.classList.remove("hidden");
-  const internships = await db.getInternships();
-  const internship  = internships.find((i) => i.id === id);
-  if (!internship) return;
-  renderInternshipDetailHeader(internship);
-  initResumeWidget(internship);
-  weeklyUpdateOffset = 0;
-  pendingLogFiles = [];
-  resetWorkspaceTabs();
-  renderWeekIndicator();
-  const logDate = document.getElementById("logDate");
-  if (logDate) logDate.value = todayDateString();
-  await renderWorkspaceTimeline();
-  await renderWeeklyUpdate();
-  await renderManagerHighlights(id);
-}
-
-// ── Internship grid ───────────────────────────────────────────────────────────
-
-async function renderInternshipGrid() {
-  const grid = document.getElementById("internshipModuleGrid");
-  if (!grid) return;
-  const internships = await db.getInternships();
-  if (!internships.length) {
-    grid.innerHTML = '<div class="intern-grid-empty">'
-      + '<p class="intern-grid-empty-title">No internship workspaces yet.</p>'
-      + '<p class="muted">Click "+ New Internship" above to create your first workspace.</p>'
-      + '</div>';
-    return;
-  }
-  const today = todayDateString();
-  grid.innerHTML = internships.map((item) => {
-    const isPast   = item.endDate && item.endDate < today;
-    const badge    = isPast
-      ? '<span class="intern-status-badge intern-badge-past">Completed</span>'
-      : '<span class="intern-status-badge intern-badge-active">Active</span>';
-    const dateRow  = [
-      item.startDate ? formatDate(item.startDate) : null,
-      item.endDate   ? formatDate(item.endDate)   : "Ongoing"
-    ].filter(Boolean).join(" → ");
-    return '<div class="intern-module-card ' + (isPast ? "intern-card-past" : "intern-card-active") + '">'
-      + '<div class="intern-card-header">'
-      + '<div class="intern-card-titles">'
-      + '<h3 class="intern-card-role">' + escapeHtml(item.name) + '</h3>'
-      + '<p class="intern-card-company">' + escapeHtml(item.company || "") + '</p>'
-      + '</div>'
-      + badge
-      + '</div>'
-      + '<p class="intern-card-dates">' + escapeHtml(dateRow) + '</p>'
-      + (isPast ? '<p class="intern-card-resume-hint">✨ Resume points available</p>' : '')
-      + '<div class="intern-card-actions">'
-      + '<button class="btn intern-enter-btn" type="button" data-intern-id="' + item.id + '">Enter Workspace →</button>'
-      + '<div class="intern-card-secondary-actions">'
-      + '<button class="btn btn-secondary btn-sm" type="button" data-intern-edit="' + item.id + '">Edit</button>'
-      + '<button class="btn btn-secondary btn-sm danger-btn" type="button" data-intern-delete="' + item.id + '">Delete</button>'
-      + '</div></div></div>';
-  }).join("");
-
-  grid.querySelectorAll(".intern-enter-btn").forEach((btn) => {
-    btn.addEventListener("click", () => navigateToInternship(btn.dataset.internId));
-  });
-  grid.querySelectorAll("[data-intern-edit]").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      openInternshipForm(internships.find((i) => i.id === btn.dataset.internEdit));
-    });
-  });
-  grid.querySelectorAll("[data-intern-delete]").forEach((btn) => {
-    btn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const target = internships.find((i) => i.id === btn.dataset.internDelete);
-      if (!target || !window.confirm('Delete "' + target.name + '" and all its logs? This cannot be undone.')) return;
-      await db.deleteInternship(btn.dataset.internDelete);
-      if (workspaceCurrentInternshipId === btn.dataset.internDelete) workspaceCurrentInternshipId = "";
-      await renderInternshipGrid();
-    });
-  });
-}
-
-// ── Internship form ───────────────────────────────────────────────────────────
-
-function openInternshipForm(seed) {
-  seed = seed || {};
-  const card    = document.getElementById("internshipFormCard");
-  const title   = document.getElementById("internshipFormTitle");
-  const editId  = document.getElementById("internshipEditId");
-  const nameEl  = document.getElementById("internshipName");
-  const coEl    = document.getElementById("internshipCompany");
-  const startEl = document.getElementById("internshipStart");
-  const endEl   = document.getElementById("internshipEnd");
-  const errEl   = document.getElementById("internshipError");
-  if (!card) return;
-  if (title)  title.textContent  = seed.id ? "Edit Internship" : "Add Internship";
-  if (editId) editId.value       = seed.id || "";
-  if (nameEl) nameEl.value       = seed.name || "";
-  if (coEl)   coEl.value         = seed.company || "";
-  if (startEl) startEl.value     = seed.startDate || "";
-  if (endEl)  endEl.value        = seed.endDate || "";
-  if (errEl)  errEl.textContent  = "";
-  card.classList.remove("hidden");
-  card.scrollIntoView({ behavior: "smooth", block: "start" });
-  if (nameEl) nameEl.focus();
-}
-
-function closeInternshipForm() {
-  const card = document.getElementById("internshipFormCard");
-  const form = document.getElementById("internshipForm");
-  if (card) card.classList.add("hidden");
-  if (form) form.reset();
-}
-
-// ── Internship detail header ──────────────────────────────────────────────────
-
-function renderInternshipDetailHeader(internship) {
-  const el = document.getElementById("internshipDetailHeader");
-  if (!el) return;
-  const today   = todayDateString();
-  const isPast  = internship.endDate && internship.endDate < today;
-  const dateStr = [
-    internship.startDate ? formatDate(internship.startDate) : null,
-    internship.endDate   ? formatDate(internship.endDate)   : "Ongoing"
-  ].filter(Boolean).join(" → ");
-  el.innerHTML = '<div class="detail-header-content">'
-    + '<h1 class="detail-role">' + escapeHtml(internship.name) + '</h1>'
-    + (internship.company ? '<p class="detail-company">' + escapeHtml(internship.company) + '</p>' : '')
-    + '<p class="detail-dates">' + escapeHtml(dateStr)
-    + (isPast ? ' <span class="intern-status-badge intern-badge-past">Completed</span>' : '') + '</p>'
-    + '</div>';
-}
-
-// ── Resume Points Widget ──────────────────────────────────────────────────────
-
-function initResumeWidget(internship) {
-  const widget = document.getElementById("resumeWidget");
-  if (!widget) return;
-
-  // Reset listeners by cloning nodes
-  const freshWidget = widget.cloneNode(true);
-  widget.parentNode.replaceChild(freshWidget, widget);
-  const wDismiss  = freshWidget.querySelector("#resumeWidgetDismiss");
-  const wGenerate = freshWidget.querySelector("#generateResumeBtn");
-  const wCopy     = freshWidget.querySelector("#copyResumeBtn");
-
-  const today      = todayDateString();
-  const isPast     = internship.endDate && internship.endDate < today;
-  const dismissKey = "interntrack_resume_dismissed_" + internship.id;
-
-  if (!isPast || sessionStorage.getItem(dismissKey) === "1") {
-    freshWidget.classList.add("hidden");
-    return;
-  }
-  freshWidget.classList.remove("hidden");
-
-  wDismiss?.addEventListener("click", () => {
-    sessionStorage.setItem(dismissKey, "1");
-    freshWidget.classList.add("hidden");
-  });
-
-  wGenerate?.addEventListener("click", async () => {
-    const statusEl  = freshWidget.querySelector("#resumeGenStatus");
-    const content   = freshWidget.querySelector("#resumeContent");
-    const pointsEl  = freshWidget.querySelector("#resumePoints");
-    if (content) content.classList.remove("hidden");
-    if (statusEl) statusEl.textContent = "Generating resume points…";
-    if (wGenerate) { wGenerate.disabled = true; wGenerate.textContent = "Generating…"; }
-
-    if (!getApiKey()) {
-      await promptForApiKey();
-      if (!getApiKey()) {
-        if (statusEl) statusEl.textContent = "API key required. Click the button again after adding your key.";
-        if (wGenerate) { wGenerate.disabled = false; wGenerate.textContent = "Generate Points ✨"; }
-        return;
-      }
-    }
-
-    const allLogs  = await db.getLogs(internship.id);
-    const logLines = allLogs.map((l) =>
-      "- " + l.date + ": " + l.task + (l.impact ? " → " + l.impact : "")
-    ).join("\n") || "No logs recorded.";
-
-    const prompt = "You are helping an intern write strong resume bullet points. Based on their work log from their role as "
-      + internship.name + " at " + (internship.company || "a company")
-      + ", generate 4-6 resume bullet points.\n\nEach bullet should:\n- Start with a strong action verb\n- Be concise (one line)\n- Quantify impact where mentioned\n- Sound professional\n\nWork log:\n" + logLines
-      + "\n\nReturn only the bullet points, one per line, each starting with a dash (-). No headers or extra text.";
-
-    const result = await callGeminiAPI(prompt, 600);
-    if (wGenerate) { wGenerate.disabled = false; wGenerate.textContent = "Regenerate ✨"; }
-
-    if (!result) {
-      if (statusEl) statusEl.textContent = "Generation failed — verify your API key and try again.";
-      return;
-    }
-    if (statusEl) statusEl.textContent = "";
-    const bullets = result.split("\n").filter((l) => l.trim().startsWith("-"));
-    if (pointsEl) {
-      pointsEl.innerHTML = bullets.map((b) =>
-        '<div class="resume-point-item">'
-        + '<textarea class="resume-point-textarea" rows="2">' + escapeHtml(b.replace(/^-\s*/, "")) + '</textarea>'
-        + '</div>'
-      ).join("");
-    }
-  });
-
-  wCopy?.addEventListener("click", async () => {
-    const areas = freshWidget.querySelectorAll(".resume-point-textarea");
-    const text  = Array.from(areas).map((t) => "• " + t.value.trim()).filter(Boolean).join("\n");
-    if (!text) return;
-    try {
-      await navigator.clipboard.writeText(text);
-      const orig = wCopy.textContent;
-      wCopy.textContent = "Copied!";
-      setTimeout(() => { wCopy.textContent = orig; }, 2000);
-    } catch {
-      alert("Copy failed — please select and copy manually.");
-    }
-  });
-}
-
-// ── Daily Log (detail view) ───────────────────────────────────────────────────
-
-function initDetailLog() {
-  const logForm    = document.getElementById("logForm");
-  if (!logForm) return;
-  const logDate    = document.getElementById("logDate");
-  const logTask    = document.getElementById("logTask");
-  const logBlockers = document.getElementById("logBlockers");
-  const logImpact  = document.getElementById("logImpact");
-  const logError   = document.getElementById("logError");
-  const genBtn     = document.getElementById("generateImpactBtn");
-  const statusEl   = document.getElementById("impactGenStatus");
-  const dropZone   = document.getElementById("logDropZone");
-  const fileInput  = document.getElementById("logFileInput");
-  const pendingEl  = document.getElementById("logPendingFiles");
-
-  function addPendingFiles(files) {
-    Array.from(files).forEach((f) => {
-      if (!pendingLogFiles.some((p) => p.file.name === f.name && p.file.size === f.size)) {
-        pendingLogFiles.push({ file: f, uid: makeId() });
-      }
-    });
-    renderPendingFiles();
-  }
-
-  function renderPendingFiles() {
-    if (!pendingEl) return;
-    if (!pendingLogFiles.length) { pendingEl.innerHTML = ""; return; }
-    pendingEl.innerHTML = pendingLogFiles.map((p) =>
-      '<div class="pending-file-item" data-uid="' + p.uid + '">'
-      + '<span class="pending-file-icon">📄</span>'
-      + '<span class="pending-file-name">' + escapeHtml(p.file.name) + '</span>'
-      + '<span class="pending-file-size">' + (p.file.size / 1024).toFixed(1) + ' KB</span>'
-      + '<button type="button" class="pending-file-remove" data-uid="' + p.uid + '">✕</button>'
-      + '</div>'
-    ).join("");
-    pendingEl.querySelectorAll(".pending-file-remove").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        pendingLogFiles = pendingLogFiles.filter((p) => p.uid !== btn.dataset.uid);
-        renderPendingFiles();
-      });
-    });
-  }
-
-  if (dropZone) {
-    dropZone.addEventListener("dragover",  (e) => { e.preventDefault(); dropZone.classList.add("log-drop-zone-hover"); });
-    dropZone.addEventListener("dragleave", ()  => dropZone.classList.remove("log-drop-zone-hover"));
-    dropZone.addEventListener("drop",      (e) => {
-      e.preventDefault();
-      dropZone.classList.remove("log-drop-zone-hover");
-      addPendingFiles(e.dataTransfer.files);
-    });
-    dropZone.addEventListener("click", (e) => {
-      if (e.target.tagName !== "LABEL" && e.target.tagName !== "INPUT") fileInput?.click();
-    });
-  }
-  if (fileInput) {
-    fileInput.addEventListener("change", () => { addPendingFiles(fileInput.files); fileInput.value = ""; });
-  }
-
-  genBtn?.addEventListener("click", async () => {
-    const task     = logTask?.value.trim() || "";
-    const blockers = logBlockers?.value.trim() || "";
-    if (!task) { if (statusEl) statusEl.textContent = "Describe your tasks first."; return; }
-    if (!getApiKey()) {
-      await promptForApiKey();
-      if (!getApiKey()) { if (statusEl) statusEl.textContent = "API key required for AI generation."; return; }
-    }
-    if (genBtn) { genBtn.disabled = true; genBtn.textContent = "Generating…"; }
-    if (statusEl) statusEl.textContent = "Generating impact statement…";
-    const fileNames = pendingLogFiles.map((p) => p.file.name).join(", ");
-    const prompt = "Write a concise 1-2 sentence impact statement in first person for an intern's daily work log.\n\nTasks completed: " + task
-      + (blockers ? "\nQuestions/blockers: " + blockers : "")
-      + (fileNames ? "\nFiles worked with: " + fileNames : "")
-      + "\n\nReturn only the impact statement. Start with an action verb. Be specific and professional. No quotation marks.";
-    const result = await callGeminiAPI(prompt, 150);
-    if (genBtn) { genBtn.disabled = false; genBtn.textContent = "Generate ✨"; }
-    if (result) {
-      if (logImpact) logImpact.value = result.trim();
-      if (statusEl)  statusEl.textContent = "";
-    } else {
-      if (statusEl) statusEl.textContent = "Generation failed — check your API key or write the impact manually.";
-    }
-  });
-
-  logForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (logError) logError.textContent = "";
-    const activeId = workspaceCurrentInternshipId;
-    if (!activeId) { if (logError) logError.textContent = "No internship selected."; return; }
-    const entry = normalizeLog({
-      date:     logDate?.value     || todayDateString(),
-      task:     logTask?.value     || "",
-      impact:   logImpact?.value   || "",
-      blockers: logBlockers?.value || ""
-    });
-    if (!entry.date || !entry.task) { if (logError) logError.textContent = "Tasks completed is required."; return; }
-    const saved = await db.saveLog(entry, activeId);
-    if (!saved) { if (logError) logError.textContent = "Failed to save log. Check console for details."; return; }
-    for (const p of pendingLogFiles) {
-      await db.uploadFileToStorage(p.file, { internshipId: activeId, category: "daily-log" });
-    }
-    pendingLogFiles = [];
-    renderPendingFiles();
-    if (logTask)     logTask.value     = "";
-    if (logImpact)   logImpact.value   = "";
-    if (logBlockers) logBlockers.value = "";
-    if (statusEl)    statusEl.textContent = "";
-    await renderWorkspaceTimeline();
-    await renderWeeklyUpdate();
-  });
-
-  refreshActivePageData = async () => {
-    await renderWorkspaceTimeline();
-    await renderWeeklyUpdate();
-    await renderManagerHighlights(workspaceCurrentInternshipId);
-  };
-}
-
-// ── Log edit modal ────────────────────────────────────────────────────────────
-
-function openEditLogModal(log) {
-  document.getElementById("editLogModal")?.remove();
-  editingLogId = log.id;
-
-  const overlay = document.createElement("div");
-  overlay.id = "editLogModal";
-  overlay.className = "modal-overlay";
-  overlay.innerHTML =
-    '<div class="modal-card edit-log-modal-card">'
-    + '<div class="modal-header">'
-    + '<h3 class="modal-title">Edit Log</h3>'
-    + '<button type="button" id="editLogModalClose" class="modal-close-btn" aria-label="Close">✕</button>'
-    + '</div>'
-    + '<form id="editLogForm" autocomplete="off">'
-    + '<div class="log-field-block"><label class="log-field-label">Date</label>'
-    + '<input type="date" id="editLogDate" value="' + escapeHtml(log.date || "") + '" /></div>'
-    + '<div class="log-field-block"><label class="log-field-label">Tasks Completed <span class="required">*</span></label>'
-    + '<textarea id="editLogTask" rows="3">' + escapeHtml(log.task || "") + '</textarea></div>'
-    + '<div class="log-field-block"><label class="log-field-label">Questions / Blockers</label>'
-    + '<textarea id="editLogBlockers" rows="2">' + escapeHtml(log.blockers || "") + '</textarea></div>'
-    + '<div class="log-field-block" style="margin-bottom:0"><label class="log-field-label">Impact Statement</label>'
-    + '<textarea id="editLogImpact" rows="2">' + escapeHtml(log.impact || "") + '</textarea></div>'
-    + '<p id="editLogError" class="error" style="margin-top:0.4rem" aria-live="polite"></p>'
-    + '<div class="modal-actions">'
-    + '<button type="button" id="editLogCancelBtn" class="btn btn-secondary">Cancel</button>'
-    + '<button type="submit" class="btn">Save Changes</button>'
-    + '</div>'
-    + '</form>'
-    + '</div>';
-  document.body.appendChild(overlay);
-
-  const close = () => { overlay.remove(); editingLogId = null; };
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
-  overlay.querySelector("#editLogModalClose").addEventListener("click", close);
-  overlay.querySelector("#editLogCancelBtn").addEventListener("click", close);
-
-  overlay.querySelector("#editLogForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const activeId = workspaceCurrentInternshipId;
-    if (!activeId) return;
-    const entry = normalizeLog({
-      id:       editingLogId,
-      date:     overlay.querySelector("#editLogDate").value     || todayDateString(),
-      task:     overlay.querySelector("#editLogTask").value     || "",
-      impact:   overlay.querySelector("#editLogImpact").value   || "",
-      blockers: overlay.querySelector("#editLogBlockers").value || ""
-    });
-    const errEl = overlay.querySelector("#editLogError");
-    if (!entry.task) { errEl.textContent = "Task is required."; return; }
-    const saved = await db.saveLog(entry, activeId);
-    if (!saved) { errEl.textContent = "Failed to save. Check console for details."; return; }
-    close();
-    await renderWorkspaceTimeline();
-    await renderWeeklyUpdate();
-  });
-}
-
-// ── Workspace timeline ────────────────────────────────────────────────────────
-
-async function renderWorkspaceTimeline() {
-  const container = document.getElementById("timelineContainer");
-  if (!container) return;
-  const activeId = workspaceCurrentInternshipId || getActiveInternshipId();
-  if (!activeId) {
-    container.innerHTML = '<p class="timeline-empty">Select an internship to view logs.</p>';
-    return;
-  }
-  const [allLogs, allFiles] = await Promise.all([
-    db.getLogs(activeId),
-    db.fetchStorageFilesByInternship(activeId)
-  ]);
-  timelineLogs = allLogs;
-  if (!allLogs.length) {
-    container.innerHTML = '<p class="timeline-empty">No logs yet. Use the form above to record your first entry.</p>';
-    return;
-  }
-
-  const filesByDate = new Map();
-  allFiles.forEach((f) => {
-    if (f.category !== "daily-log") return;
-    const date = f.createdAt ? f.createdAt.slice(0, 10) : "";
-    if (!date) return;
-    if (!filesByDate.has(date)) filesByDate.set(date, []);
-    filesByDate.get(date).push(f);
-  });
-
-  function getWeekMonday(dateStr) {
-    const d   = parseDateOnly(dateStr);
-    const dow = d.getDay();
-    const mon = new Date(d);
-    mon.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
-    return mon.toISOString().split("T")[0];
-  }
-
-  const weekMap = new Map();
-  allLogs.forEach((log) => {
-    const wk = getWeekMonday(log.date);
-    if (!weekMap.has(wk)) weekMap.set(wk, []);
-    weekMap.get(wk).push(log);
-  });
-  const sortedWeeks = Array.from(weekMap.entries()).sort(([a], [b]) => b.localeCompare(a));
-
-  let html = "";
-  sortedWeeks.forEach(([weekMon, logs]) => {
-    const monDate = parseDateOnly(weekMon);
-    const friDate = new Date(monDate);
-    friDate.setDate(monDate.getDate() + 4);
-    const weekLabel = "Week of " + formatDate(weekMon) + " – " + formatDate(friDate.toISOString().split("T")[0]);
-    const rows = [...logs].sort((a, b) => b.date.localeCompare(a.date)).map((log) => {
-      const dateFiles = filesByDate.get(log.date) || [];
-      const filesHtml = dateFiles.length
-        ? '<div class="log-row-files">' + dateFiles.map((f) =>
-            '<a class="log-file-chip" href="' + escapeHtml(f.fileUrl) + '" target="_blank" rel="noopener">📄 ' + escapeHtml(f.name) + '</a>'
-          ).join("") + '</div>'
-        : "";
-      return '<div class="log-row" data-log-id="' + escapeHtml(log.id) + '">'
-        + '<span class="log-row-date">' + formatDate(log.date) + "</span>"
-        + '<div class="log-row-body">'
-        + '<p class="log-task">' + escapeHtml(log.task) + "</p>"
-        + (log.impact ? '<p class="log-impact"><span class="entry-arrow">→</span> ' + escapeHtml(log.impact) + "</p>" : "")
-        + (log.blockers ? '<span class="log-blocker-badge">⚠ ' + escapeHtml(log.blockers) + "</span>" : "")
-        + filesHtml
-        + "</div>"
-        + '<div class="log-row-actions">'
-        + '<button type="button" class="log-action-btn" data-edit-log="' + escapeHtml(log.id) + '">Edit</button>'
-        + '<button type="button" class="log-action-btn log-action-delete" data-delete-log="' + escapeHtml(log.id) + '">Delete</button>'
-        + "</div>"
-        + "</div>";
-    }).join("");
-    html += '<div class="week-section"><p class="week-label">' + weekLabel + "</p>"
-      + '<div class="week-entries">' + rows + "</div></div>";
-  });
-  container.innerHTML = html;
-
-  container.querySelectorAll("[data-delete-log]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      if (!window.confirm("Delete this log entry?")) return;
-      if (editingLogId === btn.dataset.deleteLog) document.getElementById("editLogModal")?.remove();
-      await db.deleteLog(btn.dataset.deleteLog);
-      await renderWorkspaceTimeline();
-      await renderWeeklyUpdate();
-    });
-  });
-
-  container.querySelectorAll("[data-edit-log]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const log = timelineLogs.find((l) => l.id === btn.dataset.editLog);
-      if (log) openEditLogModal(log);
-    });
-  });
-}
-
-// ── Weekly Manager Update ─────────────────────────────────────────────────────
-
-async function renderWeeklyUpdate() {
-  const area     = document.getElementById("generatedSummary");
-  const navLabel = document.getElementById("weekNavLabel");
-  const nextBtn  = document.getElementById("nextWeekBtn");
-  if (!area) return;
-  const week = getWeekRange(weeklyUpdateOffset);
-  if (navLabel) navLabel.textContent = week.label;
-  if (nextBtn)  nextBtn.disabled = weeklyUpdateOffset >= 0;
-  const activeId  = workspaceCurrentInternshipId || getActiveInternshipId();
-  if (!activeId) { area.value = ""; return; }
-  const allLogs   = await db.getLogs(activeId);
-  const weekLogs  = allLogs.filter((l) => isDateInWeek(l.date, week.start, week.end));
-  const manager   = (document.getElementById("managerName")?.value    || "").trim() || "[Manager Name]";
-  const yourName  = (document.getElementById("yourName")?.value      || "").trim() || "[Your Name]";
-  const nextPlans = (document.getElementById("nextPlansInput")?.value  || "").trim();
-  const blockNote = (document.getElementById("blockersNoteInput")?.value || "").trim();
-
-  const subject = "Subject: Weekly Update — " + week.label;
-
-  const top5 = [...weekLogs].sort((a, b) => scoreImpact(b) - scoreImpact(a)).slice(0, 5);
-  const lines = Array.from({ length: 5 }, (_, i) => {
-    const log = top5[i];
-    return (i + 1) + ". " + (log ? (log.impact || log.task || "") : "");
-  });
-
-  const autoBlockers = weekLogs.map((l) => l.blockers).filter(Boolean).join("; ");
-  const blockersLine = blockNote || autoBlockers || "";
-
-  area.value = subject
-    + "\n\nHi " + manager + ","
-    + "\n\nHere’s a quick update on what I worked on this week:\n\n"
-    + lines.join("\n")
-    + "\n\nNext week I’m planning to: " + nextPlans
-    + "\n\nAny blockers or things I need from you: " + blockersLine
-    + "\n\nThanks! — " + yourName;
-}
-
-// ── Manager Highlights Widget ──────────────────────────────────────────────────
-
-async function renderManagerHighlights(internshipId) {
-  const list = document.getElementById("managerHighlightsList");
-  if (!list || !internshipId) return;
-
-  const week       = getWeekRange(0);
-  const items      = list.querySelectorAll(".highlight-item");
-  const storageKey = "interntrack_highlights_" + internshipId + "_" + week.start;
-  const saved      = (() => { try { return JSON.parse(localStorage.getItem(storageKey) || "null"); } catch { return null; } })();
-
-  if (saved && Array.isArray(saved) && saved.length === 5) {
-    saved.forEach((text, i) => { if (items[i]) items[i].value = text; });
-    return;
-  }
-
-  const allLogs  = await db.getLogs(internshipId);
-  const weekLogs = allLogs.filter((l) => isDateInWeek(l.date, week.start, week.end));
-  const top5     = [...weekLogs].sort((a, b) => scoreImpact(b) - scoreImpact(a)).slice(0, 5);
-  items.forEach((el, i) => { el.value = top5[i] ? (top5[i].impact || top5[i].task || "") : ""; });
-}
-
-function initManagerHighlights() {
-  const saveBtn  = document.getElementById("saveHighlightsBtn");
-  const regenBtn = document.getElementById("regenHighlightsBtn");
-  const msgEl    = document.getElementById("highlightsSaveMsg");
-  if (!saveBtn) return;
-
-  const currentKey = () => {
-    const week = getWeekRange(0);
-    return "interntrack_highlights_" + workspaceCurrentInternshipId + "_" + week.start;
-  };
-
-  saveBtn.addEventListener("click", () => {
-    if (!workspaceCurrentInternshipId) return;
-    const values = Array.from(document.querySelectorAll(".highlight-item")).map((el) => el.value.trim());
-    localStorage.setItem(currentKey(), JSON.stringify(values));
-    if (msgEl) { msgEl.textContent = "Saved!"; setTimeout(() => { msgEl.textContent = ""; }, 2000); }
-  });
-
-  regenBtn?.addEventListener("click", async () => {
-    if (!workspaceCurrentInternshipId) return;
-    localStorage.removeItem(currentKey());
-    await renderManagerHighlights(workspaceCurrentInternshipId);
-    if (msgEl) { msgEl.textContent = "Refreshed from logs."; setTimeout(() => { msgEl.textContent = ""; }, 2000); }
-  });
-}
-
-async function initWeeklyUpdate() {
-  const prevBtn   = document.getElementById("prevWeekBtn");
-  const nextBtn   = document.getElementById("nextWeekBtn");
-  const regenBtn  = document.getElementById("regenerateSummaryBtn");
-  const copyBtn   = document.getElementById("copySummaryBtn");
-  const emailBtn  = document.getElementById("emailSummaryBtn");
-  const msgEl     = document.getElementById("summaryMessage");
-  const managerEl   = document.getElementById("managerName");
-  const nameEl      = document.getElementById("yourName");
-  const emailEl     = document.getElementById("yourEmail");
-  const nextPlansEl = document.getElementById("nextPlansInput");
-  const blockersEl  = document.getElementById("blockersNoteInput");
-  if (!regenBtn) return;
-
-  renderWeekIndicator();
-
-  const prefs = await db.getPreferences();
-  if (managerEl)   managerEl.value   = prefs.manager_name || "";
-  if (nameEl)      nameEl.value      = prefs.your_name    || "";
-  if (emailEl)     emailEl.value     = prefs.your_email   || "";
-  if (nextPlansEl) nextPlansEl.value = localStorage.getItem("interntrack_next_plans")    || "";
-  if (blockersEl)  blockersEl.value  = localStorage.getItem("interntrack_blockers_note") || "";
-
-  const savePrefs = async () => {
-    await db.savePreferences({
-      manager_name: managerEl?.value || "",
-      your_name:    nameEl?.value    || "",
-      your_email:   emailEl?.value   || ""
-    });
-    if (nextPlansEl) localStorage.setItem("interntrack_next_plans",    nextPlansEl.value);
-    if (blockersEl)  localStorage.setItem("interntrack_blockers_note", blockersEl.value);
-  };
-  managerEl?.addEventListener("blur",   savePrefs);
-  nameEl?.addEventListener("blur",      savePrefs);
-  emailEl?.addEventListener("blur",     savePrefs);
-  nextPlansEl?.addEventListener("blur", savePrefs);
-  blockersEl?.addEventListener("blur",  savePrefs);
-
-  prevBtn?.addEventListener("click",  async () => { weeklyUpdateOffset--; await renderWeeklyUpdate(); });
-  nextBtn?.addEventListener("click",  async () => { if (weeklyUpdateOffset < 0) { weeklyUpdateOffset++; await renderWeeklyUpdate(); } });
-  regenBtn?.addEventListener("click", async () => {
-    await savePrefs();
-    const area   = document.getElementById("generatedSummary");
-    const msgElR = document.getElementById("summaryMessage");
-    if (!getApiKey()) {
-      await promptForApiKey();
-      if (!getApiKey()) { await renderWeeklyUpdate(); return; }
-    }
-    const activeId = workspaceCurrentInternshipId || getActiveInternshipId();
-    if (!activeId) { await renderWeeklyUpdate(); return; }
-    const week     = getWeekRange(weeklyUpdateOffset);
-    const allLogs  = await db.getLogs(activeId);
-    const weekLogs = allLogs.filter((l) => isDateInWeek(l.date, week.start, week.end));
-    const manager  = (document.getElementById("managerName")?.value  || "").trim() || "Manager";
-    const yourName = (document.getElementById("yourName")?.value     || "").trim() || "[Your Name]";
-    const nextPlan = (document.getElementById("nextPlansInput")?.value || "").trim();
-    const blockers = (document.getElementById("blockersNoteInput")?.value || "").trim();
-    if (area) area.value = "Generating with AI…";
-    if (regenBtn) { regenBtn.disabled = true; regenBtn.textContent = "Generating…"; }
-    const logLines = weekLogs.map((l) =>
-      "- " + l.date + ": " + l.task + (l.impact ? " → " + l.impact : "") + (l.blockers ? " (blocker: " + l.blockers + ")" : "")
-    ).join("\n") || "No logs recorded for this week.";
-    const aiPrompt = "You are writing a professional weekly status update email from an intern to their manager.\n"
-      + "Manager name: " + manager + "\n"
-      + "Intern name: " + yourName + "\n"
-      + "Week: " + week.label + "\n"
-      + (nextPlan ? "Next week plans: " + nextPlan + "\n" : "")
-      + (blockers ? "Blockers/needs: " + blockers + "\n" : "")
-      + "Work logs:\n" + logLines + "\n\n"
-      + "Write a concise, professional weekly update email. Include a subject line, greeting, 3-5 bullet highlights of what was accomplished, \"Next week\" section, and a closing. Use the intern's actual log data. Keep it under 250 words. No markdown formatting.";
-    const result = await callGeminiAPI(aiPrompt, 400);
-    if (regenBtn) { regenBtn.disabled = false; regenBtn.textContent = "↺ Regenerate"; }
-    if (result) {
-      if (area) area.value = result.trim();
-      if (msgElR) { msgElR.textContent = "Generated with Gemini AI ✨"; setTimeout(() => { msgElR.textContent = ""; }, 3000); }
-    } else {
-      await renderWeeklyUpdate();
-      if (msgElR) { msgElR.textContent = "AI unavailable — showing template instead."; setTimeout(() => { msgElR.textContent = ""; }, 3000); }
-    }
-  });
-
-  copyBtn?.addEventListener("click", async () => {
-    const area = document.getElementById("generatedSummary");
-    if (!area?.value.trim()) { if (msgEl) msgEl.textContent = "Nothing to copy yet."; return; }
-    try {
-      await navigator.clipboard.writeText(area.value);
-      if (msgEl) { msgEl.textContent = "Copied to clipboard!"; setTimeout(() => { msgEl.textContent = ""; }, 2000); }
-    } catch {
-      if (msgEl) msgEl.textContent = "Copy failed — please select and copy manually.";
-    }
-  });
-
-  emailBtn?.addEventListener("click", () => {
-    const area  = document.getElementById("generatedSummary");
-    const text  = area?.value.trim() || "";
-    const email = emailEl?.value.trim() || "";
-    if (!text) { if (msgEl) msgEl.textContent = "No update to send yet."; return; }
-    const week    = getWeekRange(weeklyUpdateOffset);
-    const subject = "Weekly Update — " + week.label;
-    window.open("mailto:" + encodeURIComponent(email) + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(text), "_blank");
-    if (msgEl) { msgEl.textContent = "Opening your email client…"; setTimeout(() => { msgEl.textContent = ""; }, 3000); }
-  });
-}
-
-// ── Workspace tabs ────────────────────────────────────────────────────────────
-
-function initWorkspaceTabs() {
-  const tabBar = document.querySelector(".ws-tab-bar");
-  if (!tabBar) return;
-  tabBar.addEventListener("click", (e) => {
-    const tab = e.target.closest(".ws-tab");
-    if (!tab) return;
-    const target = tab.dataset.tab;
-    tabBar.querySelectorAll(".ws-tab").forEach((t) => t.classList.toggle("active", t === tab));
-    ["logs", "stories", "files"].forEach((id) => {
-      const panel = document.getElementById("wsTab" + id.charAt(0).toUpperCase() + id.slice(1));
-      if (panel) panel.classList.toggle("hidden", id !== target);
-    });
-    if (target === "stories") renderStoriesTab(workspaceCurrentInternshipId);
-    if (target === "files")   renderWsFilesTab(workspaceCurrentInternshipId);
-  });
-}
-
-function resetWorkspaceTabs() {
-  const tabBar = document.querySelector(".ws-tab-bar");
-  if (!tabBar) return;
-  tabBar.querySelectorAll(".ws-tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === "logs"));
-  ["wsTabLogs", "wsTabStories", "wsTabFiles"].forEach((id, i) => {
-    const el = document.getElementById(id);
-    if (el) el.classList.toggle("hidden", i !== 0);
-  });
-}
-
-// ── Week indicator ────────────────────────────────────────────────────────────
-
-function renderWeekIndicator() {
-  const el = document.getElementById("weekIndicatorRange");
-  if (!el) return;
-  el.textContent = getWeekRange(0).label;
-}
-
-// ── Stories tab ───────────────────────────────────────────────────────────────
-
-function getStoriesFromStorage(internshipId) {
-  try { return JSON.parse(localStorage.getItem("interntrack_stories_" + internshipId) || "[]"); } catch { return []; }
-}
-function setStoriesInStorage(internshipId, stories) {
-  localStorage.setItem("interntrack_stories_" + internshipId, JSON.stringify(stories));
-}
-
-function openStoryModal(story) {
-  document.getElementById("storyViewModal")?.remove();
-  const overlay = document.createElement("div");
-  overlay.id = "storyViewModal";
-  overlay.className = "modal-overlay";
-  overlay.innerHTML =
-    '<div class="modal-card story-modal-card">'
-    + '<div class="modal-header">'
-    + '<div>'
-    + (story.title ? '<h3 class="modal-title">' + escapeHtml(story.title) + '</h3>' : '<h3 class="modal-title">Story</h3>')
-    + (story.date ? '<p class="story-card-date" style="margin-top:0.15rem">' + formatDate(story.date) + '</p>' : '')
-    + '</div>'
-    + '<button type="button" id="storyModalClose" class="modal-close-btn" aria-label="Close">✕</button>'
-    + '</div>'
-    + '<div class="story-modal-body">' + escapeHtml(story.content) + '</div>'
-    + '</div>';
-  document.body.appendChild(overlay);
-  const close = () => overlay.remove();
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
-  overlay.querySelector("#storyModalClose").addEventListener("click", close);
-}
-
-function renderStoriesTab(internshipId) {
-  const container = document.getElementById("storiesList");
-  if (!container || !internshipId) return;
-  const stories = getStoriesFromStorage(internshipId).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-  if (!stories.length) {
-    container.innerHTML = '<p class="empty" style="padding:0.5rem 0">No stories yet. Document a win or challenge above.</p>';
-    return;
-  }
-  container.innerHTML = stories.map((s) => `
-    <div class="story-card" data-story-id="${escapeHtml(s.id)}">
-      <div class="story-card-header">
-        <div class="story-card-meta">
-          ${s.title ? `<span class="story-card-title">${escapeHtml(s.title)}</span>` : ""}
-          <span class="story-card-date">${s.date ? formatDate(s.date) : "No date"}</span>
-        </div>
-        <button class="story-delete-btn" data-delete-story="${escapeHtml(s.id)}" type="button">Delete</button>
-      </div>
-      <div class="story-card-body">${escapeHtml(s.content)}</div>
-      <div class="story-card-actions">
-        <button class="story-expand-btn" data-expand-story type="button">Show more</button>
-      </div>
-    </div>`).join("");
-  container.querySelectorAll("[data-delete-story]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const id = btn.dataset.deleteStory;
-      const updated = getStoriesFromStorage(internshipId).filter((s) => s.id !== id);
-      setStoriesInStorage(internshipId, updated);
-      renderStoriesTab(internshipId);
-    });
-  });
-  container.querySelectorAll("[data-expand-story]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const card = btn.closest(".story-card");
-      const storyId = card?.dataset.storyId;
-      const story = getStoriesFromStorage(internshipId).find((s) => s.id === storyId);
-      if (story) openStoryModal(story);
-    });
-  });
-}
-
-function initStoriesTab() {
-  const form      = document.getElementById("storyForm");
-  const dateEl    = document.getElementById("storyDate");
-  const titleEl   = document.getElementById("storyTitle");
-  const contentEl = document.getElementById("storyContent");
-  const errorEl   = document.getElementById("storyError");
-  if (!form) return;
-  if (dateEl) dateEl.value = todayDateString();
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const id = workspaceCurrentInternshipId;
-    if (!id) return;
-    const content = (contentEl?.value || "").trim();
-    if (!content) { if (errorEl) errorEl.textContent = "Content is required."; return; }
-    if (errorEl) errorEl.textContent = "";
-    const story = {
-      id: makeId(),
-      date: dateEl?.value || "",
-      title: (titleEl?.value || "").trim(),
-      content,
-      createdAt: new Date().toISOString()
-    };
-    const stories = getStoriesFromStorage(id);
-    stories.unshift(story);
-    setStoriesInStorage(id, stories);
-    form.reset();
-    if (dateEl) dateEl.value = todayDateString();
-    renderStoriesTab(id);
-  });
-}
-
-// ── Workspace files tab ───────────────────────────────────────────────────────
-
-async function renderWsFilesTab(internshipId) {
-  const list = document.getElementById("wsFileList");
-  if (!list || !internshipId) return;
-  const files = await db.fetchStorageFilesByInternship(internshipId);
-  if (!files.length) {
-    list.innerHTML = '<p class="empty" style="padding:0.5rem 0">No files uploaded yet.</p>';
-    return;
-  }
-  list.innerHTML = files.map((f) => `
-    <div class="ws-file-item">
-      <span class="ws-file-item-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
-      <span class="ws-file-item-date">${f.createdAt ? formatDate(f.createdAt.slice(0, 10)) : ""}</span>
-      ${f.fileUrl ? `<a class="ws-file-item-link" href="${escapeHtml(f.fileUrl)}" target="_blank" rel="noopener">Open ↗</a>` : ""}
-    </div>`).join("");
-}
-
-function initWsFilesTab() {
-  const dropZone  = document.getElementById("wsFileDropZone");
-  const fileInput = document.getElementById("wsFileInput");
-  const msgEl     = document.getElementById("wsFileUploadMsg");
-  if (!dropZone || !fileInput) return;
-
-  async function uploadFiles(fileList) {
-    const id = workspaceCurrentInternshipId;
-    if (!id || !fileList.length) return;
-    if (msgEl) msgEl.textContent = "Uploading…";
-    for (const file of fileList) {
-      await db.uploadFileToStorage(file, { internshipId: id, category: "workspace" });
-    }
-    if (msgEl) { msgEl.textContent = "Uploaded!"; setTimeout(() => { msgEl.textContent = ""; }, 2000); }
-    await renderWsFilesTab(id);
-  }
-
-  fileInput.addEventListener("change", () => { if (fileInput.files?.length) uploadFiles(fileInput.files); fileInput.value = ""; });
-  dropZone.addEventListener("dragover",  (e) => { e.preventDefault(); dropZone.classList.add("log-drop-zone-hover"); });
-  dropZone.addEventListener("dragleave", ()  => dropZone.classList.remove("log-drop-zone-hover"));
-  dropZone.addEventListener("drop", (e) => {
-    e.preventDefault(); dropZone.classList.remove("log-drop-zone-hover");
-    if (e.dataTransfer.files?.length) uploadFiles(e.dataTransfer.files);
-  });
-}
-
-// ── Main workspace init ───────────────────────────────────────────────────────
-
-async function initWorkspace() {
-  const grid = document.getElementById("workspaceGrid");
-  if (!grid) return;
-
-  document.getElementById("addInternshipBtn")?.addEventListener("click", () => openInternshipForm());
-  document.getElementById("internshipCancelBtn")?.addEventListener("click", closeInternshipForm);
-
-  document.getElementById("internshipForm")?.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const errEl   = document.getElementById("internshipError");
-    if (errEl) errEl.textContent = "";
-    const name    = (document.getElementById("internshipName")?.value    || "").trim();
-    const company = (document.getElementById("internshipCompany")?.value || "").trim();
-    const start   = document.getElementById("internshipStart")?.value    || "";
-    const end     = document.getElementById("internshipEnd")?.value      || "";
-    if (!name)    { if (errEl) errEl.textContent = "Role / Title is required.";  return; }
-    if (!company) { if (errEl) errEl.textContent = "Company is required.";       return; }
-    if (!start)   { if (errEl) errEl.textContent = "Start date is required.";    return; }
-    const editId = document.getElementById("internshipEditId")?.value || "";
-    if (editId) {
-      const all    = await db.getInternships();
-      const target = all.find((i) => i.id === editId);
-      if (target) await db.saveInternship({ ...target, name, company, startDate: start, endDate: end });
-    } else {
-      const newItem = { id: makeId(), name, company, startDate: start, endDate: end, createdAt: new Date().toISOString() };
-      const saved   = await db.saveInternship(newItem);
-      if (!saved) { if (errEl) errEl.textContent = "Failed to save. Check console for details."; return; }
-    }
-    closeInternshipForm();
-    await renderInternshipGrid();
-  });
-
-  document.getElementById("backToGridBtn")?.addEventListener("click", navigateToGrid);
-
-  document.getElementById("editInternshipDetailBtn")?.addEventListener("click", async () => {
-    const all     = await db.getInternships();
-    const current = all.find((i) => i.id === workspaceCurrentInternshipId);
-    if (!current) return;
-    await navigateToGrid();
-    openInternshipForm(current);
-  });
-
-  document.getElementById("deleteInternshipDetailBtn")?.addEventListener("click", async () => {
-    const all     = await db.getInternships();
-    const current = all.find((i) => i.id === workspaceCurrentInternshipId);
-    if (!current || !window.confirm('Delete "' + current.name + '" and all its logs? This cannot be undone.')) return;
-    await db.deleteInternship(workspaceCurrentInternshipId);
-    await navigateToGrid();
-  });
-
-  initDetailLog();
-  initManagerHighlights();
-  initWorkspaceTabs();
-  initStoriesTab();
-  initWsFilesTab();
-  await initWeeklyUpdate();
-
-  const sessionId = sessionStorage.getItem("interntrack_session_workspace_id");
-  if (sessionId) {
-    const internships = await db.getInternships();
-    const match = internships.find((i) => i.id === sessionId);
-    if (match) {
-      await navigateToInternship(match.id);
-    } else {
-      await renderInternshipGrid();
-    }
-  } else {
-    await renderInternshipGrid();
-  }
+    const due = contacts.filter((c) => getReminderStatus(c) === "due");
+    if (due.length) showReminderModal(due[0]);
+  }, 900);
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
-// requireAuth() redirects to auth.html if the user is not signed in.
-// All init functions are no-ops on pages where their root element is absent,
-// so this single boot sequence works across all four app pages.
 
 (async () => {
   const user = await requireAuth();
   if (!user) return;
   initSidebarToggle();
+  initNavDropdown();
   initThemeToggle();
+  initSettings();
   initSignOut();
-  await initWorkspace();
-  await initNetworking();
+  await initDashboard();
+  await initMyNetwork();
+  await initNetworkingLog();
   await initContactPage();
   await initFilesPage();
-  initCalendarNav();
-  await renderCalendarView();
   await checkRemindersOnLoad();
 })();

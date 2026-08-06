@@ -1,14 +1,13 @@
 /**
- * db.js — Supabase data access layer for InternTrack
+ * db.js — Supabase data access layer
  *
- * Replaces all localStorage read/write calls from the original app.
- * Every exported function is async and scoped to the authenticated user
- * via Supabase Row Level Security (user_id = auth.uid()).
+ * Every exported function is async and scoped to the authenticated user via
+ * Supabase Row Level Security (user_id = auth.uid()).
  *
- * Tables: preferences, internships, logs, files, contacts
- * Contacts store basic info and interactions. Documents live in storage_files; follow-ups in follow_ups table.
- *
- * AI-assisted: schema design, upsert patterns, JSONB handling.
+ * Tables: preferences, contacts, storage_files
+ * Contacts carry their interactions, company history, and follow-ups as jsonb
+ * columns. Uploaded documents live in the `interntrack-files` storage bucket
+ * with metadata rows in `storage_files`.
  */
 import { supabase } from "./supabase.js";
 
@@ -50,8 +49,8 @@ function reportBackendProblem(error) {
   bannerShown = true;
 
   const text = unreachable
-    ? "Can't reach the database. It may be paused — check your Supabase dashboard."
-    : "The database is reachable but its tables are missing. Run supabase/schema.sql in the Supabase SQL editor.";
+    ? "Can't reach the database. The Supabase project may be paused — check your dashboard."
+    : "The database is reachable but a table is missing. Check the Supabase dashboard, and that the API key in js/supabase.js is current.";
 
   const show = () => {
     const el = document.createElement("div");
@@ -89,176 +88,6 @@ export async function savePreferences(updates) {
   if (error) dbErr("savePreferences", error);
 }
 
-// ─── Internships ──────────────────────────────────────────────────────────────
-
-export async function getInternships() {
-  const userId = await uid();
-  if (!userId) return [];
-  const { data, error } = await supabase
-    .from("internships")
-    .select("*")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: true });
-  if (error) { dbErr("getInternships", error); return []; }
-  return (data || []).map(rowToInternship);
-}
-
-export async function saveInternship(internship) {
-  const userId = await uid();
-  if (!userId) return null;
-  const row = internshipToRow(internship, userId);
-  const { data, error } = await supabase
-    .from("internships")
-    .upsert(row, { onConflict: "id" })
-    .select()
-    .single();
-  if (error) { dbErr("saveInternship", error); return null; }
-  return rowToInternship(data);
-}
-
-export async function deleteInternship(internshipId) {
-  const { error } = await supabase.from("internships").delete().eq("id", internshipId);
-  if (error) dbErr("deleteInternship", error);
-}
-
-function rowToInternship(row) {
-  return {
-    id: row.id,
-    name: row.name || "",
-    company: row.company || "",
-    startDate: row.start_date || "",
-    endDate: row.end_date || "",
-    createdAt: row.created_at || ""
-  };
-}
-
-function internshipToRow(item, userId) {
-  return {
-    id: item.id,
-    user_id: userId,
-    name: item.name || "",
-    company: item.company || "",
-    start_date: item.startDate || null,
-    end_date: item.endDate || null
-  };
-}
-
-// ─── Logs ─────────────────────────────────────────────────────────────────────
-
-export async function getLogs(internshipId) {
-  const userId = await uid();
-  if (!userId || !internshipId) return [];
-  const { data, error } = await supabase
-    .from("logs")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("internship_id", internshipId)
-    .order("date", { ascending: false });
-  if (error) { dbErr("getLogs", error); return []; }
-  return (data || []).map(rowToLog);
-}
-
-export async function saveLog(log, internshipId) {
-  const userId = await uid();
-  if (!userId || !internshipId) return null;
-  const row = logToRow(log, userId, internshipId);
-  const { data, error } = await supabase
-    .from("logs")
-    .upsert(row, { onConflict: "id" })
-    .select()
-    .single();
-  if (error) { dbErr("saveLog", error); return null; }
-  return rowToLog(data);
-}
-
-export async function deleteLog(logId) {
-  const { error } = await supabase.from("logs").delete().eq("id", logId);
-  if (error) dbErr("deleteLog", error);
-}
-
-function rowToLog(row) {
-  return {
-    id: row.id,
-    date: row.date || "",
-    task: row.task || "",
-    impact: row.impact || "",
-    skills: row.skills || "",
-    tags: row.tags ? row.tags.split(",").map(t => t.trim()).filter(Boolean) : [],
-    blockers: row.blockers || ""
-  };
-}
-
-function logToRow(log, userId, internshipId) {
-  return {
-    id: log.id,
-    user_id: userId,
-    internship_id: internshipId,
-    date: log.date || null,
-    task: log.task || "",
-    impact: log.impact || "",
-    skills: log.skills || "",
-    tags: Array.isArray(log.tags) ? log.tags.join(",") : (log.tags || ""),
-    blockers: log.blockers || ""
-  };
-}
-
-// ─── Files ────────────────────────────────────────────────────────────────────
-
-export async function getFiles(internshipId) {
-  const userId = await uid();
-  if (!userId || !internshipId) return [];
-  const { data, error } = await supabase
-    .from("files")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("internship_id", internshipId)
-    .order("date", { ascending: false });
-  if (error) { dbErr("getFiles", error); return []; }
-  return (data || []).map(rowToFile);
-}
-
-export async function saveFile(file, internshipId) {
-  const userId = await uid();
-  if (!userId || !internshipId) return null;
-  const row = fileToRow(file, userId, internshipId);
-  const { data, error } = await supabase
-    .from("files")
-    .upsert(row, { onConflict: "id" })
-    .select()
-    .single();
-  if (error) { dbErr("saveFile", error); return null; }
-  return rowToFile(data);
-}
-
-export async function deleteFile(fileId) {
-  const { error } = await supabase.from("files").delete().eq("id", fileId);
-  if (error) dbErr("deleteFile", error);
-}
-
-function rowToFile(row) {
-  return {
-    id: row.id,
-    name: row.name || "",
-    data: row.data || "",
-    date: row.date || "",
-    linkedWeek: row.linked_week || "",
-    linkedLogId: row.linked_log_id || ""
-  };
-}
-
-function fileToRow(file, userId, internshipId) {
-  return {
-    id: file.id,
-    user_id: userId,
-    internship_id: internshipId,
-    name: file.name || "",
-    data: file.data || "",
-    date: file.date || null,
-    linked_week: file.linkedWeek || null,
-    linked_log_id: file.linkedLogId || null
-  };
-}
-
 // ─── Contacts ─────────────────────────────────────────────────────────────────
 
 export async function getContacts() {
@@ -273,17 +102,48 @@ export async function getContacts() {
   return (data || []).map(rowToContact);
 }
 
+// `industry` is a newer column. If the database predates it, the first save
+// fails with PGRST204 and we permanently fall back to saving without it, so a
+// missing migration costs you the industry tag rather than the whole save.
+let industrySupported = true;
+
+function isMissingColumn(error, column) {
+  const message = String(error?.message || "");
+  return error?.code === "PGRST204" || new RegExp(`'${column}' column`, "i").test(message);
+}
+
 export async function saveContact(contact) {
   const userId = await uid();
   if (!userId) return null;
-  const row = contactToRow(contact, userId);
-  const { data, error } = await supabase
+
+  const upsert = (row) => supabase
     .from("contacts")
     .upsert(row, { onConflict: "id" })
     .select()
     .single();
+
+  const row = contactToRow(contact, userId);
+  if (!industrySupported) delete row.industry;
+
+  let { data, error } = await upsert(row);
+
+  if (error && industrySupported && isMissingColumn(error, "industry")) {
+    console.warn(
+      "[DB] contacts.industry is missing — saving without it. To enable industry tags run:\n" +
+      "     alter table public.contacts add column industry text default '';"
+    );
+    industrySupported = false;
+    delete row.industry;
+    ({ data, error } = await upsert(row));
+  }
+
   if (error) { dbErr("saveContact", error); return null; }
   return rowToContact(data);
+}
+
+/** False once a save has proven the column is absent — the UI hides the field. */
+export function isIndustrySupported() {
+  return industrySupported;
 }
 
 export async function deleteContact(contactId) {
@@ -294,11 +154,11 @@ export async function deleteContact(contactId) {
 function rowToContact(row) {
   return {
     id: row.id,
-    internshipId: row.internship_id || null,
     name: row.name || "",
     email: row.email || "",
     company: row.company || "",
     role: row.role || "",
+    industry: row.industry || "",
     dateMet: row.date_met || "",
     lastContacted: row.last_contacted || "",
     followUpFrequency: row.follow_up_frequency || "none",
@@ -307,7 +167,6 @@ function rowToContact(row) {
     interests: row.interests || "",
     reminderEnabled: row.reminder_enabled || false,
     nextReminder: row.next_reminder || "",
-    starred: row.starred || false,
     interactions: Array.isArray(row.interactions) ? row.interactions : [],
     companyHistory: Array.isArray(row.company_history) ? row.company_history : [],
     followUps: Array.isArray(row.follow_ups) ? row.follow_ups : []
@@ -318,11 +177,11 @@ function contactToRow(contact, userId) {
   return {
     id: contact.id,
     user_id: userId,
-    internship_id: contact.internshipId || null,
     name: contact.name || "",
     email: contact.email || "",
     company: contact.company || "",
     role: contact.role || "",
+    industry: contact.industry || "",
     date_met: contact.dateMet || null,
     last_contacted: contact.lastContacted || null,
     follow_up_frequency: contact.followUpFrequency || "none",
@@ -332,25 +191,24 @@ function contactToRow(contact, userId) {
     reminder_enabled: contact.reminderEnabled || false,
     next_reminder: contact.nextReminder || null,
     // NOTE: no `starred` here — the contacts table has no such column, so
-    // writing it would make every contact save fail. main.js has a full
-    // starring UI, so stars work until reload and then reset. To enable it:
+    // writing it would make every contact save fail. To enable starring:
     //   alter table public.contacts add column starred boolean not null default false;
-    // then add `starred: contact.starred || false,` back to this object.
+    // then add `starred: contact.starred || false,` to this object and to
+    // rowToContact() above.
     interactions: contact.interactions || [],
     company_history: contact.companyHistory || [],
     follow_ups: contact.followUps || []
   };
 }
 
-// ─── Storage Files (Supabase Storage + storage_files table) ──────────────────
+// ─── Storage files (Supabase Storage + storage_files table) ──────────────────
 
 /**
- * Upload a file to the 'interntrack-files' Supabase Storage bucket,
- * then insert a row into the 'storage_files' table with metadata.
+ * Upload a file to the 'interntrack-files' bucket, then record its metadata.
  *
- * Requires Supabase bucket: interntrack-files (public access enabled).
- * Requires table: storage_files (id, user_id, internship_id, contact_id,
- *   name, file_url, storage_path, category, created_at)
+ * Requires bucket: interntrack-files (public read).
+ * Requires table:  storage_files (id, user_id, contact_id, name, file_url,
+ *                  storage_path, category, created_at)
  */
 export async function uploadFileToStorage(file, metadata = {}) {
   const userId = await uid();
@@ -375,7 +233,6 @@ export async function uploadFileToStorage(file, metadata = {}) {
   const row = {
     id,
     user_id: userId,
-    internship_id: metadata.internshipId || null,
     contact_id: metadata.contactId || null,
     name: file.name,
     file_url: urlData.publicUrl,
@@ -402,20 +259,6 @@ export async function fetchAllStorageFiles() {
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
   if (error) { dbErr("fetchAllStorageFiles", error); return []; }
-  return (data || []).map(rowToStorageFile);
-}
-
-/** Fetch storage files linked to a specific internship. */
-export async function fetchStorageFilesByInternship(internshipId) {
-  const userId = await uid();
-  if (!userId || !internshipId) return [];
-  const { data, error } = await supabase
-    .from("storage_files")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("internship_id", internshipId)
-    .order("created_at", { ascending: false });
-  if (error) { dbErr("fetchStorageFilesByInternship", error); return []; }
   return (data || []).map(rowToStorageFile);
 }
 
@@ -452,7 +295,6 @@ function rowToStorageFile(row) {
     fileUrl: row.file_url || "",
     storagePath: row.storage_path || "",
     category: row.category || "general",
-    internshipId: row.internship_id || null,
     contactId: row.contact_id || null,
     createdAt: row.created_at || ""
   };

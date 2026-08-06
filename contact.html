@@ -3,52 +3,68 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>InternTrack — Contact Profile</title>
+  <title>Orbit — Connection</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body data-page="contact">
-<script>if(localStorage.getItem('interntrack_theme')==='dark')document.body.classList.add('dark');</script>
+<script>if((localStorage.getItem('orbit_theme')||localStorage.getItem('interntrack_theme'))==='dark')document.body.classList.add('dark');</script>
 
   <div class="app-layout">
 
-    <!-- ── Sidebar ───────────────────────────────────── -->
     <aside class="sidebar">
-      <button id="sidebarToggleBtn" class="sidebar-toggle" type="button" title="Toggle sidebar">☰</button>
-      <div class="sidebar-brand">InternTrack</div>
+      <div class="sidebar-head">
+        <button id="sidebarBrand" class="sidebar-brand" type="button"
+                aria-label="Expand sidebar" title="Expand sidebar">
+          <span class="brand-mark" aria-hidden="true">◍</span>
+          <span class="brand-open" aria-hidden="true">»</span>
+          <span class="brand-word">Orbit</span>
+        </button>
+        <button id="sidebarToggleBtn" class="sidebar-close" type="button"
+                aria-label="Collapse sidebar" title="Collapse sidebar">«</button>
+      </div>
 
       <nav class="sidebar-nav">
-        <a href="index.html" class="s-link">Workspace</a>
-        <a href="network.html" class="s-link active">Networking</a>
-        <a href="files.html" class="s-link">Files</a>
+        <a href="index.html" class="s-link"><span class="s-icon"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="2.5" width="6" height="6" rx="1.5"/><rect x="11.5" y="2.5" width="6" height="6" rx="1.5"/><rect x="2.5" y="11.5" width="6" height="6" rx="1.5"/><rect x="11.5" y="11.5" width="6" height="6" rx="1.5"/></svg></span><span class="s-text">Dashboard</span></a>
+        <a href="contacts.html" class="s-link active"><span class="s-icon"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="6" r="2.6"/><circle cx="4.5" cy="14.5" r="2.2"/><circle cx="15.5" cy="14.5" r="2.2"/><path d="M8.2 7.8 6 12.6M11.8 7.8 14 12.6M6.7 14.5h6.6"/></svg></span><span class="s-text">My Network</span></a>
+
+        <div class="s-group">
+          <div class="s-row">
+            <a href="network.html" class="s-link"><span class="s-icon"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3.5" y="2.5" width="13" height="15" rx="2"/><path d="M6.8 6.8h6.4M6.8 10h6.4M6.8 13.2h3.6"/></svg></span><span class="s-text">Networking Log</span></a>
+            <button class="s-caret" type="button" aria-expanded="false"
+                    aria-controls="navNetworkSub" aria-label="Show sub-pages">▾</button>
+          </div>
+          <div class="s-sub" id="navNetworkSub">
+            <a href="files.html" class="s-sublink"><span class="s-icon"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11 2.5H5.5A1.5 1.5 0 0 0 4 4v12a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 16 16V7.5z"/><path d="M11 2.5V7.5H16"/></svg></span><span class="s-text">Files</span></a>
+          </div>
+        </div>
       </nav>
 
       <div class="sidebar-footer">
+        <button id="settingsBtn" class="s-btn" type="button">Settings</button>
         <button id="themeToggle" class="s-btn" type="button">Dark Mode</button>
         <button id="signOutBtn" class="s-btn" type="button">Sign Out</button>
       </div>
     </aside>
 
-    <!-- ── Main Scroll ───────────────────────────────── -->
     <div class="main-scroll">
-      <div class="contact-content">
+      <div class="page-content">
         <section id="contactPageContent">
-          <div class="card">
-            <p class="muted">Loading contact…</p>
-          </div>
+          <div class="card"><p class="muted">Loading connection…</p></div>
         </section>
       </div>
     </div>
 
     <nav class="mobile-bottom-nav" aria-label="Primary">
-      <a href="index.html" class="s-link">Workspace</a>
-      <a href="network.html" class="s-link active">Networking</a>
+      <a href="index.html" class="s-link">Dashboard</a>
+      <a href="contacts.html" class="s-link active">Network</a>
+      <a href="network.html" class="s-link">Log</a>
       <a href="files.html" class="s-link">Files</a>
     </nav>
 
-  </div><!-- /.app-layout -->
+  </div>
 
   <script type="module" src="js/main.js"></script>
 </body>
