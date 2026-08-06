@@ -10,17 +10,12 @@ Last updated 2026-08-06.
 ### ~~1. Run the `industry` migration~~ ✅ done
 Verified live 2026-08-06 — `contacts.industry` returns from the API.
 
-### 2. Add storage policies  ← the bucket exists, but has **0 policies**
-`interntrack-files` exists and is marked public, but the dashboard shows **POLICIES: 0**.
-Public only governs *reading* objects by URL. Uploading is an INSERT into
-`storage.objects`, which has RLS enabled — with no policies, **every upload is denied**.
-
-Run `supabase/storage-policies.sql`. It grants public read, and write/delete scoped to
-each user's own folder (the app uploads to `${userId}/…`, so the first path segment is
-the owner).
-
-If the SQL editor refuses to alter `storage.objects`, do it through
-Storage → Policies → New policy instead, with the same four rules.
+### ~~2. Add storage policies~~ ✅ done
+The `interntrack-files` bucket existed and was public, but had **0 policies** — public
+only governs *reading* by URL, while uploading is an INSERT into `storage.objects` with
+RLS on, so every upload was denied. Added via the dashboard: SELECT for authenticated,
+plus INSERT/UPDATE/DELETE scoped to each user's own folder. Upload verified working
+2026-08-06. `supabase/storage-policies.sql` records the equivalent SQL.
 
 ### ~~3. There is no way to set your own name~~ ✅ done
 `buildReminderEmailText()` reads `preferences.your_name` to sign draft messages, but the

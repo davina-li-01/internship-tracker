@@ -1,6 +1,8 @@
-# InternTrack
+# Orbit
 
-InternTrack is a networking tracker I built to help students actually stay in touch with the people they meet. You log who you connected with, what they do, and what you want to bring up next time — and the app tells you who you're starting to drift away from.
+**Keep your people in orbit.**
+
+Orbit is a networking tracker I built to help students actually stay in touch with the people they meet. You log who you connected with, what they do, and what you want to bring up next time — and the app tells you who you're starting to drift away from.
 
 It started out as a general internship tracker (daily logs, weekly manager updates, the works), but it was trying to do too many things at once and none of them well. I scoped it down to the one thing I actually kept using: keeping my network warm.
 
@@ -8,7 +10,7 @@ It started out as a general internship tracker (daily logs, weekly manager updat
 
 ## Live Demo
 
-[[https://davinali.github.io/internship-tracker](https://davina-li-01.github.io/internship-tracker/)]
+[https://davina-li-01.github.io/internship-tracker/](https://davina-li-01.github.io/internship-tracker/)
 
 You need to make a free account to use it. Your data is saved to the cloud so it won't disappear if you close the tab.
 
@@ -16,41 +18,47 @@ You need to make a free account to use it. Your data is saved to the cloud so it
 
 ## The idea
 
-Most people meet someone great at an event, say "let's keep in touch," and then never do. Not because they don't want to — because there's no system. InternTrack is that system:
+Most people meet someone great at an event, say "let's keep in touch," and then never do. Not because they don't want to — because there's no system. Orbit is that system:
 
-1. **Log the connection** while it's fresh — name, role, company, and what you talked about.
-2. **Pick a cadence** — how often you want to check in with this person.
-3. **Let the dashboard nag you** — a health bar per relationship shows who's healthy, who's fading, and who's overdue.
+1. **Log the connection** while it's fresh — name, role, company, industry, and what you talked about.
+2. **Pick a cadence** — how often you want to reach out to this person.
+3. **Let the dashboard nag you** — a health bar per relationship shows who you're in touch with, who needs reaching out to soon, and who's overdue.
+
+The name is the mechanic: a follow-up cadence is an orbital period. People come back around, and Orbit tells you when.
 
 ---
 
 ## Features
 
-- **Dashboard (mission control)** — network stats, plus health bars showing which relationships are healthy, fading, or overdue
-- **Quick add** — a **+** button in the bottom corner opens the capture widget from anywhere on the dashboard
-- **Chronological connection list** — everyone you've met, most recent touchpoint first, grouped by month
-- **Relationship health** — decays from 100% right after you talk to someone down to 0% when your chosen cadence has fully elapsed
-- **Follow-up cadences** — weekly, biweekly, monthly, quarterly, or a custom number of days
-- **Contact profiles** — conversation history, roles and companies over time, and a "things to bring up next" checklist
+- **Mission Control** — four status tiles, two health rings, and a breakdown bar showing exactly where your network stands
+- **Relationship health** — decays from 100% right after you talk to someone down to 0% as your chosen cadence runs out
+- **My Network** — everyone you know, searchable and filterable by industry and status
+- **Networking Log** — a chronological feed of every connection, grouped by month, with filters on the right
+- **Quick add** — a **+** button in the bottom right opens the capture widget from anywhere
+- **Connection profiles** — conversation history, roles and companies over time, industry tag, and a "things to bring up next" checklist
 - **Suggested talking points** — pulls action-y sentences out of your notes and past conversations
-- **Files** — upload PDFs and optionally link them to a person (nested under Networking in the sidebar)
+- **Files** — upload PDFs and optionally link them to a person, with search and filters
 - **Light and dark mode**
 
 ---
 
 ## How relationship health works
 
-Each contact you choose to track has a cadence (say, monthly = 30 days). Health is how much of that window is left:
+Every connection you give a cadence to (say, monthly = 30 days) gets a health score — how much of that window is left:
 
 ```
-health = (1 - days_since_last_contact / cadence_days) × 100
+health = (1 − days_since_last_contact / cadence_days) × 100
 ```
 
-- **60–100% — Healthy.** You're on track.
-- **25–59% — Fading.** The window is closing.
-- **0–24% — Overdue.** Reach out.
+| Band | Meaning |
+|---|---|
+| **In touch** | 60% or more of the window is left. You're current. |
+| **Reach out soon** | Under 60% left, but the deadline hasn't passed. |
+| **Overdue** | The cadence has fully elapsed. Reach out. |
 
-Contacts with no cadence aren't tracked and don't count toward your network health — the point is to be deliberate about who you're actively maintaining, not to feel guilty about everyone you've ever met.
+**Overdue means genuinely past due**, not just a low percentage. An 80-day-old contact on a 90-day cadence is down to 11% but still has 10 days left — calling that overdue would contradict the countdown right next to it.
+
+Connections with no cadence still appear everywhere; they just don't get a health score. The point is to be deliberate about who you're actively maintaining, not to feel guilty about everyone you've ever met.
 
 ---
 
@@ -73,6 +81,7 @@ Here's specifically how it helped:
 - Generated a lot of the JavaScript, especially the parts that talk to Supabase
 - Helped me debug things that weren't loading in the right order, and login problems
 - Helped scope the app down from an everything-tracker to a focused networking tool
+- Caught two bugs I couldn't see: a dashboard where the status label contradicted the countdown beside it, and a container with no CSS rule that made every card stack flush together
 - Suggested wording for reminder messages and empty state text
 
 I still had to review all the code, adjust it to fit my project, and make a lot of the decisions myself. AI wrote the first draft of a lot of things but I had to actually understand it and make it work together.
@@ -91,11 +100,15 @@ Free Supabase projects pause after about a week of inactivity, and a paused proj
 
 That's why `js/db.js` now shows a red banner when the backend is unreachable or a table is missing, instead of quietly rendering an empty page.
 
-**3. Doing too much**
+**3. "Public" bucket did not mean uploads worked**
+
+File uploads failed silently for a while. The storage bucket was marked public and I assumed that was enough — but public only controls *reading* a file from its URL. Uploading is an insert into `storage.objects`, which has Row Level Security turned on, and my bucket had zero policies. So every write was denied by default. Fixed by adding policies that let signed-in users write inside their own folder.
+
+**4. Doing too much**
 
 The first version had internships, daily logs, weekly manager update emails, resume bullet points, a calendar, and networking. It was confusing to use and confusing to build on. Cutting it back to just networking made every remaining screen better.
 
-**4. ES Modules not working locally**
+**5. ES Modules not working locally**
 
 My JavaScript uses ES Modules (the import/export system). This doesn't work if you just double-click the HTML file — you need a local server. I use VS Code's Live Server extension, or `python3 -m http.server`.
 
@@ -103,11 +116,13 @@ My JavaScript uses ES Modules (the import/export system). This doesn't work if y
 
 ## Future Improvements
 
-- Actually sending reminder emails instead of just showing them on screen
-- Importing contacts from LinkedIn
-- Charts showing how your network health trends over time
-- Making it installable on your phone and usable offline
-- A "starred / potential mentors" section (needs a `starred` column added to the `contacts` table first)
+See [ROADMAP.md](ROADMAP.md) for the full list. The big ones:
+
+- **Google Calendar auto-logging** — match calendar invites against saved emails so touchpoints log themselves, instead of relying on me to remember
+- **Real AI talking points** — the current suggestions are a keyword heuristic; a model would make them read like a person wrote them
+- Charts showing how network health trends over time
+- Importing connections from LinkedIn
+- A "key people" tier (needs a `starred` column on `contacts`)
 
 ---
 
@@ -115,10 +130,11 @@ My JavaScript uses ES Modules (the import/export system). This doesn't work if y
 
 ```
 internship-tracker/
-├── index.html        # Dashboard — network stats and health bars
-├── network.html      # Networking — capture widget + chronological list
-├── contact.html      # Individual contact profile
-├── files.html        # Files (nested under Networking)
+├── index.html        # Mission Control — stats, health rings, who to reach out to
+├── contacts.html     # My Network — everyone, searchable and filterable
+├── network.html      # Networking Log — capture widget + chronological feed
+├── files.html        # Files — upload and browse PDFs
+├── contact.html      # One connection's profile
 ├── auth.html         # Login and sign up
 ├── css/
 │   └── style.css     # All the styles
@@ -126,8 +142,9 @@ internship-tracker/
 │   ├── main.js       # All the UI logic, one init function per page
 │   ├── db.js         # Reading/writing Supabase
 │   └── supabase.js   # Supabase connection and auth helpers
-├── assets/
-│   └── images/
+├── supabase/
+│   └── storage-policies.sql
+├── ROADMAP.md
 └── README.md
 ```
 
@@ -137,4 +154,4 @@ Three tables in Supabase, all protected by Row Level Security:
 
 - **`contacts`** — one row per person. Their conversations, past companies, and follow-up talking points are stored as JSON columns.
 - **`storage_files`** — metadata for uploaded PDFs; the files themselves live in the `interntrack-files` storage bucket.
-- **`preferences`** — your name and email, used for drafting reminder messages.
+- **`preferences`** — your name and email, used to sign the draft messages Orbit writes.
