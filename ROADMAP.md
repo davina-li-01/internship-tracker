@@ -30,7 +30,7 @@ rely on the banner.
 
 ---
 
-### 5. 🔴 Replace the "Allow all (dev)" policies  ← SECURITY
+### ~~5. Replace the "Allow all (dev)" policies~~ ✅ done 2026-08-06
 `contacts`, `internships` and `logs` each carry a policy defined as
 `for all to public using (true) with check (true)`. That is no protection at all:
 anyone holding the publishable key — which ships in `js/supabase.js` and is served
@@ -39,9 +39,13 @@ publicly from GitHub Pages — can read, modify or delete every row.
 Demonstrated against a replica: before the fix a signed-in user could see another
 user's contacts; after it, each user sees only their own and anon sees nothing.
 
-Run `supabase/fix-rls.sql`. It also scopes the storage policies to each user's own
-folder (the dashboard-created ones only checked the bucket), makes `contacts.user_id`
-`not null` with a foreign key, and adds the missing index on it.
+Fixed by `supabase/fix-rls.sql`, which also scoped the storage policies to each user's
+own folder (the dashboard-created ones only checked the bucket), made `contacts.user_id`
+`not null` with a foreign key, and added the missing index on it.
+
+**Verified after running:** with only the publishable key and no session, all five
+tables return 0 rows and writes return HTTP 401. Before the fix, the same request
+returned live contact data.
 
 ---
 
