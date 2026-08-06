@@ -21,6 +21,49 @@ async function uid() {
 
 function dbErr(label, error) {
   console.error(`[DB] ${label}:`, error?.message || error);
+  reportBackendProblem(error);
+}
+
+// ─── Backend health banner ────────────────────────────────────────────────────
+// Every read path in this file returns [] or null when Supabase fails, so an
+// unreachable backend renders as a normal-looking empty app with nothing but a
+// console message. Surface the two failures that mean "the app cannot work"
+// rather than "you have no data yet", so they can't go unnoticed.
+
+let bannerShown = false;
+
+function reportBackendProblem(error) {
+  if (bannerShown || typeof document === "undefined") return;
+
+  const code = error?.code || "";
+  const message = String(error?.message || error || "");
+
+  // PGRST205/42P01: table missing — schema was never created or was lost.
+  // Match the table-specific phrasing only: PostgREST also says "schema cache"
+  // for a missing *column*, which is a different (and much smaller) problem.
+  const schemaMissing = code === "PGRST205" || code === "42P01"
+    || /could not find the table/i.test(message);
+  // supabase-js wraps DNS/offline failures as a generic fetch error.
+  const unreachable = /failed to fetch|networkerror|fetch failed/i.test(message);
+
+  if (!schemaMissing && !unreachable) return;
+  bannerShown = true;
+
+  const text = unreachable
+    ? "Can't reach the database. It may be paused — check your Supabase dashboard."
+    : "The database is reachable but its tables are missing. Run supabase/schema.sql in the Supabase SQL editor.";
+
+  const show = () => {
+    const el = document.createElement("div");
+    el.setAttribute("role", "alert");
+    el.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:9999;padding:12px 16px;"
+      + "background:#b42318;color:#fff;font:500 14px/1.4 Inter,system-ui,sans-serif;text-align:center";
+    el.textContent = text;
+    document.body.appendChild(el);
+  };
+
+  if (document.body) show();
+  else document.addEventListener("DOMContentLoaded", show, { once: true });
 }
 
 // ─── Preferences ──────────────────────────────────────────────────────────────
@@ -288,6 +331,11 @@ function contactToRow(contact, userId) {
     interests: contact.interests || "",
     reminder_enabled: contact.reminderEnabled || false,
     next_reminder: contact.nextReminder || null,
+    // NOTE: no `starred` here — the contacts table has no such column, so
+    // writing it would make every contact save fail. main.js has a full
+    // starring UI, so stars work until reload and then reset. To enable it:
+    //   alter table public.contacts add column starred boolean not null default false;
+    // then add `starred: contact.starred || false,` back to this object.
     interactions: contact.interactions || [],
     company_history: contact.companyHistory || [],
     follow_ups: contact.followUps || []

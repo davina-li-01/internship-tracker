@@ -10,9 +10,16 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
 const SUPABASE_URL = "https://kctmclcjqpytswwyewti.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtjdG1jbGNqcXB5dHN3d3lld3RpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NzEyMDMsImV4cCI6MjA5MjQ0NzIwM30.ujf0ntTY3jwByg-4dE2tl1lHMTrbsygflj0a2_ZZprs";
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Publishable key (new-style Supabase API key). This replaced the legacy anon
+// JWT when the project migrated to the new key system — the old key stopped
+// resolving to a usable role, so every request came back PGRST205 "table not
+// found in the schema cache" even though the tables were there all along.
+// Safe to commit: publishable keys are meant to ship in client-side code, and
+// access is still enforced by Row Level Security.
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_ufLO9d6dSo7y1PtkVyzp1g_6aSu8ud2";
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
 /** Returns the current session's user, or null */
 export async function getUser() {
