@@ -364,6 +364,56 @@ function getReminderStatus(contact) {
   return "ok";
 }
 
+/** Which cadence bucket a contact falls in, for filtering. */
+function cadenceKey(contact) {
+  const freq = contact.followUpFrequency || "none";
+  if (!contact.reminderEnabled || freq === "none") return "none";
+  return freq.startsWith("custom:") ? "custom" : freq;
+}
+
+// ── Shared filter definitions ─────────────────────────────────────────────────
+// Used by every page that lists connections, so the same question is asked the
+// same way everywhere.
+
+const CADENCE_FILTER = { key: "cadence", label: "Cadence", options: [
+  { value: "", label: "Any cadence" },
+  { value: "weekly", label: "Every week" },
+  { value: "biweekly", label: "Every 2 weeks" },
+  { value: "monthly", label: "Every month" },
+  { value: "bimonthly", label: "Every 2 months" },
+  { value: "quarterly", label: "Every 3 months" },
+  { value: "custom", label: "Custom" },
+  { value: "none", label: "No cadence set" }
+] };
+
+const STATUS_FILTER = { key: "status", label: "Connection health", options: [
+  { value: "", label: "Any health" },
+  { value: "good", label: "In touch" },
+  { value: "warning", label: "Reach out soon" },
+  { value: "critical", label: "Overdue" },
+  { value: "none", label: "Not measured" }
+] };
+
+/** Answers "who have I not spoken to in a while?" */
+const SILENCE_FILTER = { key: "silent", label: "Last spoke", options: [
+  { value: "", label: "Any time" },
+  { value: "30", label: "Over a month ago" },
+  { value: "90", label: "Over 3 months ago" },
+  { value: "180", label: "Over 6 months ago" },
+  { value: "365", label: "Over a year ago" }
+] };
+
+/** True when a contact passes the cadence / health / silence filters. */
+function matchesConnectionFilters(contact, { cadence, status, silent }) {
+  if (cadence && cadenceKey(contact) !== cadence) return false;
+  if (status && getHealth(contact).band !== status) return false;
+  if (silent) {
+    const elapsed = daysSince(contact.lastContacted || contact.dateMet);
+    if (elapsed === null || elapsed < Number(silent)) return false;
+  }
+  return true;
+}
+
 /** Scheduled connections that have slipped, most overdue first. */
 function needsAttention(contacts) {
   return contacts
@@ -1087,18 +1137,25 @@ async function initDashboard() {
     const counts = countByBand(contacts);
     const total = contacts.length;
     const scheduled = counts.good + counts.warning + counts.critical;
-    // Denominators are the WHOLE network, so the four tiles always add up to
-    // everyone you know — "0 of 0" was meaningless when nobody had a schedule.
+    // Denominators are the people you actually put on a cadence — those are the
+    // only ones these three states can apply to. Contacts with no cadence are
+    // not "failing", they are simply not being measured.
     const healthPct = scheduled ? Math.round((counts.good / scheduled) * 100) : 0;
-    const coveragePct = total ? Math.round((scheduled / total) * 100) : 0;
     const attention = needsAttention(contacts);
 
-    const kpiHtml = '<div class="kpi-row">'
-      + kpiTile("good", "In touch", counts.good, total, "on schedule and current")
-      + kpiTile("warning", "Reach out soon", counts.warning, total, "window closing")
-      + kpiTile("critical", "Overdue", counts.critical, total, "past due")
-      + kpiTile("none", "No schedule", counts.none, total, "not on a cadence")
-      + '</div>';
+    // With nothing scheduled the tiles would all read 0/0, which says nothing.
+    const kpiHtml = scheduled
+      ? '<div class="kpi-row">'
+        + kpiTile("good", "In touch", counts.good, scheduled, "on cadence and current")
+        + kpiTile("warning", "Reach out soon", counts.warning, scheduled, "window closing")
+        + kpiTile("critical", "Overdue", counts.critical, scheduled, "past due")
+        + '</div>'
+      : '<div class="card kpi-empty">'
+        + '<p class="kpi-empty-title">No cadences set yet</p>'
+        + '<p class="muted">You have ' + total + ' ' + (total === 1 ? "connection" : "connections") + '. '
+        + 'Open someone in <a href="contacts.html">My Network</a> and choose how often to reach out — '
+        + 'they will start showing up here.</p>'
+        + '</div>';
 
     // Each chart card is header + centred body, so all three share a baseline
     // and neither the ring nor the empty state gets pushed into a corner.
@@ -1111,23 +1168,16 @@ async function initDashboard() {
       + '<div class="chart-body">' + body + '</div>'
       + '</section>';
 
-    const chartsHtml = '<div class="chart-row">'
-      + chartCard("Network health", "Of those on a cadence, how many are current",
-          scheduled
-            ? ringHtml({ pct: healthPct,
-                         band: healthPct >= 60 ? "good" : healthPct >= 25 ? "warning" : "critical",
-                         caption: "In touch", sub: counts.good + " of " + scheduled })
-            : ringHtml({ pct: 0, band: "none", caption: "No cadences yet", sub: "Set one to begin" }))
-      + chartCard("Coverage", "How much of your network is on a cadence",
-          ringHtml({ pct: coveragePct, band: coveragePct > 0 ? "good" : "none",
-                     caption: "On a cadence", sub: scheduled + " of " + total }))
-      + chartCard("Breakdown", "Where your scheduled connections stand",
-          scheduled
-            ? splitBarHtml(counts)
-            : '<p class="empty chart-empty">No cadences set yet — '
-              + 'pick someone in <a href="contacts.html">My Network</a>.</p>',
-          "chart-card-wide")
-      + '</div>';
+    const chartsHtml = scheduled
+      ? '<div class="chart-row">'
+        + chartCard("Network health", "Of those on a cadence, how many are current",
+            ringHtml({ pct: healthPct,
+                       band: healthPct >= 60 ? "good" : healthPct >= 25 ? "warning" : "critical",
+                       caption: "In touch", sub: counts.good + " of " + scheduled }))
+        + chartCard("Breakdown", "Where your scheduled connections stand",
+            splitBarHtml(counts), "chart-card-wide")
+        + '</div>'
+      : "";
 
     const attentionHtml = '<section class="card dash-section">'
       + '<div class="dash-section-header">'
@@ -1171,14 +1221,10 @@ async function initMyNetwork() {
   barRoot.innerHTML = filterBarHtml({
     placeholder: "Search name, role, company, industry…",
     filters: [
-      { key: "industry", label: "Industry", options: [{ value: "", label: "All industries" }] },
-      { key: "status", label: "Reach-out status", options: [
-        { value: "", label: "Any status" },
-        { value: "good", label: "In touch" },
-        { value: "warning", label: "Reach out soon" },
-        { value: "critical", label: "Overdue" },
-        { value: "none", label: "No schedule" }
-      ] }
+      STATUS_FILTER,
+      CADENCE_FILTER,
+      SILENCE_FILTER,
+      { key: "industry", label: "Industry", options: [{ value: "", label: "All industries" }] }
     ]
   });
 
@@ -1192,11 +1238,12 @@ async function initMyNetwork() {
   }
 
   function render() {
-    const { q, industry, status } = bar.values();
+    const values = bar.values();
+    const { q, industry } = values;
 
     const people = cached.filter((c) => {
       if (industry && c.industry !== industry) return false;
-      if (status && getHealth(c).band !== status) return false;
+      if (!matchesConnectionFilters(c, values)) return false;
       if (!q) return true;
       return [c.name, c.role, c.company, c.industry, c.notes]
         .some((f) => f && f.toLowerCase().includes(q));
@@ -1248,14 +1295,10 @@ async function initNetworkingLog() {
   barRoot.innerHTML = filterBarHtml({
     placeholder: "Search name, role, company, notes…",
     filters: [
+      STATUS_FILTER,
+      CADENCE_FILTER,
+      SILENCE_FILTER,
       { key: "industry", label: "Industry", options: [{ value: "", label: "All industries" }] },
-      { key: "status", label: "Reach-out status", options: [
-        { value: "", label: "Any status" },
-        { value: "good", label: "In touch" },
-        { value: "warning", label: "Reach out soon" },
-        { value: "critical", label: "Overdue" },
-        { value: "none", label: "No schedule" }
-      ] },
       { key: "sort", label: "Sort by", options: [
         { value: "", label: "Most recent first" },
         { value: "oldest", label: "Oldest first" },
@@ -1279,11 +1322,12 @@ async function initNetworkingLog() {
   }
 
   function renderList() {
-    const { q: filterText, industry, status, sort } = bar.values();
+    const values = bar.values();
+    const { q: filterText, industry, sort } = values;
 
     let contacts = cached.filter((c) => {
       if (industry && c.industry !== industry) return false;
-      if (status && getHealth(c).band !== status) return false;
+      if (!matchesConnectionFilters(c, values)) return false;
       if (!filterText) return true;
       return [c.name, c.role, c.company, c.industry, c.notes]
         .some((f) => f && f.toLowerCase().includes(filterText));
