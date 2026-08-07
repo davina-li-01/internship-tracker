@@ -3322,3 +3322,81 @@ body.dark .kpi-empty a { color: var(--accent); }
   .kpi-row, .chart-row { grid-template-columns: 1fr; }
   .chart-card-wide { grid-column: 1; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Orbit — conversation logger
+   ═══════════════════════════════════════════════════════════════ */
+
+.cw-person { padding-bottom: 1rem; border-bottom: 1px dashed var(--hairline); }
+.cw-convo { padding-top: 1rem; }
+.cw-convo-head {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem 0.85rem; margin-bottom: 0.85rem;
+}
+.cw-convo-head .field-group { margin: 0; }
+.cw-notes { min-height: 7rem; }
+
+/* ── Name combobox ───────────────────────────────────────────── */
+.combo { position: relative; }
+.combo-list {
+  position: absolute; top: calc(100% + 0.3rem); left: 0; right: 0; z-index: 75;
+  margin: 0; padding: 0.25rem; list-style: none;
+  max-height: 260px; overflow-y: auto;
+  border-radius: 12px;
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  box-shadow: 0 12px 30px rgba(120,80,40,0.16);
+  backdrop-filter: var(--glass-blur);
+}
+body.dark .combo-list { box-shadow: 0 12px 30px rgba(0,0,0,0.5); }
+.combo-list[hidden] { display: none; }
+
+.combo-item {
+  display: flex; align-items: center; gap: 0.55rem;
+  padding: 0.45rem 0.5rem; border-radius: 8px; cursor: pointer;
+}
+.combo-item:hover,
+.combo-item[aria-selected="true"] { background: var(--row-hover); }
+.combo-avatar {
+  flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 0.62rem; font-weight: 700; color: #fff;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+}
+.combo-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.combo-name { font-size: 0.82rem; font-weight: 700; color: var(--text); }
+.combo-sub {
+  font-size: 0.7rem; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.combo-last { flex: 0 0 auto; font-size: 0.66rem; color: var(--text-faint); white-space: nowrap; }
+
+/* ── "Adding to X's history" banner ──────────────────────────── */
+.cw-linked {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 0.75rem; flex-wrap: wrap; margin: 0.85rem 0 0;
+  padding: 0.5rem 0.7rem; border-radius: 9px;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, transparent);
+  font-size: 0.76rem; color: var(--text);
+}
+.cw-linked.hidden { display: none; }
+.cw-unlink {
+  background: none; border: none; cursor: pointer; padding: 0;
+  font-family: inherit; font-size: 0.72rem; color: var(--primary-deep);
+  text-decoration: underline;
+}
+body.dark .cw-unlink { color: var(--accent); }
+
+/* Fields filled from an existing contact read as prefilled, not blank */
+.cw-prefilled { background: color-mix(in srgb, var(--primary) 5%, var(--input-bg)); }
+
+/* ── Log rows ────────────────────────────────────────────────── */
+.convo-count {
+  display: inline-block; margin-right: 0.35rem;
+  font-size: 0.66rem; font-weight: 700; color: var(--primary-deep);
+}
+body.dark .convo-count { color: var(--accent); }
+
+@media (max-width: 520px) {
+  .cw-convo-head { grid-template-columns: 1fr; }
+}

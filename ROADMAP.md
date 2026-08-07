@@ -69,7 +69,19 @@ The Security tab explains the options but nothing is wired. **Authenticator app 
 is free on Supabase and is the one worth building; SMS needs a paid provider and is
 weaker (SIM-swap).
 
-### 10. Smaller ideas
+### 10. PDF notes on a conversation
+Attach a PDF to a conversation entry — handwritten notes, a deck they shared, a
+one-pager. The plumbing already exists: `db.uploadFileToStorage()` takes a
+`contactId`, and the contact profile's conversation form already accepts a PDF.
+What is missing is the same field on the Networking Log's conversation logger, and
+showing attachments alongside the conversation in the history.
+
+### 11. Draft a thank-you from the conversation
+After logging a conversation, offer a thank-you message written from what you just
+wrote — not the generic reconnect template. Needs the same model call as #8, so build
+them together: one prompt path, two entry points.
+
+### 12. Smaller ideas
 - A `starred` / "key people" tier (needs `alter table contacts add column starred boolean`)
 - Trend over time: is my network getting healthier or worse?
 - Company logos on profiles (needs an external logo API — deliberately skipped)

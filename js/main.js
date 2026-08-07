@@ -364,6 +364,25 @@ function getReminderStatus(contact) {
   return "ok";
 }
 
+/**
+ * One-line preview of the most recent conversation, falling back to the
+ * contact-level note. The log is a record of conversations, so what was said
+ * most recently is the useful thing to surface.
+ */
+function conversationPreview(contact, limit = 150) {
+  const latest = (contact.interactions || [])
+    .filter((i) => i.notes)
+    .sort((a, b) => b.date.localeCompare(a.date))[0];
+  const text = latest?.notes || contact.notes || "";
+  if (!text) return "";
+  const count = (contact.interactions || []).length;
+  return '<p class="connection-note">'
+    + (latest ? '<span class="convo-count">' + count
+        + (count === 1 ? " conversation" : " conversations") + '</span> ' : '')
+    + escapeHtml(text.slice(0, limit)) + (text.length > limit ? "…" : "")
+    + '</p>';
+}
+
 /** Which cadence bucket a contact falls in, for filtering. */
 function cadenceKey(contact) {
   const freq = contact.followUpFrequency || "none";
@@ -839,27 +858,42 @@ function wireFilterBar(root, onChange) {
 // One form, used inline on the Networking Log and inside the dashboard modal.
 // Fields use classes, not ids, so two copies can coexist on a page.
 
-function contactWidgetHtml(contacts = []) {
+// ── Conversation widget ───────────────────────────────────────────────────────
+/**
+ * The conversation logger.
+ *
+ * One form for both jobs: if the name matches someone you already know, pick
+ * them from the dropdown and their details fill themselves in — all you write
+ * is the conversation. If they are new, you fill the details once and the first
+ * conversation is logged with them.
+ *
+ * Fields are addressed by class, not id, so the inline copy on the Networking
+ * Log and the copy inside the quick-add modal can coexist on one page.
+ */
+function conversationWidgetHtml() {
   const freqOptions = Object.entries(FREQUENCY_LABELS)
     .map(([v, l]) => '<option value="' + v + '"' + (v === "monthly" ? " selected" : "") + '>' + l + '</option>')
     .join("");
-  const listId = "cwCompanies_" + Math.random().toString(36).slice(2, 8);
 
-  // Six fields in two rows of three. Industry is set on the profile instead —
-  // it is rarely known at the moment you are capturing someone.
   return '<form class="cw-form" autocomplete="off">'
-    + companyDatalist(contacts, listId)
+
+    // ── Who ──────────────────────────────────────────────────────────────
+    + '<div class="cw-person">'
     + '<div class="cw-grid">'
-    + '<div class="field-group"><label>Name <span class="required">*</span></label>'
-    + '<input type="text" class="cw-name" placeholder="Full name" required /></div>'
+    + '<div class="field-group cw-name-field">'
+    + '<label>Who did you speak with? <span class="required">*</span></label>'
+    + '<div class="combo">'
+    + '<input type="text" class="cw-name" placeholder="Start typing a name…" required'
+    + ' role="combobox" aria-autocomplete="list" aria-expanded="false" />'
+    + '<ul class="combo-list" role="listbox" hidden></ul>'
+    + '</div>'
+    + '</div>'
     + '<div class="field-group"><label>Role / Title</label>'
     + '<input type="text" class="cw-role" placeholder="Product Manager" /></div>'
     + '<div class="field-group"><label>Company</label>'
-    + '<input type="text" class="cw-company" list="' + listId + '" placeholder="Where they work" /></div>'
+    + '<input type="text" class="cw-company" placeholder="Where they work" /></div>'
     + '<div class="field-group"><label>Email</label>'
     + '<input type="email" class="cw-email" placeholder="email@example.com" /></div>'
-    + '<div class="field-group"><label>When you connected <span class="required">*</span></label>'
-    + '<input type="date" class="cw-date" required /></div>'
     + '<div class="field-group"><label>Reach out again?</label>'
     + '<select class="cw-freq">' + freqOptions
     + '<option value="custom">Custom…</option></select>'
@@ -868,68 +902,226 @@ function contactWidgetHtml(contacts = []) {
     + '<span class="cw-custom-unit">days</span>'
     + '</div></div>'
     + '</div>'
-    + '<div class="field-group"><label>Notes — what to bring up next time</label>'
-    + '<textarea class="cw-notes" rows="2" placeholder="What you talked about, what they are working on, what to ask next…"></textarea></div>'
+    + '<p class="cw-linked hidden">'
+    + '<span class="cw-linked-text"></span>'
+    + '<button type="button" class="cw-unlink">Not them — start a new person</button>'
+    + '</p>'
+    + '</div>'
+
+    // ── The conversation ─────────────────────────────────────────────────
+    + '<div class="cw-convo">'
+    + '<div class="cw-convo-head">'
+    + '<div class="field-group"><label>When</label>'
+    + '<input type="date" class="cw-date" required /></div>'
+    + '<div class="field-group"><label>Type</label>'
+    + '<select class="cw-type">'
+    + INTERACTION_TYPES.map((t) => '<option value="' + t + '">' + t.charAt(0).toUpperCase() + t.slice(1) + '</option>').join("")
+    + '</select></div>'
+    + '</div>'
+    + '<div class="field-group"><label>What did you talk about?</label>'
+    + '<textarea class="cw-notes" rows="5" placeholder="What they are working on, what they said, anything you want to bring up next time…"></textarea></div>'
+    + '</div>'
+
     + '<p class="error cw-error" aria-live="polite"></p>'
     + '<p class="success cw-success" aria-live="polite"></p>'
-    + '<button type="submit" class="btn cw-submit">Add to network</button>'
+    + '<button type="submit" class="btn cw-submit">Save conversation</button>'
     + '</form>';
 }
 
-function wireContactWidget(root, onSaved) {
+/**
+ * @param getContacts  () => contacts, read fresh so the dropdown stays current
+ * @param onSaved      called after a successful save
+ */
+function wireConversationWidget(root, getContacts, onSaved) {
   const form = root.querySelector(".cw-form");
   if (!form) return;
 
-  const dateEl = form.querySelector(".cw-date");
+  const $ = (sel) => form.querySelector(sel);
+  const nameEl = $(".cw-name");
+  const listEl = $(".combo-list");
+  const linkedEl = $(".cw-linked");
+  const freqEl = $(".cw-freq");
+  const customWrap = $(".cw-custom");
+  const dateEl = $(".cw-date");
+
   if (dateEl && !dateEl.value) dateEl.value = todayDateString();
 
-  // "Custom…" reveals a day-count box right below the select.
-  const freqEl = form.querySelector(".cw-freq");
-  const customWrap = form.querySelector(".cw-custom");
+  let linkedId = null;   // set once an existing contact is chosen
+  let active = -1;       // highlighted row in the dropdown
+
   freqEl.addEventListener("change", () => {
     customWrap.classList.toggle("hidden", freqEl.value !== "custom");
-    if (freqEl.value === "custom") form.querySelector(".cw-custom-days").focus();
+    if (freqEl.value === "custom") $(".cw-custom-days").focus();
   });
 
+  // ── Autocomplete ─────────────────────────────────────────────────────
+  const closeList = () => {
+    listEl.hidden = true;
+    listEl.innerHTML = "";
+    active = -1;
+    nameEl.setAttribute("aria-expanded", "false");
+  };
+
+  const setLinked = (contact) => {
+    linkedId = contact ? contact.id : null;
+    linkedEl.classList.toggle("hidden", !contact);
+    if (contact) {
+      linkedEl.querySelector(".cw-linked-text").textContent =
+        "Adding to " + contact.name + "'s history — " +
+        (contact.interactions?.length || 0) + " conversation" +
+        ((contact.interactions?.length || 0) === 1 ? "" : "s") + " so far.";
+    }
+    // Details of a known person are theirs to correct, not to re-enter.
+    [".cw-role", ".cw-company", ".cw-email"].forEach((sel) =>
+      form.querySelector(sel).classList.toggle("cw-prefilled", Boolean(contact)));
+  };
+
+  const choose = (contact) => {
+    nameEl.value = contact.name;
+    $(".cw-role").value = contact.role || "";
+    $(".cw-company").value = contact.company || "";
+    $(".cw-email").value = contact.email || "";
+
+    // Mirror their existing cadence so saving does not silently change it.
+    const freq = contact.followUpFrequency || "none";
+    if (freq.startsWith("custom:")) {
+      freqEl.value = "custom";
+      customWrap.classList.remove("hidden");
+      $(".cw-custom-days").value = freq.slice(7);
+    } else {
+      freqEl.value = freq;
+      customWrap.classList.add("hidden");
+    }
+
+    setLinked(contact);
+    closeList();
+    $(".cw-notes").focus();
+  };
+
+  const renderList = () => {
+    const q = nameEl.value.trim().toLowerCase();
+    if (!q) return closeList();
+
+    const matches = (getContacts() || [])
+      .filter((c) => c.name && c.name.toLowerCase().includes(q))
+      .slice(0, 6);
+
+    if (!matches.length) return closeList();
+
+    listEl.innerHTML = matches.map((c, i) =>
+      '<li class="combo-item" role="option" data-id="' + escapeHtml(c.id) + '"'
+      + (i === active ? ' aria-selected="true"' : '') + '>'
+      + '<span class="combo-avatar" aria-hidden="true">' + escapeHtml(initialsFor(c.name)) + '</span>'
+      + '<span class="combo-main">'
+      + '<span class="combo-name">' + escapeHtml(c.name) + '</span>'
+      + '<span class="combo-sub">' + escapeHtml(c.role || "Role not set")
+      + (c.company ? " @ " + escapeHtml(c.company) : "") + '</span>'
+      + '</span>'
+      + '<span class="combo-last">' + escapeHtml(relativeDayLabel(c.lastContacted)) + '</span>'
+      + '</li>').join("");
+    listEl.hidden = false;
+    nameEl.setAttribute("aria-expanded", "true");
+
+    listEl.querySelectorAll(".combo-item").forEach((li) => {
+      li.addEventListener("mousedown", (e) => {
+        e.preventDefault();               // keep focus off the blur handler
+        const match = (getContacts() || []).find((c) => c.id === li.dataset.id);
+        if (match) choose(match);
+      });
+    });
+  };
+
+  nameEl.addEventListener("input", () => {
+    // Typing a different name means you are no longer editing that person.
+    if (linkedId) {
+      const linked = (getContacts() || []).find((c) => c.id === linkedId);
+      if (!linked || linked.name !== nameEl.value) setLinked(null);
+    }
+    renderList();
+  });
+
+  nameEl.addEventListener("keydown", (e) => {
+    const items = [...listEl.querySelectorAll(".combo-item")];
+    if (!items.length) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      active = e.key === "ArrowDown"
+        ? Math.min(active + 1, items.length - 1)
+        : Math.max(active - 1, 0);
+      items.forEach((li, i) => li.setAttribute("aria-selected", String(i === active)));
+      items[active].scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter" && active >= 0) {
+      e.preventDefault();
+      const match = (getContacts() || []).find((c) => c.id === items[active].dataset.id);
+      if (match) choose(match);
+    } else if (e.key === "Escape") {
+      closeList();
+    }
+  });
+
+  nameEl.addEventListener("blur", () => setTimeout(closeList, 120));
+  form.querySelector(".cw-unlink").addEventListener("click", () => {
+    setLinked(null);
+    nameEl.focus();
+  });
+
+  // ── Save ─────────────────────────────────────────────────────────────
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const errEl = form.querySelector(".cw-error");
-    const okEl = form.querySelector(".cw-success");
-    const submitBtn = form.querySelector(".cw-submit");
+    const errEl = $(".cw-error");
+    const okEl = $(".cw-success");
+    const submitBtn = $(".cw-submit");
     errEl.textContent = "";
     okEl.textContent = "";
 
-    let frequency = form.querySelector(".cw-freq").value || "none";
+    const name = nameEl.value.trim();
+    if (!name) { errEl.textContent = "Who did you speak with?"; return; }
+
+    const when = dateEl.value || todayDateString();
+    let frequency = freqEl.value || "none";
     if (frequency === "custom") {
-      const days = parseInt(form.querySelector(".cw-custom-days").value, 10);
+      const days = parseInt($(".cw-custom-days").value, 10);
       if (Number.isNaN(days) || days < 1) {
         errEl.textContent = "Enter how many days between reach-outs.";
         return;
       }
       frequency = "custom:" + days;
     }
-    const connectedOn = form.querySelector(".cw-date").value || todayDateString();
+
+    const notes = $(".cw-notes").value.trim();
+    const interaction = normalizeInteraction({ date: when, type: $(".cw-type").value, notes });
+
+    const existing = linkedId ? (getContacts() || []).find((c) => c.id === linkedId) : null;
+
+    const base = existing || {};
+    const merged = [interaction, ...(existing?.interactions || [])]
+      .sort((a, b) => b.date.localeCompare(a.date));
+    const wasOff = !existing || !existing.reminderEnabled || existing.followUpFrequency === "none";
+
     const contact = normalizeContact({
-      name: form.querySelector(".cw-name").value,
-      role: form.querySelector(".cw-role").value,
-      company: form.querySelector(".cw-company").value,
-      email: form.querySelector(".cw-email").value,
-      dateMet: connectedOn,
-      lastContacted: connectedOn,
+      ...base,
+      name,
+      role: $(".cw-role").value,
+      company: $(".cw-company").value,
+      email: $(".cw-email").value,
+      dateMet: existing?.dateMet || when,
+      interactions: merged,
+      lastContacted: merged[0].date,
       followUpFrequency: frequency,
       reminderEnabled: frequency !== "none",
-      notes: form.querySelector(".cw-notes").value,
-      interactions: []
+      // A conversation puts the relationship on its normal rhythm. The grace
+      // window only applies when a cadence is switched on without one.
+      nextReminder: frequency === "none" ? ""
+        : (notes || !wasOff)
+          ? calculateNextReminder(merged[0].date, frequency)
+          : firstDeadlineFor(merged[0].date, frequency)
     });
-
-    if (!contact.name) { errEl.textContent = "A name is required."; return; }
-    if (!contact.dateMet) { errEl.textContent = "Please set when you connected."; return; }
 
     submitBtn.disabled = true;
     submitBtn.textContent = "Saving…";
     const saved = await db.saveContact(contact);
     submitBtn.disabled = false;
-    submitBtn.textContent = "Add to network";
+    submitBtn.textContent = "Save conversation";
 
     if (!saved) {
       errEl.textContent = "Could not save. Open the console (F12) for the Supabase error.";
@@ -937,9 +1129,13 @@ function wireContactWidget(root, onSaved) {
     }
 
     form.reset();
-    if (dateEl) dateEl.value = todayDateString();
-    okEl.textContent = contact.name + " added to your network.";
-    setTimeout(() => { okEl.textContent = ""; }, 3000);
+    dateEl.value = todayDateString();
+    customWrap.classList.add("hidden");
+    setLinked(null);
+    okEl.textContent = existing
+      ? "Conversation added to " + name + "."
+      : name + " added, with your first conversation.";
+    setTimeout(() => { okEl.textContent = ""; }, 3500);
     if (onSaved) await onSaved(saved);
   });
 }
@@ -952,10 +1148,10 @@ function openQuickAddModal(contacts, onSaved) {
   modal.className = "modal-overlay";
   modal.innerHTML = '<div class="modal-card quick-add-card">'
     + '<div class="quick-add-header">'
-    + '<h3>Add someone to your network</h3>'
+    + '<h3>Log a conversation</h3>'
     + '<button class="icon-btn" id="quickAddClose" type="button" aria-label="Close">✕</button>'
     + '</div>'
-    + contactWidgetHtml(contacts)
+    + conversationWidgetHtml()
     + '</div>';
   document.body.appendChild(modal);
 
@@ -963,12 +1159,15 @@ function openQuickAddModal(contacts, onSaved) {
   modal.querySelector("#quickAddClose").addEventListener("click", close);
   modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
   document.addEventListener("keydown", function onEsc(e) {
-    if (e.key === "Escape") { close(); document.removeEventListener("keydown", onEsc); }
+    if (e.key === "Escape" && !modal.querySelector(".combo-list:not([hidden])")) {
+      close();
+      document.removeEventListener("keydown", onEsc);
+    }
   });
 
-  wireContactWidget(modal, async (saved) => {
+  wireConversationWidget(modal, () => contacts, async (saved) => {
     if (onSaved) await onSaved(saved);
-    setTimeout(close, 900);
+    setTimeout(close, 1100);
   });
   modal.querySelector(".cw-name")?.focus();
 }
@@ -1391,17 +1590,13 @@ async function initNetworkingLog() {
       + '<p class="tiny">' + escapeHtml(contact.role || "Role not set")
       + (contact.company ? ' @ <strong>' + escapeHtml(contact.company) + '</strong>' : '') + '</p>'
       + (contact.industry ? '<span class="token token-industry">' + escapeHtml(contact.industry) + '</span>' : '')
-      + (contact.notes
-        ? '<p class="connection-note">' + escapeHtml(contact.notes.slice(0, 140))
-          + (contact.notes.length > 140 ? '…' : '') + '</p>'
-        : '')
+      + conversationPreview(contact)
       + '</div>'
       + '</li>';
   }
 
-  const seed = (await db.getContacts()) || [];
-  widgetRoot.innerHTML = contactWidgetHtml(seed);
-  wireContactWidget(widgetRoot, reload);
+  widgetRoot.innerHTML = conversationWidgetHtml();
+  wireConversationWidget(widgetRoot, () => cached, reload);
 
   await reload();
 }
