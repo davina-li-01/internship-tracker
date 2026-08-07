@@ -170,10 +170,20 @@ function getHealth(contact) {
   // daysSince is negative for future dates, so this is "days until the deadline".
   const daysLeft = -daysSince(next);
   const pct = Math.max(0, Math.min(100, Math.round((daysLeft / window) * 100)));
+
+  // Three rules, in order:
+  //  - past the deadline is overdue, full stop
+  //  - inside a grace window you still owe someone a first reach-out, so it is
+  //    never "in touch" no matter how much of the window is left. That keeps it
+  //    on the dashboard's "Reach out next" list until you confirm you reached
+  //    out, which is the whole point of granting the window.
+  //  - otherwise it is the ordinary countdown
   // "Overdue" must mean the deadline actually passed, not merely that the
   // remaining percentage is small. A 90-day cadence at day 80 is down to 11%
   // but still has 10 days left — calling that overdue contradicts the detail.
-  const band = daysLeft < 0 ? "critical" : pct >= 60 ? "good" : "warning";
+  const band = daysLeft < 0 ? "critical"
+    : grace ? "warning"
+    : pct >= 60 ? "good" : "warning";
 
   return { scheduled: true, pct, band, elapsed, interval, daysLeft, grace };
 }
