@@ -2852,3 +2852,242 @@ body.dark .chart-empty a { color: var(--accent); }
   .kpi-row, .chart-row { grid-template-columns: 1fr; }
   .chart-card-wide { grid-column: span 1; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Orbit — filter bar, alpha headers, document grid, profile menu
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Filter bar: search | funnel ─────────────────────────────── */
+.filter-bar {
+  display: flex; align-items: center; gap: 0.6rem;
+  margin-bottom: 1.1rem; flex-wrap: nowrap;
+}
+.fb-search {
+  flex: 1 1 auto; min-width: 0;
+  padding: 0.6rem 0.95rem; font-size: 0.88rem;
+}
+.fb-anchor { position: relative; flex: 0 0 auto; }
+
+.fb-toggle {
+  position: relative;
+  display: grid; place-items: center;
+  width: 40px; height: 40px;
+  border-radius: 11px; cursor: pointer;
+  background: none; border: 1px solid var(--input-border);
+  color: var(--text-muted);
+  transition: background var(--trans), color var(--trans), border-color var(--trans);
+}
+.fb-toggle svg { stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; fill: none; }
+.fb-toggle:hover { color: var(--text); background: var(--row-hover); }
+.fb-toggle.fb-active {
+  color: var(--primary-deep); border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+body.dark .fb-toggle.fb-active { color: var(--accent); }
+
+.fb-badge {
+  position: absolute; top: -5px; right: -5px;
+  min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--primary); color: #fff;
+  font-size: 0.6rem; font-weight: 800; line-height: 16px; text-align: center;
+}
+
+.fb-pop {
+  position: absolute; top: calc(100% + 0.5rem); right: 0; z-index: 70;
+  width: min(300px, calc(100vw - 2rem));
+  padding: 1rem;
+  border-radius: 14px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 12px 34px rgba(120,80,40,0.16);
+  backdrop-filter: var(--glass-blur);
+  display: flex; flex-direction: column; gap: 0.75rem;
+}
+body.dark .fb-pop { box-shadow: 0 12px 34px rgba(0,0,0,0.5); }
+.fb-pop[hidden] { display: none; }
+.fb-pop-head { display: flex; align-items: center; justify-content: space-between; }
+.fb-pop-head h3 {
+  margin: 0; font-size: 0.7rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint);
+}
+.fb-pop .field-group { margin: 0; }
+.fb-pop select { width: 100%; }
+.fb-count { flex: 0 0 auto; font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
+
+/* ── A–Z section headers ─────────────────────────────────────── */
+.alpha-header {
+  display: flex; align-items: center; gap: 0.6rem;
+  margin: 0.9rem 0 0.15rem; padding: 0;
+  font-size: 0.72rem; font-weight: 800; color: var(--primary-deep);
+  letter-spacing: 0.06em;
+}
+.alpha-header:first-child { margin-top: 0; }
+.alpha-header span {
+  flex: 0 0 auto;
+  display: grid; place-items: center;
+  width: 22px; height: 22px; border-radius: 7px;
+  background: color-mix(in srgb, var(--primary) 13%, transparent);
+}
+.alpha-header::after {
+  content: ""; flex: 1; height: 1px; background: var(--hairline);
+}
+body.dark .alpha-header { color: var(--accent); }
+
+/* ── Document grid ───────────────────────────────────────────── */
+.doc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 1.1rem;
+}
+.doc-tile {
+  display: flex; flex-direction: column;
+  border-radius: 12px; overflow: hidden;
+  background: var(--row-bg); border: 1px solid var(--hairline);
+  transition: border-color var(--trans), box-shadow var(--trans);
+}
+.doc-tile:hover { border-color: var(--primary); box-shadow: 0 6px 18px rgba(120,80,40,0.12); }
+body.dark .doc-tile:hover { box-shadow: 0 6px 18px rgba(0,0,0,0.4); }
+
+.doc-preview {
+  position: relative; height: 190px; cursor: pointer;
+  background: #fff; overflow: hidden;
+  border-bottom: 1px solid var(--hairline);
+}
+.doc-preview-frame {
+  width: 100%; height: 260px; border: 0;
+  pointer-events: none; /* clicks belong to the tile, not the embedded viewer */
+}
+.doc-preview-fallback {
+  height: 100%; display: grid; place-items: center; font-size: 2.2rem; background: var(--row-bg);
+}
+/* Transparent cover so the <object> never swallows the click */
+.doc-preview-veil { position: absolute; inset: 0; }
+.doc-preview:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+
+.doc-foot { padding: 0.6rem 0.7rem 0.7rem; display: flex; flex-direction: column; gap: 0.15rem; }
+.doc-name {
+  margin: 0; font-size: 0.82rem; font-weight: 700; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.doc-meta {
+  margin: 0; font-size: 0.7rem; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.doc-rename-input {
+  width: 100%; font-size: 0.82rem; font-weight: 700;
+  padding: 0.15rem 0.35rem; margin: -0.15rem 0;
+}
+.doc-actions { display: flex; gap: 0.3rem; margin-top: 0.45rem; }
+.doc-act {
+  flex: 1; cursor: pointer;
+  background: none; border: 1px solid var(--hairline); border-radius: 7px;
+  font-size: 0.68rem; font-family: inherit; padding: 0.25rem 0.3rem; color: var(--text-muted);
+  transition: color var(--trans), background var(--trans), border-color var(--trans);
+}
+.doc-act:hover { color: var(--text); background: var(--row-hover); }
+.doc-delete { flex: 0 0 28px; }
+.doc-delete:hover { color: var(--danger); border-color: var(--danger); }
+
+/* ── Capture widget: 3 per row, matching the notes box ───────── */
+.cw-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.7rem 0.85rem; }
+.cw-form > .field-group { margin-top: 0.85rem; }
+.cw-form .cw-submit { margin-top: 0.85rem; }
+.cw-form .error:empty, .cw-form .success:empty { display: none; margin: 0; }
+
+@media (max-width: 760px) { .cw-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .cw-grid { grid-template-columns: 1fr; } }
+
+/* ── Profile button + menu ───────────────────────────────────── */
+.sidebar-footer { position: relative; }
+.profile-btn {
+  width: 100%; display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.5rem 0.55rem; border-radius: 11px; cursor: pointer;
+  background: none; border: 1px solid transparent; font-family: inherit;
+  text-align: left; transition: background var(--trans), border-color var(--trans);
+}
+.profile-btn:hover { background: var(--row-hover); border-color: var(--hairline); }
+.profile-initials {
+  flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 0.7rem; font-weight: 700; color: #fff;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+}
+.profile-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.profile-name {
+  font-size: 0.8rem; font-weight: 700; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.profile-sub {
+  font-size: 0.68rem; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.profile-chevron { flex: 0 0 auto; font-size: 0.6rem; color: var(--text-faint); }
+
+.profile-menu {
+  position: absolute; bottom: calc(100% + 0.4rem); left: 0; right: 0; z-index: 80;
+  padding: 0.35rem;
+  border-radius: 12px;
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  box-shadow: 0 12px 34px rgba(120,80,40,0.18);
+  backdrop-filter: var(--glass-blur);
+  display: flex; flex-direction: column; gap: 0.1rem;
+}
+body.dark .profile-menu { box-shadow: 0 12px 34px rgba(0,0,0,0.55); }
+.pm-item {
+  display: flex; align-items: center; gap: 0.55rem;
+  padding: 0.5rem 0.6rem; border-radius: 8px; cursor: pointer;
+  background: none; border: none; font-family: inherit;
+  font-size: 0.82rem; color: var(--text); text-align: left; width: 100%;
+}
+.pm-item:hover { background: var(--row-hover); }
+.pm-icon { width: 16px; text-align: center; color: var(--text-muted); font-size: 0.8rem; }
+.pm-rule { margin: 0.2rem 0.3rem; border: 0; border-top: 1px solid var(--hairline); }
+.pm-danger { color: var(--danger); }
+.pm-danger .pm-icon { color: var(--danger); }
+
+/* Collapsed rail: avatar only */
+.sidebar.collapsed .profile-meta,
+.sidebar.collapsed .profile-chevron { display: none; }
+.sidebar.collapsed .profile-btn { justify-content: center; padding: 0.4rem 0; }
+.sidebar.collapsed .profile-menu { left: 0; right: auto; width: 190px; }
+
+/* ── Settings modal ──────────────────────────────────────────── */
+.settings-card { max-width: 480px; width: 100%; text-align: left; }
+.settings-intro { margin: 0 0 1rem; font-size: 0.8rem; }
+.settings-tabs {
+  display: flex; gap: 0.2rem; margin-bottom: 1.1rem;
+  border-bottom: 1px solid var(--hairline);
+}
+.settings-tab {
+  background: none; border: none; cursor: pointer; font-family: inherit;
+  font-size: 0.82rem; font-weight: 600; color: var(--text-muted);
+  padding: 0.5rem 0.75rem; border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.settings-tab:hover { color: var(--text); }
+.settings-tab[aria-selected="true"] { color: var(--primary-deep); border-bottom-color: var(--primary); }
+body.dark .settings-tab[aria-selected="true"] { color: var(--accent); }
+
+.settings-panel { display: none; }
+.settings-panel.active { display: block; }
+.settings-panel .field-group { margin-bottom: 0.9rem; }
+.settings-panel .btn { width: 100%; }
+.settings-panel .success:empty, .settings-panel .error:empty { display: none; }
+.settings-h4 { margin: 0 0 0.7rem; font-size: 0.85rem; font-weight: 700; }
+.settings-rule { margin: 1.4rem 0 1.1rem; border: 0; border-top: 1px solid var(--hairline); }
+.settings-note { margin: 0 0 0.6rem; font-size: 0.78rem; color: var(--text-muted); }
+.settings-list { margin: 0 0 1rem; padding-left: 1.1rem; font-size: 0.78rem; color: var(--text-muted); line-height: 1.6; }
+.settings-list strong { color: var(--text); }
+.field-hint { margin: 0.3rem 0 0; font-size: 0.7rem; color: var(--text-muted); line-height: 1.45; }
+
+@media (max-width: 560px) {
+  .filter-bar { flex-wrap: wrap; }
+  .fb-count { width: 100%; }
+  .doc-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.8rem; }
+  .doc-preview { height: 150px; }
+}
+
+/* Tiles share a row height, so footers and action rows line up across the grid */
+.doc-tile { height: 100%; }
+.doc-foot { flex: 1; }
+.doc-actions { margin-top: auto; padding-top: 0.45rem; }

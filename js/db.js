@@ -79,13 +79,38 @@ export async function getPreferences() {
   return data || {};
 }
 
+// your_email and phone are newer columns. If the database predates them the
+// upsert fails with PGRST204; rather than losing the whole save we drop the
+// offending key and retry, so an unrun migration costs one field, not all of them.
+const OPTIONAL_PREF_COLUMNS = ["your_email", "phone"];
+
 export async function savePreferences(updates) {
   const userId = await uid();
-  if (!userId) return;
-  const { error } = await supabase
-    .from("preferences")
-    .upsert({ user_id: userId, ...updates }, { onConflict: "user_id" });
-  if (error) dbErr("savePreferences", error);
+  if (!userId) return { ok: false, skipped: [] };
+
+  const row = { user_id: userId, ...updates };
+  const skipped = [];
+
+  for (let attempt = 0; attempt <= OPTIONAL_PREF_COLUMNS.length; attempt++) {
+    const { error } = await supabase
+      .from("preferences")
+      .upsert(row, { onConflict: "user_id" });
+
+    if (!error) return { ok: true, skipped };
+
+    const missing = OPTIONAL_PREF_COLUMNS.find(
+      (col) => col in row && isMissingColumn(error, col)
+    );
+    if (!missing) { dbErr("savePreferences", error); return { ok: false, skipped }; }
+
+    console.warn(
+      `[DB] preferences.${missing} is missing — saving without it. ` +
+      "Run supabase/add-settings-columns.sql to enable it."
+    );
+    delete row[missing];
+    skipped.push(missing);
+  }
+  return { ok: false, skipped };
 }
 
 // ─── Contacts ─────────────────────────────────────────────────────────────────
@@ -107,9 +132,17 @@ export async function getContacts() {
 // missing migration costs you the industry tag rather than the whole save.
 let industrySupported = true;
 
+/**
+ * True when `error` says this specific column is missing.
+ * PostgREST names it: "Could not find the 'phone' column of 'preferences'…".
+ * Matching on the name matters — keying off code PGRST204 alone would match any
+ * missing column and make the retry loop drop the wrong field.
+ */
 function isMissingColumn(error, column) {
   const message = String(error?.message || "");
-  return error?.code === "PGRST204" || new RegExp(`'${column}' column`, "i").test(message);
+  if (new RegExp(`'${column}'`, "i").test(message)) return true;
+  // Fall back to the code only when the message names no column at all.
+  return error?.code === "PGRST204" && !/'[a-z_]+'/i.test(message);
 }
 
 export async function saveContact(contact) {
@@ -274,6 +307,27 @@ export async function fetchStorageFilesByContact(contactId) {
     .order("created_at", { ascending: false });
   if (error) { dbErr("fetchStorageFilesByContact", error); return []; }
   return (data || []).map(rowToStorageFile);
+}
+
+/**
+ * Rename a file's display name. Only the `storage_files` row changes — the
+ * object keeps its original storage path, so existing public URLs keep working.
+ */
+export async function renameStorageFile(fileId, newName) {
+  const userId = await uid();
+  if (!userId || !fileId) return null;
+  const name = String(newName || "").trim();
+  if (!name) return null;
+
+  const { data, error } = await supabase
+    .from("storage_files")
+    .update({ name })
+    .eq("id", fileId)
+    .eq("user_id", userId)
+    .select()
+    .single();
+  if (error) { dbErr("renameStorageFile", error); return null; }
+  return rowToStorageFile(data);
 }
 
 /** Delete a storage file from both the bucket and the database. */

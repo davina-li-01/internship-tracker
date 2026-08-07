@@ -427,20 +427,7 @@ function applyTheme() {
     || localStorage.getItem("interntrack_theme")
     || "light";
   document.body.classList.toggle("dark", theme === "dark");
-  const toggle = document.getElementById("themeToggle");
-  if (toggle) toggle.textContent = theme === "dark" ? "Light Mode" : "Dark Mode";
   document.documentElement.style.colorScheme = theme;
-}
-
-function initThemeToggle() {
-  const toggle = document.getElementById("themeToggle");
-  if (!toggle) return;
-  applyTheme();
-  toggle.addEventListener("click", () => {
-    const next = document.body.classList.contains("dark") ? "light" : "dark";
-    localStorage.setItem("orbit_theme", next);
-    applyTheme();
-  });
 }
 
 // ── Talking-point suggestions ─────────────────────────────────────────────────
@@ -507,39 +494,94 @@ function renderFollowUpItems(followUps) {
   ].join("\n")).join("\n");
 }
 
+/**
+ * A document tile: rendered page preview on top, name and actions underneath.
+ * The preview is an <object> pointing at the PDF — browsers render page one
+ * natively, so there is no PDF library to load.
+ */
 function renderStorageFileCard(file, contact) {
   const dateStr = file.createdAt ? new Date(file.createdAt).toLocaleDateString() : "";
-  return '<div class="file-card" data-file-id="' + escapeHtml(file.id) + '">'
-    + '<div class="file-card-icon">📄</div>'
-    + '<div class="file-card-body">'
-    + '<p class="file-card-name" title="' + escapeHtml(file.name) + '">' + escapeHtml(file.name) + '</p>'
-    + (contact
-      ? '<p class="file-card-link">' + escapeHtml(contact.name)
-        + (contact.company ? ' · ' + escapeHtml(contact.company) : '') + '</p>'
-      : '<p class="file-card-link muted">Not linked</p>')
-    + (dateStr ? '<p class="file-card-date">' + dateStr + '</p>' : '')
+  const previewUrl = file.fileUrl
+    ? escapeHtml(file.fileUrl) + "#toolbar=0&navpanes=0&scrollbar=0&view=FitH"
+    : "";
+  return '<article class="doc-tile" data-file-id="' + escapeHtml(file.id) + '">'
+    + '<div class="doc-preview" role="button" tabindex="0"'
+    + ' data-file-url="' + escapeHtml(file.fileUrl) + '" aria-label="Open ' + escapeHtml(file.name) + '">'
+    + (previewUrl
+      ? '<object class="doc-preview-frame" data="' + previewUrl + '" type="application/pdf">'
+        + '<div class="doc-preview-fallback">📄</div></object>'
+      : '<div class="doc-preview-fallback">📄</div>')
+    + '<span class="doc-preview-veil"></span>'
     + '</div>'
-    + '<div class="file-card-actions">'
-    + '<button class="file-action-btn file-open-btn" type="button"'
-    + ' data-file-url="' + escapeHtml(file.fileUrl) + '" title="Open file">Open</button>'
-    + '<button class="file-action-btn file-delete-btn" type="button"'
-    + ' data-file-id="' + escapeHtml(file.id) + '"'
-    + ' data-storage-path="' + escapeHtml(file.storagePath) + '" title="Delete file">✕</button>'
+    + '<div class="doc-foot">'
+    + '<p class="doc-name" title="' + escapeHtml(file.name) + '">' + escapeHtml(file.name) + '</p>'
+    + '<p class="doc-meta">'
+    + (contact ? escapeHtml(contact.name) : '<span class="muted">Not linked</span>')
+    + (dateStr ? ' · ' + dateStr : '')
+    + '</p>'
+    + '<div class="doc-actions">'
+    + '<button class="doc-act doc-rename" type="button" data-file-id="' + escapeHtml(file.id) + '"'
+    + ' data-file-name="' + escapeHtml(file.name) + '" title="Rename">Rename</button>'
+    + '<button class="doc-act doc-open" type="button" data-file-url="' + escapeHtml(file.fileUrl) + '" title="Open">Open</button>'
+    + '<button class="doc-act doc-delete" type="button" data-file-id="' + escapeHtml(file.id) + '"'
+    + ' data-storage-path="' + escapeHtml(file.storagePath) + '" title="Delete">✕</button>'
     + '</div>'
-    + '</div>';
+    + '</div>'
+    + '</article>';
 }
 
-function attachStorageFileCardListeners(container, onDelete) {
-  container.querySelectorAll(".file-open-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (btn.dataset.fileUrl) window.open(btn.dataset.fileUrl, "_blank");
+function attachStorageFileCardListeners(container, onChange) {
+  const open = (url) => { if (url) window.open(url, "_blank"); };
+
+  container.querySelectorAll(".doc-preview").forEach((el) => {
+    el.addEventListener("click", () => open(el.dataset.fileUrl));
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(el.dataset.fileUrl); }
     });
   });
-  container.querySelectorAll(".file-delete-btn").forEach((btn) => {
+  container.querySelectorAll(".doc-open").forEach((btn) => {
+    btn.addEventListener("click", () => open(btn.dataset.fileUrl));
+  });
+
+  container.querySelectorAll(".doc-rename").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tile = btn.closest(".doc-tile");
+      const nameEl = tile.querySelector(".doc-name");
+      if (tile.querySelector(".doc-rename-input")) return;
+
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "doc-rename-input";
+      input.value = btn.dataset.fileName;
+      input.setAttribute("aria-label", "File name");
+      nameEl.replaceWith(input);
+      input.focus();
+      input.select();
+
+      let settled = false;
+      const finish = async (save) => {
+        if (settled) return;
+        settled = true;
+        const next = input.value.trim();
+        if (save && next && next !== btn.dataset.fileName) {
+          const updated = await db.renameStorageFile(btn.dataset.fileId, next);
+          if (updated && onChange) { await onChange(); return; }
+        }
+        input.replaceWith(nameEl);
+      };
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); finish(true); }
+        if (e.key === "Escape") { e.preventDefault(); finish(false); }
+      });
+      input.addEventListener("blur", () => finish(true));
+    });
+  });
+
+  container.querySelectorAll(".doc-delete").forEach((btn) => {
     btn.addEventListener("click", async () => {
       if (!window.confirm("Delete this file? This cannot be undone.")) return;
       await db.deleteStorageFile(btn.dataset.fileId, btn.dataset.storagePath);
-      if (onDelete) await onDelete();
+      if (onChange) await onChange();
     });
   });
 }
@@ -585,6 +627,114 @@ function industryDatalist(contacts, id) {
     + '</datalist>';
 }
 
+// ── Filter bar ────────────────────────────────────────────────────────────────
+// Search field + funnel button that opens a card of filters. Shared by My
+// Network, the Networking Log and Files so all three behave identically.
+
+/**
+ * @param opts.placeholder  search input placeholder
+ * @param opts.filters      [{ key, label, options:[{value,label}] }]
+ */
+function filterBarHtml({ placeholder, filters }) {
+  return '<div class="filter-bar">'
+    + '<input type="search" class="fb-search" placeholder="' + escapeHtml(placeholder) + '"'
+    + ' aria-label="' + escapeHtml(placeholder) + '" />'
+    + '<div class="fb-anchor">'
+    + '<button class="fb-toggle" type="button" aria-expanded="false" aria-haspopup="dialog" title="Filters">'
+    + '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">'
+    + '<line x1="2" y1="4" x2="14" y2="4" /><line x1="4" y1="8" x2="12" y2="8" />'
+    + '<line x1="6" y1="12" x2="10" y2="12" /></svg>'
+    + '<span class="visually-hidden">Filters</span>'
+    + '<span class="fb-badge" hidden></span>'
+    + '</button>'
+    + '<div class="fb-pop" role="dialog" aria-label="Filters" hidden>'
+    + '<div class="fb-pop-head"><h3>Filters</h3>'
+    + '<button class="icon-btn fb-close" type="button" aria-label="Close">✕</button></div>'
+    + filters.map((f) =>
+        '<div class="field-group"><label for="fb-' + f.key + '">' + escapeHtml(f.label) + '</label>'
+        + '<select id="fb-' + f.key + '" data-filter-key="' + f.key + '">'
+        + f.options.map((o) => '<option value="' + escapeHtml(o.value) + '">' + escapeHtml(o.label) + '</option>').join("")
+        + '</select></div>').join("")
+    + '<button class="btn btn-secondary btn-sm fb-clear" type="button">Clear all</button>'
+    + '</div>'
+    + '</div>'
+    + '<span class="fb-count"></span>'
+    + '</div>';
+}
+
+/**
+ * Wires a filter bar. `onChange` receives { q, <filterKey>: value, … }.
+ * Returns { setOptions, setCount, values } for the host page to drive.
+ */
+function wireFilterBar(root, onChange) {
+  const bar = root.querySelector(".filter-bar");
+  if (!bar) return null;
+
+  const search = bar.querySelector(".fb-search");
+  const toggle = bar.querySelector(".fb-toggle");
+  const pop = bar.querySelector(".fb-pop");
+  const badge = bar.querySelector(".fb-badge");
+  const countEl = bar.querySelector(".fb-count");
+  const selects = [...bar.querySelectorAll("[data-filter-key]")];
+
+  const values = () => {
+    const out = { q: search.value.trim().toLowerCase() };
+    selects.forEach((s) => { out[s.dataset.filterKey] = s.value; });
+    return out;
+  };
+
+  const refreshBadge = () => {
+    const active = selects.filter((s) => s.value).length;
+    badge.hidden = active === 0;
+    badge.textContent = String(active);
+    toggle.classList.toggle("fb-active", active > 0);
+  };
+
+  const setOpen = (open) => {
+    pop.hidden = !open;
+    toggle.setAttribute("aria-expanded", String(open));
+  };
+
+  toggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setOpen(pop.hidden);
+  });
+  bar.querySelector(".fb-close").addEventListener("click", () => setOpen(false));
+  pop.addEventListener("click", (e) => e.stopPropagation());
+  document.addEventListener("click", () => setOpen(false));
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") setOpen(false); });
+
+  const fire = () => { refreshBadge(); onChange(values()); };
+  search.addEventListener("input", fire);
+  selects.forEach((s) => s.addEventListener("change", fire));
+  bar.querySelector(".fb-clear").addEventListener("click", () => {
+    selects.forEach((s) => { s.value = ""; });
+    fire();
+  });
+
+  return {
+    values,
+    setCount(text) { countEl.textContent = text; },
+    /** Populate a select's options from the data, keeping the current choice. */
+    setOptions(key, options) {
+      const sel = selects.find((s) => s.dataset.filterKey === key);
+      if (!sel) return;
+      const keep = sel.value;
+      const first = sel.options[0];
+      sel.innerHTML = "";
+      sel.appendChild(first);
+      options.forEach((o) => {
+        const opt = document.createElement("option");
+        opt.value = o;
+        opt.textContent = o;
+        sel.appendChild(opt);
+      });
+      sel.value = [...sel.options].some((o) => o.value === keep) ? keep : "";
+      refreshBadge();
+    }
+  };
+}
+
 // ── Capture widget ────────────────────────────────────────────────────────────
 // One form, used inline on the Networking Log and inside the dashboard modal.
 // Fields use classes, not ids, so two copies can coexist on a page.
@@ -594,11 +744,11 @@ function contactWidgetHtml(contacts = []) {
     .map(([v, l]) => '<option value="' + v + '"' + (v === "monthly" ? " selected" : "") + '>' + l + '</option>')
     .join("");
   const listId = "cwCompanies_" + Math.random().toString(36).slice(2, 8);
-  const indId = "cwIndustries_" + Math.random().toString(36).slice(2, 8);
 
+  // Six fields in two rows of three. Industry is set on the profile instead —
+  // it is rarely known at the moment you are capturing someone.
   return '<form class="cw-form" autocomplete="off">'
     + companyDatalist(contacts, listId)
-    + industryDatalist(contacts, indId)
     + '<div class="cw-grid">'
     + '<div class="field-group"><label>Name <span class="required">*</span></label>'
     + '<input type="text" class="cw-name" placeholder="Full name" required /></div>'
@@ -606,8 +756,6 @@ function contactWidgetHtml(contacts = []) {
     + '<input type="text" class="cw-role" placeholder="Product Manager" /></div>'
     + '<div class="field-group"><label>Company</label>'
     + '<input type="text" class="cw-company" list="' + listId + '" placeholder="Where they work" /></div>'
-    + '<div class="field-group"><label>Industry</label>'
-    + '<input type="text" class="cw-industry" list="' + indId + '" placeholder="Technology" /></div>'
     + '<div class="field-group"><label>Email</label>'
     + '<input type="email" class="cw-email" placeholder="email@example.com" /></div>'
     + '<div class="field-group"><label>When you connected <span class="required">*</span></label>'
@@ -644,7 +792,6 @@ function wireContactWidget(root, onSaved) {
       name: form.querySelector(".cw-name").value,
       role: form.querySelector(".cw-role").value,
       company: form.querySelector(".cw-company").value,
-      industry: form.querySelector(".cw-industry").value,
       email: form.querySelector(".cw-email").value,
       dateMet: connectedOn,
       lastContacted: connectedOn,
@@ -931,34 +1078,36 @@ async function initDashboard() {
 
 async function initMyNetwork() {
   const list = document.getElementById("myNetworkList");
-  if (!list) return;
+  const barRoot = document.getElementById("networkFilterBar");
+  if (!list || !barRoot) return;
 
-  const searchEl = document.getElementById("networkSearch");
-  const industryEl = document.getElementById("networkIndustry");
-  const statusEl = document.getElementById("networkStatus");
-  const countEl = document.getElementById("networkCount");
+  barRoot.innerHTML = filterBarHtml({
+    placeholder: "Search name, role, company, industry…",
+    filters: [
+      { key: "industry", label: "Industry", options: [{ value: "", label: "All industries" }] },
+      { key: "status", label: "Reach-out status", options: [
+        { value: "", label: "Any status" },
+        { value: "good", label: "In touch" },
+        { value: "warning", label: "Reach out soon" },
+        { value: "critical", label: "Overdue" },
+        { value: "none", label: "No schedule" }
+      ] }
+    ]
+  });
+
   let cached = [];
+  const bar = wireFilterBar(barRoot, render);
 
   async function load() {
     cached = (await db.getContacts()) || [];
-    // Industry filter options, derived from the data.
-    if (industryEl && industryEl.options.length <= 1) {
-      [...new Set(cached.map((c) => c.industry).filter(Boolean))].sort().forEach((ind) => {
-        const opt = document.createElement("option");
-        opt.value = ind;
-        opt.textContent = ind;
-        industryEl.appendChild(opt);
-      });
-    }
+    bar.setOptions("industry", [...new Set(cached.map((c) => c.industry).filter(Boolean))].sort());
     render();
   }
 
   function render() {
-    const q = (searchEl?.value || "").trim().toLowerCase();
-    const industry = industryEl?.value || "";
-    const status = statusEl?.value || "";
+    const { q, industry, status } = bar.values();
 
-    let people = cached.filter((c) => {
+    const people = cached.filter((c) => {
       if (industry && c.industry !== industry) return false;
       if (status && getHealth(c).band !== status) return false;
       if (!q) return true;
@@ -966,27 +1115,34 @@ async function initMyNetwork() {
         .some((f) => f && f.toLowerCase().includes(q));
     });
 
-    people.sort((a, b) => a.name.localeCompare(b.name));
+    // Alphabetical by first name, with a letter header starting each run.
+    people.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 
-    if (countEl) {
-      countEl.textContent = people.length === cached.length
-        ? `${cached.length} ${cached.length === 1 ? "person" : "people"}`
-        : `${people.length} of ${cached.length}`;
-    }
+    bar.setCount(people.length === cached.length
+      ? `${cached.length} ${cached.length === 1 ? "person" : "people"}`
+      : `${people.length} of ${cached.length}`);
 
     if (!people.length) {
-      list.innerHTML = '<li class="empty">Nobody matches those filters.</li>';
+      list.innerHTML = '<li class="empty">'
+        + (cached.length ? "Nobody matches those filters." : "Nobody in your network yet.")
+        + '</li>';
       return;
     }
-    list.innerHTML = people
-      .map((c) => personRowHtml(c, getHealth(c), { showReconnect: true }))
-      .join("");
+
+    let html = "";
+    let currentLetter = "";
+    for (const c of people) {
+      const first = (c.name || "?").trim()[0] || "#";
+      const letter = /[a-z]/i.test(first) ? first.toUpperCase() : "#";
+      if (letter !== currentLetter) {
+        currentLetter = letter;
+        html += '<li class="alpha-header"><span>' + escapeHtml(letter) + '</span></li>';
+      }
+      html += personRowHtml(c, getHealth(c), { showReconnect: true });
+    }
+    list.innerHTML = html;
     wirePersonRows(list, cached, load);
   }
-
-  searchEl?.addEventListener("input", render);
-  industryEl?.addEventListener("change", render);
-  statusEl?.addEventListener("change", render);
 
   await load();
   initQuickAddButton(() => cached, load);
@@ -999,13 +1155,30 @@ async function initNetworkingLog() {
   const list = document.getElementById("connectionList");
   if (!widgetRoot || !list) return;
 
-  const filterEl = document.getElementById("contactFilter");
-  const industryEl = document.getElementById("logIndustry");
-  const statusEl = document.getElementById("logStatus");
-  const sortEl = document.getElementById("logSort");
-  const clearEl = document.getElementById("logClearFilters");
-  const countEl = document.getElementById("logCount");
+  const barRoot = document.getElementById("logFilterBar");
+  if (!barRoot) return;
+
+  barRoot.innerHTML = filterBarHtml({
+    placeholder: "Search name, role, company, notes…",
+    filters: [
+      { key: "industry", label: "Industry", options: [{ value: "", label: "All industries" }] },
+      { key: "status", label: "Reach-out status", options: [
+        { value: "", label: "Any status" },
+        { value: "good", label: "In touch" },
+        { value: "warning", label: "Reach out soon" },
+        { value: "critical", label: "Overdue" },
+        { value: "none", label: "No schedule" }
+      ] },
+      { key: "sort", label: "Sort by", options: [
+        { value: "", label: "Most recent first" },
+        { value: "oldest", label: "Oldest first" },
+        { value: "name", label: "Name A–Z" }
+      ] }
+    ]
+  });
+
   let cached = [];
+  const bar = wireFilterBar(barRoot, renderList);
 
   async function reload() {
     try {
@@ -1014,22 +1187,12 @@ async function initNetworkingLog() {
       list.innerHTML = '<li class="empty" style="color:var(--danger)">Error loading connections — check the console (F12).</li>';
       return;
     }
-    if (industryEl && industryEl.options.length <= 1) {
-      [...new Set(cached.map((c) => c.industry).filter(Boolean))].sort().forEach((ind) => {
-        const opt = document.createElement("option");
-        opt.value = ind;
-        opt.textContent = ind;
-        industryEl.appendChild(opt);
-      });
-    }
+    bar.setOptions("industry", [...new Set(cached.map((c) => c.industry).filter(Boolean))].sort());
     renderList();
   }
 
   function renderList() {
-    const filterText = filterEl ? filterEl.value.trim().toLowerCase() : "";
-    const industry = industryEl?.value || "";
-    const status = statusEl?.value || "";
-    const sort = sortEl?.value || "recent";
+    const { q: filterText, industry, status, sort } = bar.values();
 
     let contacts = cached.filter((c) => {
       if (industry && c.industry !== industry) return false;
@@ -1039,11 +1202,9 @@ async function initNetworkingLog() {
         .some((f) => f && f.toLowerCase().includes(filterText));
     });
 
-    if (countEl) {
-      countEl.textContent = contacts.length === cached.length
-        ? `${cached.length} ${cached.length === 1 ? "entry" : "entries"}`
-        : `${contacts.length} of ${cached.length}`;
-    }
+    bar.setCount(contacts.length === cached.length
+      ? `${cached.length} ${cached.length === 1 ? "entry" : "entries"}`
+      : `${contacts.length} of ${cached.length}`);
 
     if (!contacts.length) {
       list.innerHTML = '<li class="empty">'
@@ -1110,18 +1271,6 @@ async function initNetworkingLog() {
   const seed = (await db.getContacts()) || [];
   widgetRoot.innerHTML = contactWidgetHtml(seed);
   wireContactWidget(widgetRoot, reload);
-
-  filterEl?.addEventListener("input", renderList);
-  industryEl?.addEventListener("change", renderList);
-  statusEl?.addEventListener("change", renderList);
-  sortEl?.addEventListener("change", renderList);
-  clearEl?.addEventListener("click", () => {
-    if (filterEl) filterEl.value = "";
-    if (industryEl) industryEl.value = "";
-    if (statusEl) statusEl.value = "";
-    if (sortEl) sortEl.value = "recent";
-    renderList();
-  });
 
   await reload();
 }
@@ -1503,9 +1652,7 @@ async function initFilesPage() {
   const byId = new Map();
 
   const contactSelect = document.getElementById("fileContact");
-  const searchEl = document.getElementById("fileSearch");
-  const industryEl = document.getElementById("fileIndustry");
-  const linkEl = document.getElementById("fileLinkFilter");
+  const barRoot = document.getElementById("fileFilterBar");
 
   contacts = (await db.getContacts()) || [];
   contacts.forEach((c) => byId.set(c.id, c));
@@ -1519,22 +1666,28 @@ async function initFilesPage() {
       contactSelect.appendChild(opt);
     });
   }
-  if (linkEl) {
-    sorted.forEach((c) => {
-      const opt = document.createElement("option");
-      opt.value = c.id;
-      opt.textContent = c.name;
-      linkEl.appendChild(opt);
-    });
-  }
-  if (industryEl) {
-    [...new Set(contacts.map((c) => c.industry).filter(Boolean))].sort().forEach((ind) => {
-      const opt = document.createElement("option");
-      opt.value = ind;
-      opt.textContent = ind;
-      industryEl.appendChild(opt);
-    });
-  }
+
+  barRoot.innerHTML = filterBarHtml({
+    placeholder: "Search file, person, role, company…",
+    filters: [
+      { key: "linked", label: "Connection", options: [
+        { value: "", label: "All connections" },
+        { value: "__none__", label: "Not linked" },
+        ...sorted.map((c) => ({ value: c.id, label: c.name }))
+      ] },
+      { key: "industry", label: "Industry", options: [
+        { value: "", label: "All industries" },
+        ...[...new Set(contacts.map((c) => c.industry).filter(Boolean))].sort()
+          .map((i) => ({ value: i, label: i }))
+      ] },
+      { key: "role", label: "Role", options: [
+        { value: "", label: "All roles" },
+        ...[...new Set(contacts.map((c) => c.role).filter(Boolean))].sort()
+          .map((r) => ({ value: r, label: r }))
+      ] }
+    ]
+  });
+  const bar = wireFilterBar(barRoot, renderGrid);
 
   // ── Upload ───────────────────────────────────────────────────────────────
   const dropZone = document.getElementById("fileDropZone");
@@ -1607,19 +1760,22 @@ async function initFilesPage() {
 
   // ── Filter + render ──────────────────────────────────────────────────────
   function renderGrid() {
-    const q = (searchEl?.value || "").trim().toLowerCase();
-    const industry = industryEl?.value || "";
-    const linkedTo = linkEl?.value || "";
+    const { q, linked, industry, role } = bar.values();
 
     const filtered = allFiles.filter((f) => {
       const contact = f.contactId ? byId.get(f.contactId) : null;
-      if (linkedTo === "__none__" && f.contactId) return false;
-      if (linkedTo && linkedTo !== "__none__" && f.contactId !== linkedTo) return false;
+      if (linked === "__none__" && f.contactId) return false;
+      if (linked && linked !== "__none__" && f.contactId !== linked) return false;
       if (industry && (!contact || contact.industry !== industry)) return false;
+      if (role && (!contact || contact.role !== role)) return false;
       if (!q) return true;
       return [f.name, contact?.name, contact?.role, contact?.company, contact?.industry]
         .some((field) => field && field.toLowerCase().includes(q));
     });
+
+    bar.setCount(filtered.length === allFiles.length
+      ? `${allFiles.length} ${allFiles.length === 1 ? "file" : "files"}`
+      : `${filtered.length} of ${allFiles.length}`);
 
     if (!filtered.length) {
       fileGrid.innerHTML = '<p class="empty" style="padding:1rem 0">'
@@ -1637,32 +1793,6 @@ async function initFilesPage() {
     renderGrid();
   }
 
-  searchEl?.addEventListener("input", renderGrid);
-  industryEl?.addEventListener("change", renderGrid);
-  linkEl?.addEventListener("change", renderGrid);
-
-  // Funnel button reveals the filter panel; the badge shows when filters are on.
-  const filterToggle = document.getElementById("fileFilterToggle");
-  const filterPanel = document.getElementById("fileFilterPanel");
-  filterToggle?.addEventListener("click", () => {
-    const isHidden = filterPanel.classList.toggle("hidden");
-    filterToggle.setAttribute("aria-expanded", String(!isHidden));
-  });
-
-  document.getElementById("fileClearFilters")?.addEventListener("click", () => {
-    if (industryEl) industryEl.value = "";
-    if (linkEl) linkEl.value = "";
-    renderGrid();
-    filterToggle?.classList.remove("filter-active");
-  });
-
-  const markActive = () => {
-    const on = Boolean(industryEl?.value || linkEl?.value);
-    filterToggle?.classList.toggle("filter-active", on);
-  };
-  industryEl?.addEventListener("change", markActive);
-  linkEl?.addEventListener("change", markActive);
-
   await loadAndRenderFiles();
 }
 
@@ -1670,9 +1800,16 @@ async function initFilesPage() {
 // `preferences.your_name` signs the draft messages. Without somewhere to set it
 // every draft went out as "[Your Name]".
 
-async function openSettingsModal() {
+async function openSettingsModal(tab = "profile") {
   document.getElementById("settingsModal")?.remove();
-  const prefs = await db.getPreferences();
+
+  const [prefs, { data: { user } }] = await Promise.all([
+    db.getPreferences(),
+    supabase.auth.getUser()
+  ]);
+  const authEmail = user?.email || "";
+  const theme = localStorage.getItem("orbit_theme")
+    || localStorage.getItem("interntrack_theme") || "light";
 
   const modal = document.createElement("div");
   modal.id = "settingsModal";
@@ -1682,13 +1819,65 @@ async function openSettingsModal() {
     + '<h3>Settings</h3>'
     + '<button class="icon-btn" id="settingsClose" type="button" aria-label="Close">✕</button>'
     + '</div>'
-    + '<p class="muted settings-intro">Used to sign the draft messages Orbit writes for you.</p>'
-    + '<div class="field-group"><label for="setYourName">Your name</label>'
+
+    + '<div class="settings-tabs" role="tablist">'
+    + ['profile', 'security', 'appearance'].map((t) =>
+        '<button class="settings-tab" role="tab" data-tab="' + t + '"'
+        + (t === tab ? ' aria-selected="true"' : '') + ' type="button">'
+        + t.charAt(0).toUpperCase() + t.slice(1) + '</button>').join("")
+    + '</div>'
+
+    // ── Profile ──────────────────────────────────────────────────────────
+    + '<section class="settings-panel" data-panel="profile">'
+    + '<p class="muted settings-intro">Your name signs the draft messages Orbit writes for you.</p>'
+    + '<div class="field-group"><label for="setYourName">Full name</label>'
     + '<input type="text" id="setYourName" value="' + escapeHtml(prefs.your_name || "") + '" placeholder="Ada Lovelace" /></div>'
-    + '<div class="field-group"><label for="setYourEmail">Your email</label>'
-    + '<input type="email" id="setYourEmail" value="' + escapeHtml(prefs.your_email || "") + '" placeholder="you@example.com" /></div>'
-    + '<p id="settingsMsg" class="success" aria-live="polite"></p>'
-    + '<button class="btn" id="settingsSave" type="button">Save</button>'
+    + '<div class="field-group"><label for="setPhone">Phone number</label>'
+    + '<input type="tel" id="setPhone" value="' + escapeHtml(prefs.phone || "") + '" placeholder="+1 555 000 1234" />'
+    + '<p class="field-hint">Stored on your profile. Not yet used for sign-in codes — see Security.</p></div>'
+    + '<div class="field-group"><label for="setYourEmail">Contact email</label>'
+    + '<input type="email" id="setYourEmail" value="' + escapeHtml(prefs.your_email || "") + '" placeholder="you@example.com" />'
+    + '<p class="field-hint">Shown in drafts. Your sign-in email is <strong>' + escapeHtml(authEmail) + '</strong>.</p></div>'
+    + '<p id="profileMsg" class="success" aria-live="polite"></p>'
+    + '<p id="profileErr" class="error" aria-live="polite"></p>'
+    + '<button class="btn" id="saveProfile" type="button">Save profile</button>'
+    + '</section>'
+
+    // ── Security ─────────────────────────────────────────────────────────
+    + '<section class="settings-panel" data-panel="security">'
+    + '<h4 class="settings-h4">Change password</h4>'
+    + '<div class="field-group"><label for="setPw1">New password</label>'
+    + '<input type="password" id="setPw1" autocomplete="new-password" placeholder="At least 8 characters" /></div>'
+    + '<div class="field-group"><label for="setPw2">Confirm new password</label>'
+    + '<input type="password" id="setPw2" autocomplete="new-password" /></div>'
+    + '<p id="pwMsg" class="success" aria-live="polite"></p>'
+    + '<p id="pwErr" class="error" aria-live="polite"></p>'
+    + '<button class="btn" id="savePw" type="button">Update password</button>'
+
+    + '<hr class="settings-rule" />'
+    + '<h4 class="settings-h4">Two-factor authentication</h4>'
+    + '<p class="settings-note">Not enabled yet. Two options, and they are not equal:</p>'
+    + '<ul class="settings-list">'
+    + '<li><strong>Authenticator app (TOTP)</strong> — Google Authenticator, 1Password, etc. '
+    + 'Supported by Supabase on the free plan. This is the one worth building.</li>'
+    + '<li><strong>SMS to your phone</strong> — needs a paid SMS provider (Twilio or similar) '
+    + 'wired into Supabase, billed per message. It is also the weaker of the two: SMS codes '
+    + 'can be intercepted by SIM-swap attacks, which is why most security guidance now '
+    + 'prefers an app.</li>'
+    + '</ul>'
+    + '<button class="btn btn-secondary" id="mfaInfo" type="button" disabled>Set up authenticator (not built yet)</button>'
+    + '</section>'
+
+    // ── Appearance ───────────────────────────────────────────────────────
+    + '<section class="settings-panel" data-panel="appearance">'
+    + '<div class="field-group"><label for="setTheme">Theme</label>'
+    + '<select id="setTheme">'
+    + '<option value="light"' + (theme === "light" ? " selected" : "") + '>Light</option>'
+    + '<option value="dark"' + (theme === "dark" ? " selected" : "") + '>Dark</option>'
+    + '</select>'
+    + '<p class="field-hint">Applies immediately and is remembered on this device.</p></div>'
+    + '</section>'
+
     + '</div>';
   document.body.appendChild(modal);
 
@@ -1699,32 +1888,118 @@ async function openSettingsModal() {
     if (e.key === "Escape") { close(); document.removeEventListener("keydown", onEsc); }
   });
 
-  modal.querySelector("#settingsSave").addEventListener("click", async () => {
-    await db.savePreferences({
+  const showTab = (name) => {
+    modal.querySelectorAll(".settings-tab").forEach((b) =>
+      b.setAttribute("aria-selected", String(b.dataset.tab === name)));
+    modal.querySelectorAll(".settings-panel").forEach((p) =>
+      p.classList.toggle("active", p.dataset.panel === name));
+  };
+  modal.querySelectorAll(".settings-tab").forEach((b) =>
+    b.addEventListener("click", () => showTab(b.dataset.tab)));
+  showTab(tab);
+
+  // Profile
+  modal.querySelector("#saveProfile").addEventListener("click", async () => {
+    const msg = modal.querySelector("#profileMsg");
+    const err = modal.querySelector("#profileErr");
+    msg.textContent = ""; err.textContent = "";
+    const result = await db.savePreferences({
       your_name: modal.querySelector("#setYourName").value.trim(),
-      your_email: modal.querySelector("#setYourEmail").value.trim()
+      your_email: modal.querySelector("#setYourEmail").value.trim(),
+      phone: modal.querySelector("#setPhone").value.trim()
     });
-    const msg = modal.querySelector("#settingsMsg");
-    msg.textContent = "Saved!";
-    setTimeout(close, 800);
+    if (!result.ok) { err.textContent = "Could not save — see the console (F12)."; return; }
+    if (result.skipped.length) {
+      err.textContent = "Saved, but " + result.skipped.join(" and ")
+        + " needs supabase/add-settings-columns.sql to be run first.";
+    }
+    msg.textContent = "Profile saved.";
+    refreshProfileButton();
+    setTimeout(() => { msg.textContent = ""; }, 2500);
+  });
+
+  // Password
+  modal.querySelector("#savePw").addEventListener("click", async () => {
+    const msg = modal.querySelector("#pwMsg");
+    const err = modal.querySelector("#pwErr");
+    msg.textContent = ""; err.textContent = "";
+    const pw1 = modal.querySelector("#setPw1").value;
+    const pw2 = modal.querySelector("#setPw2").value;
+    if (pw1.length < 8) { err.textContent = "Use at least 8 characters."; return; }
+    if (pw1 !== pw2) { err.textContent = "The two passwords do not match."; return; }
+    const { error } = await supabase.auth.updateUser({ password: pw1 });
+    if (error) { err.textContent = error.message; return; }
+    modal.querySelector("#setPw1").value = "";
+    modal.querySelector("#setPw2").value = "";
+    msg.textContent = "Password updated.";
+  });
+
+  // Appearance
+  modal.querySelector("#setTheme").addEventListener("change", (e) => {
+    localStorage.setItem("orbit_theme", e.target.value);
+    applyTheme();
   });
 
   modal.querySelector("#setYourName").focus();
 }
 
-function initSettings() {
-  document.getElementById("settingsBtn")?.addEventListener("click", openSettingsModal);
+// ── Profile menu (sidebar footer) ─────────────────────────────────────────────
+
+async function refreshProfileButton() {
+  const btn = document.getElementById("profileBtn");
+  if (!btn) return;
+  const [prefs, { data: { user } }] = await Promise.all([
+    db.getPreferences(),
+    supabase.auth.getUser()
+  ]);
+  const name = (prefs.your_name || "").trim() || (user?.email || "").split("@")[0] || "You";
+  btn.querySelector(".profile-initials").textContent = initialsFor(name);
+  btn.querySelector(".profile-name").textContent = name;
+  btn.querySelector(".profile-sub").textContent = user?.email || "";
 }
 
-// ── Sign out ──────────────────────────────────────────────────────────────────
-
-function initSignOut() {
-  const btn = document.getElementById("signOutBtn");
+function initProfileMenu() {
+  const btn = document.getElementById("profileBtn");
   if (!btn) return;
-  btn.addEventListener("click", async () => {
-    await supabase.auth.signOut();
-    window.location.href = "auth.html";
+
+  let menu = null;
+  const closeMenu = () => { menu?.remove(); menu = null; btn.setAttribute("aria-expanded", "false"); };
+
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (menu) { closeMenu(); return; }
+
+    menu = document.createElement("div");
+    menu.className = "profile-menu";
+    menu.setAttribute("role", "menu");
+    menu.innerHTML =
+      '<button class="pm-item" role="menuitem" data-act="profile">'
+      + '<span class="pm-icon" aria-hidden="true">◍</span> Profile</button>'
+      + '<button class="pm-item" role="menuitem" data-act="settings">'
+      + '<span class="pm-icon" aria-hidden="true">⚙</span> Settings</button>'
+      + '<hr class="pm-rule" />'
+      + '<button class="pm-item pm-danger" role="menuitem" data-act="signout">'
+      + '<span class="pm-icon" aria-hidden="true">⭘</span> Log out</button>';
+    btn.parentElement.appendChild(menu);
+    btn.setAttribute("aria-expanded", "true");
+
+    menu.addEventListener("click", async (ev) => {
+      const act = ev.target.closest(".pm-item")?.dataset.act;
+      if (!act) return;
+      closeMenu();
+      if (act === "profile") openSettingsModal("profile");
+      if (act === "settings") openSettingsModal("security");
+      if (act === "signout") {
+        await supabase.auth.signOut();
+        window.location.href = "auth.html";
+      }
+    });
   });
+
+  document.addEventListener("click", closeMenu);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
+
+  refreshProfileButton();
 }
 
 // ── Reach-out nudge on load ───────────────────────────────────────────────────
@@ -1745,9 +2020,8 @@ async function checkRemindersOnLoad() {
   if (!user) return;
   initSidebarToggle();
   initNavDropdown();
-  initThemeToggle();
-  initSettings();
-  initSignOut();
+  applyTheme();
+  initProfileMenu();
   await initDashboard();
   await initMyNetwork();
   await initNetworkingLog();

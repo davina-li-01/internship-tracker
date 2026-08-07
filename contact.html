@@ -43,9 +43,15 @@
       </nav>
 
       <div class="sidebar-footer">
-        <button id="settingsBtn" class="s-btn" type="button">Settings</button>
-        <button id="themeToggle" class="s-btn" type="button">Dark Mode</button>
-        <button id="signOutBtn" class="s-btn" type="button">Sign Out</button>
+        <button id="profileBtn" class="profile-btn" type="button"
+                aria-haspopup="menu" aria-expanded="false">
+          <span class="profile-initials" aria-hidden="true">·</span>
+          <span class="profile-meta">
+            <span class="profile-name">Loading…</span>
+            <span class="profile-sub"></span>
+          </span>
+          <span class="profile-chevron" aria-hidden="true">⌃</span>
+        </button>
       </div>
     </aside>
 

@@ -43,9 +43,15 @@
       </nav>
 
       <div class="sidebar-footer">
-        <button id="settingsBtn" class="s-btn" type="button">Settings</button>
-        <button id="themeToggle" class="s-btn" type="button">Dark Mode</button>
-        <button id="signOutBtn" class="s-btn" type="button">Sign Out</button>
+        <button id="profileBtn" class="profile-btn" type="button"
+                aria-haspopup="menu" aria-expanded="false">
+          <span class="profile-initials" aria-hidden="true">·</span>
+          <span class="profile-meta">
+            <span class="profile-name">Loading…</span>
+            <span class="profile-sub"></span>
+          </span>
+          <span class="profile-chevron" aria-hidden="true">⌃</span>
+        </button>
       </div>
     </aside>
 
@@ -82,37 +88,10 @@
         </div>
 
         <div class="card">
-          <div class="filter-bar">
-            <h2 class="card-title" style="margin:0;flex:0 0 auto">Your files</h2>
-            <input type="search" id="fileSearch" class="filter-search"
-                   placeholder="Search file, person, role, company…" aria-label="Search files" />
-            <button id="fileFilterToggle" class="filter-icon-btn" type="button"
-                    aria-expanded="false" aria-controls="fileFilterPanel" title="Filter files">
-              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
-                <line x1="2" y1="4"   x2="14" y2="4"   />
-                <line x1="4" y1="8"   x2="12" y2="8"   />
-                <line x1="6" y1="12"  x2="10" y2="12"  />
-              </svg>
-              <span class="visually-hidden">Filter</span>
-            </button>
-          </div>
-
-          <div id="fileFilterPanel" class="filter-panel hidden">
-            <div class="field-group">
-              <label for="fileIndustry">Industry</label>
-              <select id="fileIndustry"><option value="">All industries</option></select>
-            </div>
-            <div class="field-group">
-              <label for="fileLinkFilter">Connection</label>
-              <select id="fileLinkFilter">
-                <option value="">All connections</option>
-                <option value="__none__">Not linked</option>
-              </select>
-            </div>
-            <button id="fileClearFilters" class="btn btn-secondary btn-sm" type="button">Clear</button>
-          </div>
-
-          <div id="fileGrid" class="file-grid"></div>
+          <h2 class="card-title">Your files</h2>
+          <!-- search + funnel, rendered by filterBarHtml() in js/main.js -->
+          <div id="fileFilterBar"></div>
+          <div id="fileGrid" class="doc-grid"></div>
         </div>
 
       </div>

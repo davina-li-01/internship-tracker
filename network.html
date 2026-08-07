@@ -43,9 +43,15 @@
       </nav>
 
       <div class="sidebar-footer">
-        <button id="settingsBtn" class="s-btn" type="button">Settings</button>
-        <button id="themeToggle" class="s-btn" type="button">Dark Mode</button>
-        <button id="signOutBtn" class="s-btn" type="button">Sign Out</button>
+        <button id="profileBtn" class="profile-btn" type="button"
+                aria-haspopup="menu" aria-expanded="false">
+          <span class="profile-initials" aria-hidden="true">·</span>
+          <span class="profile-meta">
+            <span class="profile-name">Loading…</span>
+            <span class="profile-sub"></span>
+          </span>
+          <span class="profile-chevron" aria-hidden="true">⌃</span>
+        </button>
       </div>
     </aside>
 
@@ -63,48 +69,10 @@
           <div id="contactWidget"></div>
         </div>
 
-        <!-- Search across the top, filters down the right -->
-        <div class="log-layout">
-
-          <div class="card log-main">
-            <input type="search" id="contactFilter" class="log-search"
-                   placeholder="Search name, role, company, industry, notes…"
-                   aria-label="Search the log" />
-            <ul id="connectionList" class="connection-list"></ul>
-          </div>
-
-          <aside class="card log-filters" aria-label="Filters">
-            <h2 class="filters-title">Filters</h2>
-
-            <div class="field-group">
-              <label for="logIndustry">Industry</label>
-              <select id="logIndustry"><option value="">All industries</option></select>
-            </div>
-
-            <div class="field-group">
-              <label for="logStatus">Status</label>
-              <select id="logStatus">
-                <option value="">Any status</option>
-                <option value="good">In touch</option>
-                <option value="warning">Reach out soon</option>
-                <option value="critical">Overdue</option>
-                <option value="none">No schedule</option>
-              </select>
-            </div>
-
-            <div class="field-group">
-              <label for="logSort">Sort by</label>
-              <select id="logSort">
-                <option value="recent">Most recent first</option>
-                <option value="oldest">Oldest first</option>
-                <option value="name">Name A–Z</option>
-              </select>
-            </div>
-
-            <button id="logClearFilters" class="btn btn-secondary btn-sm" type="button">Clear filters</button>
-            <p id="logCount" class="filter-count"></p>
-          </aside>
-
+        <div class="card">
+          <!-- search + funnel, rendered by filterBarHtml() in js/main.js -->
+          <div id="logFilterBar"></div>
+          <ul id="connectionList" class="connection-list"></ul>
         </div>
 
       </div>
