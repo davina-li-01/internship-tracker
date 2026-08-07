@@ -5,39 +5,24 @@ Last updated 2026-08-07.
 
 ---
 
-## 🔴 Do these next
+## ✅ Cleared
 
-### 1. Finish the settings migration
-`preferences.avatar_url` exists, but **`your_email` and `phone` do not** — checked
-against the live API on 2026-08-07. Most likely only part of
-`supabase/add-settings-columns.sql` was selected when it ran (the Supabase SQL editor
-executes your selection when there is one).
+### ~~1. Finish the settings migration~~ done 2026-08-07
 
-Until they exist, saving Profile in Settings drops those two fields and tells you why —
-it degrades rather than failing, but the values are not kept.
 
-```sql
-alter table public.preferences add column if not exists your_email text default '';
-alter table public.preferences add column if not exists phone      text default '';
-```
+`your_email`, `phone` and `avatar_url` all verified present.
 
-### 2. Push
-Five commits sit on local `main` and are not on GitHub, so neither Pages nor Vercel has
-any of the recent work: filter popovers, A–Z network, document previews, the settings
-rebuild, the grace window, or the dashboard denominators.
+### ~~2. Push~~ done — `main` is in sync with GitHub.
 
-```
-git push
-```
+---
 
 ---
 
 ## 🟠 Worth doing
 
-### 3. Drop the legacy tables
-`internships`, `logs`, `interactions` and `follow_ups` still exist — verified live
-2026-08-07. Nothing reads or writes them. `supabase/drop-legacy-tables.sql` is written
-and tested; it just has not been run.
+### ~~3. Drop the legacy tables~~ ✅ done 2026-08-07
+`internships`, `logs`, `interactions` and `follow_ups` dropped and verified gone.
+`contacts`, `preferences` and `storage_files` untouched and healthy.
 
 ### 4. The project pauses after ~7 days idle
 Already cost a full debugging session once. A paused project loses its DNS record and
