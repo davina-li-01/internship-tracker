@@ -13,3 +13,7 @@ alter table public.preferences add column if not exists phone      text default 
 --
 -- alter table public.preferences drop column if exists manager_name;
 -- alter table public.preferences drop column if exists next_steps;
+
+-- Profile photo, set from Edit profile. Stores a public URL from the
+-- interntrack-files bucket.
+alter table public.preferences add column if not exists avatar_url text default '';

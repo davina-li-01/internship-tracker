@@ -1800,41 +1800,196 @@ async function initFilesPage() {
 // `preferences.your_name` signs the draft messages. Without somewhere to set it
 // every draft went out as "[Your Name]".
 
-async function openSettingsModal(tab = "profile") {
+// How often the reach-out nudge is allowed to interrupt you. Stored per device.
+const NUDGE_KEY = "orbit_nudge_mode";
+const NUDGE_SEEN_KEY = "orbit_nudge_last";
+
+function getNudgeMode() { return localStorage.getItem(NUDGE_KEY) || "daily"; }
+
+/** True when the on-load reach-out modal is allowed to show right now. */
+function nudgeAllowed() {
+  const mode = getNudgeMode();
+  if (mode === "off") return false;
+  if (mode === "always") return true;
+  return localStorage.getItem(NUDGE_SEEN_KEY) !== todayDateString();
+}
+
+function markNudgeShown() {
+  localStorage.setItem(NUDGE_SEEN_KEY, todayDateString());
+}
+
+/** Download the whole network as CSV. */
+async function exportNetworkCsv() {
+  const contacts = (await db.getContacts()) || [];
+  const cols = ["name", "role", "company", "industry", "email", "dateMet",
+                "lastContacted", "followUpFrequency", "nextReminder", "notes"];
+  const cell = (v) => {
+    const s = Array.isArray(v) ? v.join("; ") : String(v ?? "");
+    return /[",\n]/.test(s) ? '"' + s.replaceAll('"', '""') + '"' : s;
+  };
+  const csv = [cols.join(",")]
+    .concat(contacts.map((c) => cols.map((k) => cell(c[k])).join(",")))
+    .join("\n");
+
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "orbit-network.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+  return contacts.length;
+}
+
+// ── Edit profile ──────────────────────────────────────────────────────────────
+
+async function openProfileModal() {
+  document.getElementById("profileModal")?.remove();
+
+  const [prefs, { data: { user } }] = await Promise.all([
+    db.getPreferences(), supabase.auth.getUser()
+  ]);
+  const name = (prefs.your_name || "").trim();
+  const display = name || (user?.email || "").split("@")[0] || "You";
+
+  const modal = document.createElement("div");
+  modal.id = "profileModal";
+  modal.className = "modal-overlay";
+  modal.innerHTML = '<div class="modal-card edit-profile-card">'
+    + '<h3>Edit profile</h3>'
+    + '<div class="ep-avatar-wrap">'
+    + '<div class="ep-avatar" id="epAvatar">' + escapeHtml(initialsFor(display)) + '</div>'
+    + '<button class="ep-camera" id="epCamera" type="button" aria-label="Change photo" title="Change photo">'
+    + '<svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true">'
+    + '<path d="M3 6.5h3l1.2-2h5.6L14 6.5h3v9H3z"/><circle cx="10" cy="11" r="2.8"/></svg>'
+    + '</button>'
+    + '<input type="file" id="epPhoto" accept="image/*" hidden />'
+    + '</div>'
+    + '<div class="field-group"><label for="epName">Display name</label>'
+    + '<input type="text" id="epName" value="' + escapeHtml(name) + '" placeholder="Davina Li" /></div>'
+    + '<div class="field-group"><label for="epEmail">Sign-in email</label>'
+    + '<input type="email" id="epEmail" value="' + escapeHtml(user?.email || "") + '" disabled /></div>'
+    + '<p class="ep-note">Your name signs the draft messages Orbit writes for you.</p>'
+    + '<p id="epMsg" class="success" aria-live="polite"></p>'
+    + '<p id="epErr" class="error" aria-live="polite"></p>'
+    + '<div class="ep-actions">'
+    + '<button class="btn btn-secondary" id="epCancel" type="button">Cancel</button>'
+    + '<button class="btn" id="epSave" type="button">Save</button>'
+    + '</div>'
+    + '</div>';
+  document.body.appendChild(modal);
+
+  const close = () => modal.remove();
+  modal.querySelector("#epCancel").addEventListener("click", close);
+  modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+  document.addEventListener("keydown", function onEsc(e) {
+    if (e.key === "Escape") { close(); document.removeEventListener("keydown", onEsc); }
+  });
+
+  // Photo upload reuses the existing bucket; the URL lives on preferences.
+  modal.querySelector("#epCamera").addEventListener("click", () =>
+    modal.querySelector("#epPhoto").click());
+  modal.querySelector("#epPhoto").addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    const err = modal.querySelector("#epErr");
+    err.textContent = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { err.textContent = "Pick an image file."; return; }
+    if (file.size > 2 * 1024 * 1024) { err.textContent = "Images must be under 2 MB."; return; }
+
+    const uploaded = await db.uploadFileToStorage(file, { category: "avatar" });
+    if (!uploaded) { err.textContent = "Upload failed — check the console (F12)."; return; }
+    const result = await db.savePreferences({ avatar_url: uploaded.fileUrl });
+    if (result.skipped.includes("avatar_url")) {
+      err.textContent = "Photo uploaded, but avatar_url needs supabase/add-settings-columns.sql first.";
+      return;
+    }
+    const av = modal.querySelector("#epAvatar");
+    av.textContent = "";
+    av.style.backgroundImage = "url(" + uploaded.fileUrl + ")";
+    av.classList.add("has-photo");
+    refreshProfileButton();
+  });
+
+  modal.querySelector("#epSave").addEventListener("click", async () => {
+    const msg = modal.querySelector("#epMsg");
+    const err = modal.querySelector("#epErr");
+    msg.textContent = ""; err.textContent = "";
+    const result = await db.savePreferences({ your_name: modal.querySelector("#epName").value.trim() });
+    if (!result.ok) { err.textContent = "Could not save — see the console (F12)."; return; }
+    msg.textContent = "Saved.";
+    refreshProfileButton();
+    setTimeout(close, 700);
+  });
+
+  if (prefs.avatar_url) {
+    const av = modal.querySelector("#epAvatar");
+    av.textContent = "";
+    av.style.backgroundImage = "url(" + prefs.avatar_url + ")";
+    av.classList.add("has-photo");
+  }
+  modal.querySelector("#epName").focus();
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+const SETTINGS_SECTIONS = [
+  { key: "general",       label: "General",          icon: "⚙" },
+  { key: "profile",       label: "Profile",          icon: "◍" },
+  { key: "notifications", label: "Notifications",    icon: "◔" },
+  { key: "security",      label: "Security & login", icon: "⛨" },
+  { key: "data",          label: "Data controls",    icon: "⬓" }
+];
+
+async function openSettingsModal(section = "general") {
   document.getElementById("settingsModal")?.remove();
 
   const [prefs, { data: { user } }] = await Promise.all([
-    db.getPreferences(),
-    supabase.auth.getUser()
+    db.getPreferences(), supabase.auth.getUser()
   ]);
   const authEmail = user?.email || "";
   const theme = localStorage.getItem("orbit_theme")
     || localStorage.getItem("interntrack_theme") || "light";
+  const nudge = getNudgeMode();
 
   const modal = document.createElement("div");
   modal.id = "settingsModal";
   modal.className = "modal-overlay";
-  modal.innerHTML = '<div class="modal-card settings-card">'
-    + '<div class="quick-add-header">'
-    + '<h3>Settings</h3>'
-    + '<button class="icon-btn" id="settingsClose" type="button" aria-label="Close">✕</button>'
-    + '</div>'
+  modal.innerHTML = '<div class="modal-card settings-shell">'
 
-    + '<div class="settings-tabs" role="tablist">'
-    + ['profile', 'security', 'appearance'].map((t) =>
-        '<button class="settings-tab" role="tab" data-tab="' + t + '"'
-        + (t === tab ? ' aria-selected="true"' : '') + ' type="button">'
-        + t.charAt(0).toUpperCase() + t.slice(1) + '</button>').join("")
+    + '<nav class="settings-nav" aria-label="Settings sections">'
+    + '<button class="icon-btn settings-close" id="settingsClose" type="button" aria-label="Close">✕</button>'
+    + SETTINGS_SECTIONS.map((s) =>
+        '<button class="settings-navitem" type="button" data-section="' + s.key + '">'
+        + '<span class="sn-icon" aria-hidden="true">' + s.icon + '</span>'
+        + '<span>' + escapeHtml(s.label) + '</span></button>').join("")
+    + '</nav>'
+
+    + '<div class="settings-body">'
+
+    // ── General ──────────────────────────────────────────────────────────
+    + '<section class="settings-pane" data-pane="general">'
+    + '<h3 class="settings-h3">General</h3>'
+    + '<div class="settings-callout">'
+    + '<p class="sc-icon" aria-hidden="true">⛨</p>'
+    + '<div><p class="sc-title">Secure your account</p>'
+    + '<p class="sc-body">Add two-factor authentication so a stolen password is not enough to get in.</p></div>'
+    + '<button class="btn btn-secondary btn-sm" id="goSecurity" type="button">Set up</button>'
     + '</div>'
+    + settingsRow("Appearance",
+        '<select id="setTheme">'
+        + '<option value="light"' + (theme === "light" ? " selected" : "") + '>Light</option>'
+        + '<option value="dark"' + (theme === "dark" ? " selected" : "") + '>Dark</option></select>')
+    + settingsRow("Signed in as", '<span class="settings-static">' + escapeHtml(authEmail) + '</span>')
+    + '</section>'
 
     // ── Profile ──────────────────────────────────────────────────────────
-    + '<section class="settings-panel" data-panel="profile">'
-    + '<p class="muted settings-intro">Your name signs the draft messages Orbit writes for you.</p>'
+    + '<section class="settings-pane" data-pane="profile">'
+    + '<h3 class="settings-h3">Profile</h3>'
     + '<div class="field-group"><label for="setYourName">Full name</label>'
-    + '<input type="text" id="setYourName" value="' + escapeHtml(prefs.your_name || "") + '" placeholder="Ada Lovelace" /></div>'
+    + '<input type="text" id="setYourName" value="' + escapeHtml(prefs.your_name || "") + '" placeholder="Davina Li" /></div>'
     + '<div class="field-group"><label for="setPhone">Phone number</label>'
     + '<input type="tel" id="setPhone" value="' + escapeHtml(prefs.phone || "") + '" placeholder="+1 555 000 1234" />'
-    + '<p class="field-hint">Stored on your profile. Not yet used for sign-in codes — see Security.</p></div>'
+    + '<p class="field-hint">Stored on your profile. Not used for sign-in codes — see Security &amp; login.</p></div>'
     + '<div class="field-group"><label for="setYourEmail">Contact email</label>'
     + '<input type="email" id="setYourEmail" value="' + escapeHtml(prefs.your_email || "") + '" placeholder="you@example.com" />'
     + '<p class="field-hint">Shown in drafts. Your sign-in email is <strong>' + escapeHtml(authEmail) + '</strong>.</p></div>'
@@ -1843,8 +1998,22 @@ async function openSettingsModal(tab = "profile") {
     + '<button class="btn" id="saveProfile" type="button">Save profile</button>'
     + '</section>'
 
+    // ── Notifications ────────────────────────────────────────────────────
+    + '<section class="settings-pane" data-pane="notifications">'
+    + '<h3 class="settings-h3">Notifications</h3>'
+    + '<p class="settings-note">Orbit opens a reach-out prompt when someone is overdue. '
+    + 'Choose how often that is allowed to interrupt you.</p>'
+    + settingsRow("Reach-out prompt",
+        '<select id="setNudge">'
+        + '<option value="always"' + (nudge === "always" ? " selected" : "") + '>Every time I open Orbit</option>'
+        + '<option value="daily"' + (nudge === "daily" ? " selected" : "") + '>Once a day</option>'
+        + '<option value="off"' + (nudge === "off" ? " selected" : "") + '>Never</option></select>')
+    + '<p class="field-hint">Overdue people still show on the dashboard either way.</p>'
+    + '</section>'
+
     // ── Security ─────────────────────────────────────────────────────────
-    + '<section class="settings-panel" data-panel="security">'
+    + '<section class="settings-pane" data-pane="security">'
+    + '<h3 class="settings-h3">Security &amp; login</h3>'
     + '<h4 class="settings-h4">Change password</h4>'
     + '<div class="field-group"><label for="setPw1">New password</label>'
     + '<input type="password" id="setPw1" autocomplete="new-password" placeholder="At least 8 characters" /></div>'
@@ -1853,31 +2022,32 @@ async function openSettingsModal(tab = "profile") {
     + '<p id="pwMsg" class="success" aria-live="polite"></p>'
     + '<p id="pwErr" class="error" aria-live="polite"></p>'
     + '<button class="btn" id="savePw" type="button">Update password</button>'
-
     + '<hr class="settings-rule" />'
     + '<h4 class="settings-h4">Two-factor authentication</h4>'
-    + '<p class="settings-note">Not enabled yet. Two options, and they are not equal:</p>'
+    + '<p class="settings-note">Not enabled. Two options, and they are not equal:</p>'
     + '<ul class="settings-list">'
-    + '<li><strong>Authenticator app (TOTP)</strong> — Google Authenticator, 1Password, etc. '
-    + 'Supported by Supabase on the free plan. This is the one worth building.</li>'
-    + '<li><strong>SMS to your phone</strong> — needs a paid SMS provider (Twilio or similar) '
-    + 'wired into Supabase, billed per message. It is also the weaker of the two: SMS codes '
-    + 'can be intercepted by SIM-swap attacks, which is why most security guidance now '
-    + 'prefers an app.</li>'
+    + '<li><strong>Authenticator app</strong> — free on Supabase, works offline. The one worth building.</li>'
+    + '<li><strong>SMS to your phone</strong> — needs a paid provider (Twilio) and is weaker: '
+    + 'SIM-swap attacks are why security guidance now prefers an app.</li>'
     + '</ul>'
-    + '<button class="btn btn-secondary" id="mfaInfo" type="button" disabled>Set up authenticator (not built yet)</button>'
+    + '<button class="btn btn-secondary" type="button" disabled>Set up authenticator (not built yet)</button>'
     + '</section>'
 
-    // ── Appearance ───────────────────────────────────────────────────────
-    + '<section class="settings-panel" data-panel="appearance">'
-    + '<div class="field-group"><label for="setTheme">Theme</label>'
-    + '<select id="setTheme">'
-    + '<option value="light"' + (theme === "light" ? " selected" : "") + '>Light</option>'
-    + '<option value="dark"' + (theme === "dark" ? " selected" : "") + '>Dark</option>'
-    + '</select>'
-    + '<p class="field-hint">Applies immediately and is remembered on this device.</p></div>'
+    // ── Data ─────────────────────────────────────────────────────────────
+    + '<section class="settings-pane" data-pane="data">'
+    + '<h3 class="settings-h3">Data controls</h3>'
+    + '<p class="settings-note">Your network is yours. Take a copy whenever you like.</p>'
+    + settingsRow("Export network",
+        '<button class="btn btn-secondary btn-sm" id="exportCsv" type="button">Download CSV</button>')
+    + '<p id="exportMsg" class="success" aria-live="polite"></p>'
+    + '<hr class="settings-rule" />'
+    + '<h4 class="settings-h4">Delete account</h4>'
+    + '<p class="settings-note">Deleting a Supabase account needs a server-side admin call, which this '
+    + 'app does not have — it runs entirely in your browser. For now, delete your account from the '
+    + 'Supabase dashboard under Authentication → Users.</p>'
     + '</section>'
 
+    + '</div>'
     + '</div>';
   document.body.appendChild(modal);
 
@@ -1888,17 +2058,26 @@ async function openSettingsModal(tab = "profile") {
     if (e.key === "Escape") { close(); document.removeEventListener("keydown", onEsc); }
   });
 
-  const showTab = (name) => {
-    modal.querySelectorAll(".settings-tab").forEach((b) =>
-      b.setAttribute("aria-selected", String(b.dataset.tab === name)));
-    modal.querySelectorAll(".settings-panel").forEach((p) =>
-      p.classList.toggle("active", p.dataset.panel === name));
+  const show = (name) => {
+    modal.querySelectorAll(".settings-navitem").forEach((b) =>
+      b.classList.toggle("active", b.dataset.section === name));
+    modal.querySelectorAll(".settings-pane").forEach((p) =>
+      p.classList.toggle("active", p.dataset.pane === name));
   };
-  modal.querySelectorAll(".settings-tab").forEach((b) =>
-    b.addEventListener("click", () => showTab(b.dataset.tab)));
-  showTab(tab);
+  modal.querySelectorAll(".settings-navitem").forEach((b) =>
+    b.addEventListener("click", () => show(b.dataset.section)));
+  modal.querySelector("#goSecurity").addEventListener("click", () => show("security"));
+  show(section);
 
-  // Profile
+  modal.querySelector("#setTheme").addEventListener("change", (e) => {
+    localStorage.setItem("orbit_theme", e.target.value);
+    applyTheme();
+  });
+
+  modal.querySelector("#setNudge").addEventListener("change", (e) => {
+    localStorage.setItem(NUDGE_KEY, e.target.value);
+  });
+
   modal.querySelector("#saveProfile").addEventListener("click", async () => {
     const msg = modal.querySelector("#profileMsg");
     const err = modal.querySelector("#profileErr");
@@ -1918,7 +2097,6 @@ async function openSettingsModal(tab = "profile") {
     setTimeout(() => { msg.textContent = ""; }, 2500);
   });
 
-  // Password
   modal.querySelector("#savePw").addEventListener("click", async () => {
     const msg = modal.querySelector("#pwMsg");
     const err = modal.querySelector("#pwErr");
@@ -1934,13 +2112,20 @@ async function openSettingsModal(tab = "profile") {
     msg.textContent = "Password updated.";
   });
 
-  // Appearance
-  modal.querySelector("#setTheme").addEventListener("change", (e) => {
-    localStorage.setItem("orbit_theme", e.target.value);
-    applyTheme();
+  modal.querySelector("#exportCsv").addEventListener("click", async () => {
+    const n = await exportNetworkCsv();
+    const msg = modal.querySelector("#exportMsg");
+    msg.textContent = `Exported ${n} ${n === 1 ? "connection" : "connections"}.`;
+    setTimeout(() => { msg.textContent = ""; }, 3000);
   });
+}
 
-  modal.querySelector("#setYourName").focus();
+/** A label-on-the-left, control-on-the-right settings row. */
+function settingsRow(label, controlHtml) {
+  return '<div class="settings-row">'
+    + '<span class="settings-row-label">' + escapeHtml(label) + '</span>'
+    + '<div class="settings-row-control">' + controlHtml + '</div>'
+    + '</div>';
 }
 
 // ── Profile menu (sidebar footer) ─────────────────────────────────────────────
@@ -1987,8 +2172,8 @@ function initProfileMenu() {
       const act = ev.target.closest(".pm-item")?.dataset.act;
       if (!act) return;
       closeMenu();
-      if (act === "profile") openSettingsModal("profile");
-      if (act === "settings") openSettingsModal("security");
+      if (act === "profile") openProfileModal();
+      if (act === "settings") openSettingsModal("general");
       if (act === "signout") {
         await supabase.auth.signOut();
         window.location.href = "auth.html";
@@ -2006,10 +2191,11 @@ function initProfileMenu() {
 
 async function checkRemindersOnLoad() {
   if (document.querySelector("[data-page='contact']")) return;
+  if (!nudgeAllowed()) return;
   setTimeout(async () => {
     const contacts = (await db.getContacts()) || [];
     const due = contacts.filter((c) => getReminderStatus(c) === "due");
-    if (due.length) showReminderModal(due[0]);
+    if (due.length) { markNudgeShown(); showReminderModal(due[0]); }
   }, 900);
 }
 

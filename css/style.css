@@ -3091,3 +3091,191 @@ body.dark .settings-tab[aria-selected="true"] { color: var(--accent); }
 .doc-tile { height: 100%; }
 .doc-foot { flex: 1; }
 .doc-actions { margin-top: auto; padding-top: 0.45rem; }
+
+/* ═══════════════════════════════════════════════════════════════
+   Orbit — type & control scale
+   Controls were inheriting 16px in some places and getting ad-hoc
+   0.80–0.88rem overrides in others, so nothing lined up. One root
+   scale plus one control size for the whole app.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Everything is sized in rem, so this shrinks the app proportionally
+   (16px → 15px ≈ 6%) without re-tuning each component. */
+html { font-size: 15px; }
+
+/* ── One control size everywhere ─────────────────────────────── */
+input, select, textarea {
+  font-size: 0.88rem;
+  padding: 0.5rem 0.75rem;
+  border-width: 1px;
+  border-radius: 10px;
+  backdrop-filter: none;          /* the blur cost more than it showed */
+  -webkit-backdrop-filter: none;
+}
+select { padding-right: 1.9rem; }
+textarea { padding: 0.6rem 0.75rem; line-height: 1.55; }
+input[type="date"] { padding-right: 0.55rem; }
+input[type="file"] { padding: 0.4rem 0.5rem; font-size: 0.8rem; }
+
+/* Overrides that made each page's search box a different size */
+.filter-search,
+.fb-search,
+.log-search,
+.manual-add-row input { font-size: 0.88rem; padding: 0.5rem 0.75rem; }
+.filter-bar select { padding: 0.5rem 1.9rem 0.5rem 0.75rem; font-size: 0.88rem; }
+
+/* ── One label size everywhere ───────────────────────────────── */
+label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.field-group > label { display: block; margin-bottom: 0.3rem; }
+/* Labels that are really controls, not field captions */
+.cp-toggle, .followup-check, .settings-tab, .fb-pop-head h3 { text-transform: none; letter-spacing: normal; }
+
+/* ── Headings ────────────────────────────────────────────────── */
+.page-heading { font-size: 1.7rem; letter-spacing: -0.035em; }
+.page-subheading { font-size: 0.85rem; }
+.card-title { font-size: 0.98rem; }
+.section-title { font-size: 0.9rem; }
+.chart-title { font-size: 0.9rem; }
+.modal-card h3 { font-size: 1.05rem; }
+
+/* ── Contact profile: bottom row aligns with the text above ──── */
+:root { --avatar-col: 60px; --identity-gap: 1.15rem; }
+.profile-avatar { width: var(--avatar-col); height: var(--avatar-col); }
+.profile-identity { gap: var(--identity-gap); }
+.profile-name-input { font-size: 1.2rem; }
+/* Indent past the avatar gutter so the reach-out row starts where the
+   name does, instead of sliding back under the avatar. */
+.reachout-strip { margin-left: calc(var(--avatar-col) + var(--identity-gap)); }
+
+@media (max-width: 860px) {
+  .reachout-strip { margin-left: 0; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Orbit — settings shell & edit profile
+   ═══════════════════════════════════════════════════════════════ */
+
+.settings-shell {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 0;
+  max-width: 720px; width: 100%;
+  max-height: min(620px, 88vh);
+  padding: 0; overflow: hidden; text-align: left;
+}
+
+.settings-nav {
+  position: relative;
+  display: flex; flex-direction: column; gap: 0.1rem;
+  padding: 3rem 0.6rem 1rem;
+  background: rgba(120,80,40,0.045);
+  border-right: 1px solid var(--hairline);
+  overflow-y: auto;
+}
+body.dark .settings-nav { background: rgba(255,255,255,0.03); }
+.settings-close { position: absolute; top: 0.7rem; left: 0.7rem; }
+
+.settings-navitem {
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.5rem 0.65rem; border-radius: 9px;
+  background: none; border: none; cursor: pointer; font-family: inherit;
+  font-size: 0.82rem; color: var(--text-muted); text-align: left; width: 100%;
+  transition: background var(--trans), color var(--trans);
+}
+.settings-navitem:hover { color: var(--text); background: var(--row-hover); }
+.settings-navitem.active {
+  color: var(--text); font-weight: 700;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.sn-icon { width: 16px; text-align: center; font-size: 0.85rem; }
+
+.settings-body { padding: 1.5rem 1.6rem; overflow-y: auto; }
+.settings-pane { display: none; }
+.settings-pane.active { display: block; }
+.settings-h3 { margin: 0 0 1.2rem; font-size: 1.05rem; font-weight: 800; letter-spacing: -0.02em; }
+.settings-h4 { margin: 0 0 0.7rem; font-size: 0.85rem; font-weight: 700; }
+.settings-pane .field-group { margin-bottom: 0.9rem; }
+.settings-pane > .btn { width: 100%; }
+.settings-pane .success:empty, .settings-pane .error:empty { display: none; }
+
+/* Label left, control right — the row pattern from the reference */
+.settings-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; padding: 0.85rem 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.settings-row:last-of-type { border-bottom: none; }
+.settings-row-label { font-size: 0.85rem; color: var(--text); }
+.settings-row-control { flex: 0 0 auto; min-width: 150px; }
+.settings-row-control select { width: 100%; }
+.settings-row-control .btn { width: 100%; }
+.settings-static { font-size: 0.82rem; color: var(--text-muted); }
+
+.settings-callout {
+  display: flex; align-items: center; gap: 0.9rem;
+  padding: 1rem 1.1rem; margin-bottom: 1.2rem;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--primary) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, transparent);
+}
+.sc-icon { margin: 0; font-size: 1.2rem; color: var(--primary-deep); }
+body.dark .sc-icon { color: var(--accent); }
+.sc-title { margin: 0 0 0.15rem; font-size: 0.85rem; font-weight: 700; }
+.sc-body { margin: 0; font-size: 0.75rem; color: var(--text-muted); line-height: 1.45; }
+.settings-callout .btn { flex: 0 0 auto; }
+
+.settings-rule { margin: 1.4rem 0 1.1rem; border: 0; border-top: 1px solid var(--hairline); }
+.settings-note { margin: 0 0 0.9rem; font-size: 0.78rem; color: var(--text-muted); line-height: 1.55; }
+.settings-list { margin: 0 0 1rem; padding-left: 1.1rem; font-size: 0.78rem; color: var(--text-muted); line-height: 1.6; }
+.settings-list strong { color: var(--text); }
+.field-hint { margin: 0.3rem 0 0; font-size: 0.7rem; color: var(--text-muted); line-height: 1.45; }
+
+/* ── Edit profile ────────────────────────────────────────────── */
+.edit-profile-card { max-width: 380px; width: 100%; text-align: left; }
+.edit-profile-card h3 { margin: 0 0 1.4rem; }
+
+.ep-avatar-wrap { position: relative; width: 104px; margin: 0 auto 1.5rem; }
+.ep-avatar {
+  width: 104px; height: 104px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 2rem; font-weight: 700; color: #fff;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  background-size: cover; background-position: center;
+  border: 2px solid var(--glass-border);
+}
+.ep-avatar.has-photo { color: transparent; }
+.ep-camera {
+  position: absolute; right: -2px; bottom: -2px;
+  width: 32px; height: 32px; border-radius: 50%;
+  display: grid; place-items: center; cursor: pointer;
+  background: var(--bg-mid); border: 2px solid var(--glass-border);
+  color: var(--text);
+}
+.ep-camera svg { fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linejoin: round; }
+.ep-camera:hover { background: var(--row-hover); }
+
+.ep-note { margin: 0.2rem 0 1.2rem; font-size: 0.74rem; color: var(--text-muted); text-align: center; }
+.ep-actions { display: flex; gap: 0.6rem; }
+.ep-actions .btn { flex: 1; }
+.edit-profile-card .success:empty, .edit-profile-card .error:empty { display: none; }
+.edit-profile-card input:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Profile button can show a photo too */
+.profile-initials { background-size: cover; background-position: center; }
+.profile-initials.has-photo { color: transparent; }
+
+@media (max-width: 620px) {
+  .settings-shell { grid-template-columns: 1fr; max-height: 90vh; }
+  .settings-nav {
+    flex-direction: row; overflow-x: auto; padding: 3rem 0.6rem 0.6rem;
+    border-right: none; border-bottom: 1px solid var(--hairline);
+  }
+  .settings-navitem { white-space: nowrap; }
+  .sn-icon { display: none; }
+}
