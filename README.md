@@ -10,9 +10,13 @@ It started out as a general internship tracker (daily logs, weekly manager updat
 
 ## Live Demo
 
-[https://davina-li-01.github.io/orbit/](https://davina-li-01.github.io/orbit/)
+**[https://internship-tracker-sigma.vercel.app/](https://internship-tracker-sigma.vercel.app/)**
 
 You need to make a free account to use it. Your data is saved to the cloud so it won't disappear if you close the tab.
+
+> The GitHub Pages copy at `davina-li-01.github.io/orbit` is currently stale — its
+> deployment broke when the repo was renamed and it is still serving a build from
+> May 2026. Use the Vercel link above until that is fixed.
 
 ---
 
