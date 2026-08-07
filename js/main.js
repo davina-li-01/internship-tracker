@@ -135,21 +135,66 @@ function calculateNextReminder(lastContacted, frequency) {
 // Health decays linearly from 100% right after a touchpoint to 0% once the
 // whole interval has elapsed.
 
+/** Days you get to make the first contact after putting someone on a cadence. */
+const GRACE_DAYS = 7;
+
+function addDays(dateStr, n) {
+  const d = parseDateOnly(dateStr);
+  if (!d) return "";
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * The deadline a contact is actually judged against. `nextReminder` is the
+ * single source of truth — it carries the grace window granted when a cadence
+ * is first set, and any "remind me in 3 days" snooze.
+ */
 function getHealth(contact) {
   const interval = getIntervalDays(contact.followUpFrequency);
   const last = contact.lastContacted || contact.dateMet;
   const elapsed = daysSince(last);
 
   if (!interval || !contact.reminderEnabled || elapsed === null) {
-    return { scheduled: false, pct: 0, band: "none", elapsed, interval: 0, daysLeft: null };
+    return { scheduled: false, pct: 0, band: "none", elapsed, interval: 0, daysLeft: null, grace: false };
   }
 
-  const pct = Math.max(0, Math.min(100, Math.round((1 - elapsed / interval) * 100)));
+  const naturalNext = addDays(last, interval);
+  const next = contact.nextReminder ? String(contact.nextReminder).slice(0, 10) : naturalNext;
+
+  // A deadline later than the cadence alone would give means the window was
+  // deliberately extended — the one-week grace on a fresh schedule, or a snooze.
+  const grace = Boolean(next && naturalNext && next > naturalNext);
+  const window = grace ? GRACE_DAYS : interval;
+
+  // daysSince is negative for future dates, so this is "days until the deadline".
+  const daysLeft = -daysSince(next);
+  const pct = Math.max(0, Math.min(100, Math.round((daysLeft / window) * 100)));
   // "Overdue" must mean the deadline actually passed, not merely that the
   // remaining percentage is small. A 90-day cadence at day 80 is down to 11%
   // but still has 10 days left — calling that overdue contradicts the detail.
-  const band = elapsed > interval ? "critical" : pct >= 60 ? "good" : "warning";
-  return { scheduled: true, pct, band, elapsed, interval, daysLeft: interval - elapsed };
+  const band = daysLeft < 0 ? "critical" : pct >= 60 ? "good" : "warning";
+
+  return { scheduled: true, pct, band, elapsed, interval, daysLeft, grace };
+}
+
+/**
+ * The deadline to use when a cadence is switched on.
+ *
+ * If the last touchpoint already blows the cadence — which is the norm when you
+ * are back-filling old conversations — the natural deadline is in the past and
+ * the contact would land on the dashboard as overdue the instant you saved.
+ * Instead you get GRACE_DAYS from today to make that first reach-out. This is
+ * granted once, at the moment of switching on; logging a conversation moves the
+ * deadline onto the normal cadence and it never comes back.
+ */
+function firstDeadlineFor(lastContacted, frequency) {
+  const interval = getIntervalDays(frequency);
+  if (!interval) return "";
+  const natural = addDays(lastContacted, interval);
+  const graceUntil = addDays(todayDateString(), GRACE_DAYS);
+  if (!natural) return graceUntil;
+  return natural < todayDateString() ? graceUntil : natural;
 }
 
 /**
@@ -172,9 +217,12 @@ function healthBarHtml(health) {
       + meta.icon + '</span> ' + meta.label + '</span>'
       + '</div>';
   }
-  const detail = health.daysLeft >= 0
-    ? `${health.daysLeft} day${health.daysLeft === 1 ? "" : "s"} left`
-    : `${Math.abs(health.daysLeft)} day${Math.abs(health.daysLeft) === 1 ? "" : "s"} over`;
+  const days = Math.abs(health.daysLeft);
+  const detail = health.daysLeft < 0
+    ? `${days} day${days === 1 ? "" : "s"} over`
+    : health.grace
+      ? `${days} day${days === 1 ? "" : "s"} to first reach-out`
+      : `${days} day${days === 1 ? "" : "s"} left`;
   return '<div class="health">'
     + '<div class="health-track">'
     + '<div class="health-fill fill-' + health.band + '" style="width:' + health.pct + '%"></div>'
@@ -272,8 +320,10 @@ function normalizeContact(contact = {}) {
   const latestDate = sortedInteractions[0]?.date || "";
   const lastContacted = contact.lastContacted || latestDate || contact.dateMet || "";
   let nextReminder = contact.nextReminder || "";
-  if (!nextReminder && frequency !== "none" && lastContacted) {
-    nextReminder = calculateNextReminder(lastContacted, frequency);
+  if (!nextReminder && frequency !== "none") {
+    // Covers back-filling someone you met months ago: the cadence alone would
+    // put the deadline in the past, so they get the grace window instead.
+    nextReminder = firstDeadlineFor(lastContacted, frequency);
   }
   return {
     id: contact.id || makeId(),
@@ -761,7 +811,12 @@ function contactWidgetHtml(contacts = []) {
     + '<div class="field-group"><label>When you connected <span class="required">*</span></label>'
     + '<input type="date" class="cw-date" required /></div>'
     + '<div class="field-group"><label>Reach out again?</label>'
-    + '<select class="cw-freq">' + freqOptions + '</select></div>'
+    + '<select class="cw-freq">' + freqOptions
+    + '<option value="custom">Custom…</option></select>'
+    + '<div class="cw-custom hidden">'
+    + '<input type="number" class="cw-custom-days" min="1" max="365" placeholder="45" aria-label="Every how many days" />'
+    + '<span class="cw-custom-unit">days</span>'
+    + '</div></div>'
     + '</div>'
     + '<div class="field-group"><label>Notes — what to bring up next time</label>'
     + '<textarea class="cw-notes" rows="2" placeholder="What you talked about, what they are working on, what to ask next…"></textarea></div>'
@@ -778,6 +833,14 @@ function wireContactWidget(root, onSaved) {
   const dateEl = form.querySelector(".cw-date");
   if (dateEl && !dateEl.value) dateEl.value = todayDateString();
 
+  // "Custom…" reveals a day-count box right below the select.
+  const freqEl = form.querySelector(".cw-freq");
+  const customWrap = form.querySelector(".cw-custom");
+  freqEl.addEventListener("change", () => {
+    customWrap.classList.toggle("hidden", freqEl.value !== "custom");
+    if (freqEl.value === "custom") form.querySelector(".cw-custom-days").focus();
+  });
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const errEl = form.querySelector(".cw-error");
@@ -786,7 +849,15 @@ function wireContactWidget(root, onSaved) {
     errEl.textContent = "";
     okEl.textContent = "";
 
-    const frequency = form.querySelector(".cw-freq").value || "none";
+    let frequency = form.querySelector(".cw-freq").value || "none";
+    if (frequency === "custom") {
+      const days = parseInt(form.querySelector(".cw-custom-days").value, 10);
+      if (Number.isNaN(days) || days < 1) {
+        errEl.textContent = "Enter how many days between reach-outs.";
+        return;
+      }
+      frequency = "custom:" + days;
+    }
     const connectedOn = form.querySelector(".cw-date").value || todayDateString();
     const contact = normalizeContact({
       name: form.querySelector(".cw-name").value,
@@ -890,7 +961,12 @@ async function showReminderModal(contact, onChanged) {
     + '<div class="modal-email">'
     + '<p class="label">Draft message</p>'
     + '<textarea class="email-draft" readonly rows="8">' + escapeHtml(emailText) + '</textarea>'
+    + '<div class="modal-draft-actions">'
     + '<button class="btn btn-secondary" id="modalCopyEmail" type="button">Copy</button>'
+    + (contact.email
+      ? '<button class="btn btn-secondary" id="modalMailto" type="button">Open in email</button>'
+      : '')
+    + '</div>'
     + '<p id="modalCopyMsg" class="success" aria-live="polite"></p>'
     + '</div>'
     + '</div>';
@@ -928,6 +1004,17 @@ async function showReminderModal(contact, onChanged) {
       modal.querySelector("#modalCopyMsg").textContent = "Copy failed — please copy manually.";
     }
   });
+  // Hands the draft to whatever email client the OS has. Orbit runs entirely in
+  // the browser, so it cannot send mail itself — this is the closest it gets.
+  modal.querySelector("#modalMailto")?.addEventListener("click", () => {
+    const [subjectLine, ...bodyLines] = emailText.split("\n");
+    const subject = subjectLine.replace(/^Subject:\s*/i, "");
+    const body = bodyLines.join("\n").replace(/^\n+/, "");
+    window.location.href = "mailto:" + encodeURIComponent(contact.email)
+      + "?subject=" + encodeURIComponent(subject)
+      + "&body=" + encodeURIComponent(body);
+  });
+
   modal.querySelector("#modalClose").addEventListener("click", () => modal.remove());
   modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
 }
@@ -1377,14 +1464,16 @@ async function initContactPage() {
           pct: health.scheduled ? health.pct : 0,
           band: health.scheduled ? health.band : "none",
           caption: BAND_META[health.band].label,
-          sub: health.scheduled
-            ? (health.daysLeft >= 0 ? health.daysLeft + " days left" : Math.abs(health.daysLeft) + " days over")
-            : "Reach out again?"
+          sub: !health.scheduled ? "Reach out again?"
+            : health.daysLeft < 0 ? Math.abs(health.daysLeft) + " days over"
+            : health.grace ? health.daysLeft + " days to first reach-out"
+            : health.daysLeft + " days left"
         })
       + '</div>'
       + '<dl class="reachout-meta">'
       + '<div><dt>Last connected</dt><dd>' + escapeHtml(relativeDayLabel(c.lastContacted)) + '</dd></div>'
-      + '<div><dt>Next nudge</dt><dd>' + (c.nextReminder ? formatDate(c.nextReminder.split("T")[0]) : "—") + '</dd></div>'
+      + '<div><dt>' + (health.grace ? "Reach out by" : "Next nudge") + '</dt>'
+      + '<dd>' + (c.nextReminder ? formatDate(c.nextReminder.split("T")[0]) : "—") + '</dd></div>'
       + '</dl>'
       + '<div class="reachout-controls">'
       + '<div class="field-group"><label for="cpFrequency">Reach out again?</label>'
@@ -1399,6 +1488,10 @@ async function initContactPage() {
       + '</div>'
       + '<p id="cpSaveReminderMsg" class="success" aria-live="polite"></p>'
       + '</div>'
+      + (health.grace
+        ? '<p class="grace-note">You have ' + GRACE_DAYS + ' days from setting this schedule to '
+          + 'make the first reach-out. After that the normal cadence takes over.</p>'
+        : '')
       + '</div>'
       + '</div>'
 
@@ -1527,12 +1620,21 @@ async function initContactPage() {
         const days = parseInt($("#cpCustomDays")?.value, 10);
         newFreq = (!Number.isNaN(days) && days > 0) ? "custom:" + days : "none";
       }
-      await save((cur) => ({
-        ...cur,
-        followUpFrequency: newFreq,
-        reminderEnabled: newFreq !== "none",
-        nextReminder: calculateNextReminder(cur.lastContacted || cur.dateMet, newFreq)
-      }));
+      await save((cur) => {
+        const wasOff = !cur.reminderEnabled || cur.followUpFrequency === "none";
+        const anchor = cur.lastContacted || cur.dateMet;
+        return {
+          ...cur,
+          followUpFrequency: newFreq,
+          reminderEnabled: newFreq !== "none",
+          // Switching a schedule ON grants the one-week grace window if the
+          // cadence alone would already be blown. Editing an existing cadence
+          // keeps the normal deadline — the grace is not re-granted.
+          nextReminder: newFreq === "none" ? ""
+            : wasOff ? firstDeadlineFor(anchor, newFreq)
+                     : calculateNextReminder(anchor, newFreq)
+        };
+      });
       const msg = $("#cpSaveReminderMsg");
       msg.textContent = "Schedule saved!";
       setTimeout(() => { msg.textContent = ""; }, 2000);

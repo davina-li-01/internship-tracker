@@ -3279,3 +3279,24 @@ body.dark .sc-icon { color: var(--accent); }
   .settings-navitem { white-space: nowrap; }
   .sn-icon { display: none; }
 }
+
+/* ── Custom cadence input in the capture widget ──────────────── */
+.cw-custom { display: flex; align-items: center; gap: 0.45rem; margin-top: 0.4rem; }
+.cw-custom.hidden { display: none; }
+.cw-custom-days { flex: 1; min-width: 0; }
+.cw-custom-unit { font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; }
+
+/* ── Grace window note on the profile ────────────────────────── */
+.grace-note {
+  margin: 0; padding: 0.6rem 0.7rem;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--st-warning) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--st-warning) 30%, transparent);
+  font-size: 0.72rem; line-height: 1.5; color: var(--text);
+}
+
+.modal-draft-actions { display: flex; gap: 0.5rem; }
+.modal-draft-actions .btn { flex: 1; }
+
+/* The grace note spans the whole reach-out strip instead of taking a column */
+.reachout-strip .grace-note { grid-column: 1 / -1; margin-top: 0.25rem; }
