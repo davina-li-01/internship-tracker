@@ -65,15 +65,46 @@ first:
 Worth deciding after a week of real use — which of these is right depends on whether
 you usually have notes to add or just want the row gone.
 
-### 7. Scheduled email reminders  — deferred by choice
+### 7. A conversation logged from the + button seems to vanish  ← papercut
+**The data is fine — this is a display gap.** The conversation is saved with its notes
+(covered by the "a brand-new person gets one conversation" test), but neither page that
+has the **+** button shows it back to you:
+
+| Page | Has **+** | Shows conversations? |
+|---|---|---|
+| Dashboard | yes | No — it only lists people who *need attention*, and someone you just spoke to is healthy, so they are correctly absent |
+| My Network | yes | No — rows show role, company and health, never conversation notes |
+| Networking Log | **no** | Yes — this is the only page that previews conversations, and it has no **+** |
+
+So the one page that would show you the thing you just wrote is the one page you cannot
+create it from. You save, nothing visibly changes, and it looks like it did not work.
+
+**Options**
+- **Confirm with a link.** "Logged with Marcus — view conversation" after saving. Cheapest,
+  and honest about where the thing went.
+- **Show the latest conversation in My Network rows**, the way the log already does.
+  Makes the page useful for more than names.
+- **Add a "Recently logged" strip to the dashboard** — the last few conversations, so the
+  page reflects what you just did.
+- **Put the + on the Networking Log too**, so create and read live together.
+
+The first is a one-liner and probably enough on its own; the second is the better fix if
+the underlying complaint is "My Network does not show me anything about the relationship".
+
+**Acceptance criteria**
+- After logging a conversation, the user sees confirmation that names the person
+- There is a path from that confirmation to where the conversation is visible
+- No page offers creating something it will never display
+
+### 8. Scheduled email reminders  — deferred by choice
 The in-app nudge only fires when you open Orbit, and "Open in email" hands the draft to
 your mail client. Neither is a reminder that arrives on its own.
 
 A real one needs something awake when you are not: a **Supabase Edge Function** on a cron
 schedule that queries overdue contacts and sends through an email provider (Resend has a
-free tier). Same class of infrastructure as #8, so they are worth doing together.
+free tier). Same class of infrastructure as #9, so they are worth doing together.
 
-### 8. Google Calendar auto-logging  ★ highest leverage
+### 9. Google Calendar auto-logging  ★ highest leverage
 Orbit only works if you remember to log touchpoints — exactly the habit that fails.
 Auto-logging from calendar events fixes the core weakness.
 
@@ -84,29 +115,29 @@ emails against `contacts.email` → create a conversation and roll the cadence f
 **Costs:** only works for contacts whose email you saved; Google requires app
 verification before non-test users can grant the scope; needs a token-refresh story.
 
-### 9. AI talking points
+### 10. AI talking points
 `generateFollowUpSuggestions()` is a keyword heuristic — it pattern-matches action verbs
 in your notes. It works, but reads mechanically. A real model call would make "things to
 bring up next" genuinely useful. Self-contained, no external auth: the best first feature.
 
-### 10. Two-factor authentication
+### 11. Two-factor authentication
 The Security tab explains the options but nothing is wired. **Authenticator app (TOTP)**
 is free on Supabase and is the one worth building; SMS needs a paid provider and is
 weaker (SIM-swap).
 
-### 11. PDF notes on a conversation
+### 12. PDF notes on a conversation
 Attach a PDF to a conversation entry — handwritten notes, a deck they shared, a
 one-pager. The plumbing already exists: `db.uploadFileToStorage()` takes a
 `contactId`, and the contact profile's conversation form already accepts a PDF.
 What is missing is the same field on the Networking Log's conversation logger, and
 showing attachments alongside the conversation in the history.
 
-### 12. Draft a thank-you from the conversation
+### 13. Draft a thank-you from the conversation
 After logging a conversation, offer a thank-you message written from what you just
-wrote — not the generic reconnect template. Needs the same model call as #9, so build
+wrote — not the generic reconnect template. Needs the same model call as #10, so build
 them together: one prompt path, two entry points.
 
-### 13. Smaller ideas
+### 14. Smaller ideas
 - A `starred` / "key people" tier (needs `alter table contacts add column starred boolean`)
 - Trend over time: is my network getting healthier or worse?
 - Company logos on profiles (needs an external logo API — deliberately skipped)
@@ -117,9 +148,9 @@ them together: one prompt path, two entry points.
 
 1. **#1 and #2** — ten minutes, and everything else depends on them
 2. **Use it for a week** — add real people, set real cadences. This surfaces the UX
-   problems that speculation will not, and produces the contacts-with-emails that #8 needs
-3. **#9 AI talking points** — self-contained, immediately visible
-4. **#7 + #8 together** — both need server-side infrastructure, so build that once
+   problems that speculation will not, and produces the contacts-with-emails that #9 needs
+3. **#10 AI talking points** — self-contained, immediately visible
+4. **#8 + #9 together** — both need server-side infrastructure, so build that once
 
 ---
 

@@ -164,7 +164,30 @@ the row gone? Resolve with a week of real usage, not discussion.
 
 ---
 
-### OR-14 — Google Calendar auto-logging · **P1 · Highest leverage**
+### OR-14 — Logging from **+** gives no visible result · **P1 · Papercut**
+> As a user, after I log a conversation I want to see that it landed, so I trust the app
+> recorded what I wrote.
+
+**The data is saved correctly** — this is a display gap. Neither page carrying the **+**
+button displays conversations: the Dashboard lists only people needing attention (someone
+you just spoke to is healthy, so correctly absent), and My Network rows show role, company
+and health but never notes. The Networking Log is the only page that previews
+conversations, and it has no **+**.
+
+The page that would show you what you wrote is the one page you cannot write from.
+
+**Acceptance criteria**
+- After logging, the user sees confirmation naming the person
+- There is a path from that confirmation to where the conversation is visible
+- No page offers creating something it will never display
+
+**Options:** confirmation with a link (cheapest) · show latest conversation in My Network
+rows (better if the real complaint is that My Network shows nothing about the
+relationship) · a "recently logged" strip on the dashboard · put **+** on the log too.
+
+---
+
+### OR-15 — Google Calendar auto-logging · **P1 · Highest leverage**
 > As a user, I want conversations logged automatically from my calendar, so staying
 > current does not depend on me remembering.
 
@@ -189,7 +212,7 @@ before non-test users can grant the scope; needs a token-refresh story.
 
 ---
 
-### OR-15 — Scheduled email reminders · **P1**
+### OR-16 — Scheduled email reminders · **P1**
 > As a user, I want a reminder to arrive when someone is overdue, so I don't have to open
 > the app to find out.
 
@@ -203,12 +226,12 @@ schedule plus an email provider.
 - Frequency is user-controlled, including off
 - The email links straight to the connection's profile
 
-**Note:** same infrastructure as OR-14. Sequence them together; build the server-side
+**Note:** same infrastructure as OR-15. Sequence them together; build the server-side
 piece once.
 
 ---
 
-### OR-16 — AI talking points · **P2 · Best next feature**
+### OR-17 — AI talking points · **P2 · Best next feature**
 > As a user, I want suggested talking points drawn from my notes, so my follow-up is
 > specific rather than generic.
 
@@ -223,18 +246,18 @@ infrastructure, immediately visible payoff.
 
 ---
 
-### OR-17 — Draft a thank-you from the conversation · **P2**
+### OR-18 — Draft a thank-you from the conversation · **P2**
 > As a user, I want a thank-you drafted from what I just wrote, so I can send it while the
 > conversation is fresh.
 
 Distinct from the existing reconnect template, which is generic by design. This one is
 specific to what was just said.
 
-**Dependency:** same model integration as OR-16. One prompt path, two entry points.
+**Dependency:** same model integration as OR-17. One prompt path, two entry points.
 
 ---
 
-### OR-18 — PDF notes on a conversation · **P2**
+### OR-19 — PDF notes on a conversation · **P2**
 > As a user, I want to attach a PDF to a conversation, so handwritten notes and shared
 > decks live with the context they belong to.
 
@@ -244,7 +267,7 @@ Networking Log, and showing attachments inline in the history.
 
 ---
 
-### OR-19 — Two-factor authentication · **P3**
+### OR-20 — Two-factor authentication · **P3**
 > As a user, I want 2FA, so a stolen password is not enough to reach my network.
 
 **Recommendation: authenticator app (TOTP), not SMS.** TOTP is free on Supabase, works
@@ -253,14 +276,14 @@ mechanism — SIM-swap attacks are why security guidance now prefers an app.
 
 ---
 
-### OR-20 — Smaller items · **P3**
+### OR-21 — Smaller items · **P3**
 - **Key people tier** — mark a subset as high-priority (needs a `starred` column)
 - **Network health over time** — is my network improving or decaying?
 - **Company logos on profiles** — needs an external logo API; deliberately skipped so far
 
 ---
 
-### OR-21 — Idle-pause resilience · **Tech debt**
+### OR-22 — Idle-pause resilience · **Tech debt**
 > As a user, I want the app to work after I have not used it for a while.
 
 Free-tier Supabase projects pause after ~7 days idle, which removes the project's DNS
@@ -307,7 +330,7 @@ Epic: Orbit — networking tracker
 │   ├── Sub-task: Usage research — do users capture notes?
 │   ├── Sub-task: Prototype the two leading options
 │   └── Sub-task: Implement and test
-├── Story: OR-14  Google Calendar auto-logging
+├── Story: OR-15  Google Calendar auto-logging
 │   ├── Sub-task: Google Cloud project + OAuth consent screen
 │   ├── Sub-task: PKCE flow with Google Identity Services
 │   ├── Sub-task: Attendee → contact matching
@@ -319,12 +342,12 @@ Epic: Orbit — networking tracker
 - **Priority** — P0 blocks the core loop; P1 changes real-world effectiveness; P2 improves
   a working flow; P3 is nice to have
 - **Labels** — `ux-debt`, `infrastructure`, `ai`, `security`, `tech-debt`
-- **Story points** — OR-13 ≈ 3 · OR-16 ≈ 5 · OR-18 ≈ 3 · OR-14 ≈ 13 · OR-15 ≈ 8
+- **Story points** — OR-14 ≈ 1 · OR-13 ≈ 3 · OR-17 ≈ 5 · OR-19 ≈ 3 · OR-15 ≈ 13 · OR-16 ≈ 8
 
 **Two habits worth keeping from this document**
 1. **Write the user story before the solution.** OR-13 stayed open specifically because
    the story was clear but the solution was not — and that is a legitimate state for a
    ticket to be in.
 2. **Record what a ticket is blocked on, including when the blocker is knowledge rather
-   than code.** OR-14 is blocked on having real contacts with emails; OR-13 is blocked on
+   than code.** OR-15 is blocked on having real contacts with emails; OR-13 is blocked on
    knowing how people actually use the flow. Both are real blockers.
