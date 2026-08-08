@@ -1142,11 +1142,13 @@ function wireConversationWidget(root, getContacts, onSaved) {
     dateEl.value = todayDateString();
     customWrap.classList.add("hidden");
     setLinked(null);
-    okEl.textContent = existing
+    const confirmation = existing
       ? "Conversation added to " + name + "."
       : name + " added, with your first conversation.";
+    okEl.textContent = confirmation;
     setTimeout(() => { okEl.textContent = ""; }, 3500);
-    if (onSaved) await onSaved(saved);
+    // Callers that destroy this form on save need the confirmation to outlive it.
+    if (onSaved) await onSaved(saved, { name, confirmation, isNew: !existing });
   });
 }
 
@@ -1175,9 +1177,19 @@ function openQuickAddModal(contacts, onSaved) {
     }
   });
 
-  wireConversationWidget(modal, () => contacts, async (saved) => {
+  // ORB-14: this modal used to print its confirmation into itself and then
+  // remove itself 1.1s later, so the only feedback in the app was destroyed with
+  // the DOM. Neither page that carries the + button lists conversations either,
+  // so saving looked like nothing happened. Close first, then confirm outside —
+  // and point at the one page that does show the thing you just wrote.
+  wireConversationWidget(modal, () => contacts, async (saved, meta = {}) => {
+    close();
     if (onSaved) await onSaved(saved);
-    setTimeout(close, 1100);
+    showToast(meta.confirmation || "Conversation saved.", {
+      actionLabel: "View in log",
+      href: "network.html",
+      duration: 7000
+    });
   });
   modal.querySelector(".cw-name")?.focus();
 }
@@ -1186,6 +1198,76 @@ function initQuickAddButton(getContacts, onSaved) {
   const btn = document.getElementById("quickAddBtn");
   if (!btn) return;
   btn.addEventListener("click", () => openQuickAddModal(getContacts(), onSaved));
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+
+/**
+ * A confirmation that outlives whatever created it.
+ *
+ * Two things need this. Logging a conversation used to print "Conversation added
+ * to Marcus" inside a modal that deleted itself 1.1s later, so the only feedback
+ * in the app went with it (ORB-14). And one-click "Reached out" (ORB-13) is only
+ * safe to make one click if the mistake is cheap to take back, which needs a
+ * place to put Undo.
+ *
+ * @param {string} message  Plain text. Name the person — "Logged" alone does not
+ *                          tell you the right row was hit.
+ * @param {object} [opts]
+ * @param {string} [opts.actionLabel]  Text for the trailing button
+ * @param {string} [opts.href]         Makes the action a link instead of a button
+ * @param {Function} [opts.onAction]   Handler; the toast closes after it resolves
+ * @param {number} [opts.duration]     ms before auto-dismiss. Undo gets longer.
+ * @returns {{dismiss: Function}}
+ */
+function showToast(message, opts = {}) {
+  const { actionLabel = "", href = "", onAction = null, duration = 5000 } = opts;
+
+  let stack = document.querySelector(".toast-stack");
+  if (!stack) {
+    stack = document.createElement("div");
+    stack.className = "toast-stack";
+    // Polite, not assertive: this confirms something the user just did on
+    // purpose. It should not interrupt whatever they are reading now.
+    stack.setAttribute("role", "status");
+    stack.setAttribute("aria-live", "polite");
+    document.body.appendChild(stack);
+  }
+  // One at a time. A queue of stale confirmations is noise, not reassurance.
+  stack.replaceChildren();
+
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.innerHTML = '<span class="toast-text">' + escapeHtml(message) + '</span>'
+    + (actionLabel
+      ? (href
+        ? '<a class="toast-action" href="' + escapeHtml(href) + '">' + escapeHtml(actionLabel) + '</a>'
+        : '<button class="toast-action" type="button">' + escapeHtml(actionLabel) + '</button>')
+      : '')
+    + '<button class="toast-close" type="button" aria-label="Dismiss">✕</button>';
+  stack.appendChild(toast);
+
+  let timer = 0;
+  const dismiss = () => {
+    clearTimeout(timer);
+    toast.remove();
+    if (!stack.childElementCount) stack.remove();
+  };
+  timer = setTimeout(dismiss, duration);
+
+  toast.querySelector(".toast-close").addEventListener("click", dismiss);
+  if (onAction) {
+    toast.querySelector(".toast-action")?.addEventListener("click", async () => {
+      clearTimeout(timer);
+      await onAction();
+      dismiss();
+    });
+  }
+  // Hovering means they are reading it or reaching for Undo. Do not yank it away.
+  toast.addEventListener("mouseenter", () => clearTimeout(timer));
+  toast.addEventListener("mouseleave", () => { timer = setTimeout(dismiss, 2500); });
+
+  return { dismiss };
 }
 
 // ── Reach-out modal ───────────────────────────────────────────────────────────
@@ -1208,7 +1290,7 @@ async function showReminderModal(contact, onChanged) {
   modal.className = "modal-overlay";
   modal.innerHTML = '<div class="modal-card">'
     + '<div class="quick-add-header">'
-    + '<h3>Reach out to <strong>' + escapeHtml(contact.name) + '</strong></h3>'
+    + '<h3>Draft a message to <strong>' + escapeHtml(contact.name) + '</strong></h3>'
     + '<button class="icon-btn" id="modalClose" type="button" aria-label="Close">✕</button>'
     + '</div>'
     + '<p class="muted">' + escapeHtml(getFreqLabel(contact.followUpFrequency)) + ' · Next: ' + nextStr + '</p>'
@@ -1233,26 +1315,34 @@ async function showReminderModal(contact, onChanged) {
 
   const finish = async () => { modal.remove(); if (onChanged) await onChanged(); };
 
+  // Same helper the one-click row button uses, so marking it done confirms and
+  // offers undo wherever you do it from.
   modal.querySelector("#modalMarkDone").addEventListener("click", async () => {
-    const today = todayDateString();
-    await db.saveContact(normalizeContact({
-      ...contact,
-      lastContacted: today,
-      nextReminder: calculateNextReminder(today, contact.followUpFrequency)
-    }));
-    await finish();
+    modal.remove();
+    await markReachedOut(contact, onChanged);
   });
   modal.querySelector("#modalLater").addEventListener("click", async () => {
-    await db.saveContact(normalizeContact({
+    const saved = await db.saveContact(normalizeContact({
       ...contact,
       nextReminder: new Date(Date.now() + 3 * 86400000).toISOString()
     }));
+    if (saved) showToast("Snoozed — " + contact.name + " comes back in 3 days.");
+    else showToast("Could not save that — " + contact.name + " is unchanged.");
     await finish();
   });
   modal.querySelector("#modalTurnOff").addEventListener("click", async () => {
-    await db.saveContact(normalizeContact({
+    const saved = await db.saveContact(normalizeContact({
       ...contact, reminderEnabled: false, followUpFrequency: "none"
     }));
+    if (!saved) { showToast("Could not save that — " + contact.name + " is unchanged."); return; }
+    showToast("Schedule removed for " + contact.name + ".", {
+      actionLabel: "Undo",
+      duration: 8000,
+      onAction: async () => {
+        await db.saveContact(normalizeContact({ ...contact }));
+        if (onChanged) await onChanged();
+      }
+    });
     await finish();
   });
   modal.querySelector("#modalCopyEmail").addEventListener("click", async () => {
@@ -1278,6 +1368,53 @@ async function showReminderModal(contact, onChanged) {
   modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
 }
 
+// ── Marking a reach-out done ──────────────────────────────────────────────────
+
+/**
+ * Roll the cadence forward because the user says they reached out.
+ *
+ * This is one gesture, so it is one click (ORB-13). The old flow made you press
+ * "Reach out" — a future-tense label — to report something already done, then
+ * press "I reached out" in a modal: two clicks and a dialog, with the label
+ * pointing the wrong way in time.
+ *
+ * It deliberately does NOT capture notes. The open question "do users have notes
+ * worth capturing, or do they just want the row gone?" was answered *row gone*,
+ * so the fast path stays fast; the conversation logger is still there for the
+ * times there is something to write down.
+ *
+ * Undo is what makes one click safe, so a failed save must not silently look
+ * like a success.
+ */
+async function markReachedOut(contact, onChanged) {
+  const restore = {
+    lastContacted: contact.lastContacted,
+    nextReminder: contact.nextReminder
+  };
+  const today = todayDateString();
+  const saved = await db.saveContact(normalizeContact({
+    ...contact,
+    lastContacted: today,
+    nextReminder: calculateNextReminder(today, contact.followUpFrequency)
+  }));
+
+  if (!saved) {
+    showToast("Could not save that — " + contact.name + " is unchanged.");
+    return false;
+  }
+
+  showToast("Marked as reached out — " + contact.name + ".", {
+    actionLabel: "Undo",
+    duration: 8000,
+    onAction: async () => {
+      await db.saveContact(normalizeContact({ ...contact, ...restore }));
+      if (onChanged) await onChanged();
+    }
+  });
+  if (onChanged) await onChanged();
+  return true;
+}
+
 // ── Shared row renderers ──────────────────────────────────────────────────────
 
 function personRowHtml(contact, health, { showReconnect = false } = {}) {
@@ -1293,9 +1430,17 @@ function personRowHtml(contact, health, { showReconnect = false } = {}) {
     + '</div>'
     + '<div class="person-side">'
     + healthBarHtml(health)
+    // Past tense, one click, because this reports something already done.
+    // The draft/snooze/remove-schedule options keep their modal, demoted to the
+    // icon beside it — they are the rare path, not the common one.
     + (showReconnect && health.scheduled
-      ? '<button class="btn btn-secondary btn-sm" type="button" data-remind-contact="'
-        + escapeHtml(contact.id) + '">Reach out</button>'
+      ? '<div class="row-actions">'
+        + '<button class="btn btn-sm" type="button" data-did-reach-out="'
+          + escapeHtml(contact.id) + '">✓ Reached out</button>'
+        + '<button class="btn btn-secondary btn-sm row-draft" type="button" data-remind-contact="'
+          + escapeHtml(contact.id) + '"'
+          + ' aria-label="Draft a message to ' + escapeHtml(contact.name) + '">Draft</button>'
+        + '</div>'
       : '')
     + '</div>'
     + '</li>';
@@ -1309,6 +1454,17 @@ function wirePersonRows(root, contacts, onChanged) {
     row.addEventListener("click", open);
     row.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
+    });
+  });
+  root.querySelectorAll("[data-did-reach-out]").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const contact = contacts.find((c) => c.id === btn.dataset.didReachOut);
+      if (!contact) return;
+      btn.disabled = true;
+      // onChanged re-renders and replaces this button, so nothing needs to
+      // re-enable it. The toast lives on document.body and survives that.
+      await markReachedOut(contact, onChanged);
     });
   });
   root.querySelectorAll("[data-remind-contact]").forEach((btn) => {
@@ -1733,6 +1889,11 @@ async function initContactPage() {
       + escapeHtml(isCustomFreq ? c.followUpFrequency.slice(7) : "") + '" /></div>'
       + '<div class="reachout-actions">'
       + '<button class="btn" id="cpSaveReminderBtn" type="button">Save</button>'
+      // Same one-click gesture as the dashboard rows (ORB-13), so the habit
+      // learned there still works here. Only meaningful on a cadence.
+      + (health.scheduled
+        ? '<button class="btn btn-secondary" id="cpMarkDoneBtn" type="button">✓ Reached out</button>'
+        : '')
       + '<button class="btn btn-secondary" id="cpOpenReminderBtn" type="button">Draft a message</button>'
       + '</div>'
       + '<p id="cpSaveReminderMsg" class="success" aria-live="polite"></p>'
@@ -1888,6 +2049,16 @@ async function initContactPage() {
       msg.textContent = "Schedule saved!";
       setTimeout(() => { msg.textContent = ""; }, 2000);
       await renderPage();
+    });
+
+    // currentTarget is nulled once dispatch ends, so grab the button before the
+    // first await, not after.
+    $("#cpMarkDoneBtn")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      const fresh = await freshContact();
+      if (!fresh) { btn.disabled = false; return; }
+      await markReachedOut(fresh, renderPage);
     });
 
     $("#cpOpenReminderBtn").addEventListener("click", async () => {

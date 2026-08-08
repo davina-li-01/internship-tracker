@@ -576,6 +576,18 @@ input::placeholder, textarea::placeholder { color: var(--text-faint); }
 body.dark .btn-secondary { background: rgba(255,255,255,0.07); }
 body.dark .btn-secondary:hover { background: rgba(255,255,255,0.12); }
 
+/* Pre-existing dark-mode bug, surfaced by putting a primary button in the
+   dashboard rows. `.btn` is `background: var(--text); color: #FAFAF9`, and in
+   dark mode --text IS #FAFAF9 — so the label was white on white. Orange CTAs
+   escaped it only because they are an explicit allow-list of form submits and
+   ids further down; every other primary button was invisible.
+   Excluded here so that allow-list and .btn-secondary keep their own colors. */
+body.dark .btn:not(.btn-secondary):not([type="submit"]) { color: #1C1917; }
+body.dark .btn:not(.btn-secondary):not([type="submit"]):hover {
+  background: #E7E5E4;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+}
+
 /* Orange CTA buttons */
 form .btn[type="submit"],
 #addFileBtn,
@@ -3400,3 +3412,88 @@ body.dark .convo-count { color: var(--accent); }
 @media (max-width: 520px) {
   .cw-convo-head { grid-template-columns: 1fr; }
 }
+
+/* ── Toast ────────────────────────────────────────────────────────────────────
+   A confirmation that outlives whatever created it. The quick-add modal used to
+   print its success message and then delete itself 1.1s later, so the only
+   feedback in the app was thrown away with the DOM (ORB-14). It also carries the
+   undo for one-click "Reached out" (ORB-13), which is what makes a destructive-
+   feeling one-click action safe.
+   Sits above .modal-overlay (z-index 100) so it survives a closing modal. */
+.toast-stack {
+  position: fixed;
+  left: 50%;
+  bottom: 1.5rem;
+  transform: translateX(-50%);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: center;
+  width: min(30rem, calc(100vw - 2rem));
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.7rem 0.7rem 0.7rem 0.95rem;
+  border-radius: var(--radius-btn);
+  background: rgba(28, 25, 23, 0.94);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 30px rgba(28, 25, 23, 0.28);
+  color: #FAFAF9;
+  font-size: 0.86rem;
+  animation: toast-in 180ms ease-out;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(0.5rem); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast { animation: none; }
+}
+.toast-text { flex: 1; min-width: 0; line-height: 1.35; }
+.toast-action {
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: transparent;
+  color: #FFF;
+  font: inherit;
+  font-weight: 700;
+  padding: 0.35rem 0.7rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background var(--trans);
+}
+.toast-action:hover { background: rgba(255, 255, 255, 0.14); }
+.toast-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.toast-close {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: rgba(250, 250, 249, 0.6);
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: 0.35rem 0.4rem;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.toast-close:hover { color: #FFF; background: rgba(255, 255, 255, 0.12); }
+.toast-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Clear the FAB and the mobile bottom nav. */
+@media (max-width: 992px) {
+  .toast-stack { bottom: 5rem; }
+}
+
+/* ── Row actions (ORB-13) ─────────────────────────────────────────────────────
+   The one-click "Reached out" is the common path, so it gets the primary button.
+   The draft/snooze/remove modal is the rare path and is demoted to the icon. */
+.row-actions { display: flex; align-items: center; gap: 0.35rem; }
+.row-actions .btn-sm { white-space: nowrap; }
+.row-actions .btn { padding-inline: 0.85rem; }

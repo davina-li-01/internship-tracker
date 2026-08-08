@@ -1,174 +1,248 @@
-# Orbit — action plan
+# Orbit — engineering roadmap
 
-Everything outstanding, ordered by what would hurt most if ignored.
-Last updated 2026-08-07.
+Confluence is the source of truth for **what** and **when**
+([Customer Experience EPIC](docs/PRD.md) · Roadmap Q3 2026).
+This file is the source of truth for **how** — the engineering shape of each item,
+the costs, and the parts that are not obvious from the ticket.
 
----
-
-## ✅ Cleared
-
-### ~~1. Finish the settings migration~~ done 2026-08-07
-
-
-`your_email`, `phone` and `avatar_url` all verified present.
-
-### ~~2. Push~~ done — `main` is in sync with GitHub.
+Aligned to Confluence 2026-08-08. Every ORB key below matches the epic.
 
 ---
 
+## Q3 2026 · Aug 1 – Sep 30
+
+| Start | Key | Item | Team | Pri | Effort | Status |
+|---|---|---|---|---|---|---|
+| Aug 8 | ORB-13 | "Marked as reached out" flow | Core | **High** | High | ✅ Done |
+| Aug 8 | ORB-14 | "+" icon confirming logged conversation | Core | Med | Low | ✅ Done |
+| Aug 8 | ORB-20 | PDF attached to conversation | Core | Low | Low | Not started |
+| Aug 8 | ORB-16 | Scheduled email reminders | Integrations | Med | High | Not started |
+| Aug 8 | ORB-15 | Google Calendar integration | Integrations | **High** | High | Not started |
+| Aug 12 | ORB-17 | AI talking points | Core | Med | Low | Not started |
+| Aug 12 | ORB-18 | Audio transcription | Core | **High** | Med | Not started |
+| Aug 17 | ORB-24 | Idle-pause resilience | Integrations | Med | Med | Not started |
+| Aug 19 | ORB-21 | Two-factor authentication | Integrations | Med | Med | Not started |
+| Aug 19 | ORB-23 | Network health over time | Integrations | Med | Med | Not started |
+| Sep 7 | ORB-22 | Key people tier | Core | Low | Low | Not started |
+| Sep 7 | ORB-19 | Thank-you draft from conversation | Core | Low | Low | Not started |
+
+Dates are current-constraint estimates and expected to move **up**, not back.
+
 ---
 
-## 🟠 Worth doing
+## What changed when Confluence landed
 
-### ~~3. Drop the legacy tables~~ ✅ done 2026-08-07
-`internships`, `logs`, `interactions` and `follow_ups` dropped and verified gone.
-`contacts`, `preferences` and `storage_files` untouched and healthy.
+**ORB-13 is unblocked.** It sat here as an open design problem with four options and
+no decision, waiting on a week of real use. The epic's open-questions table now
+answers it: *"Usually they want the row gone. We can wait to see if they want notes."*
+That eliminates the two expensive options — the conversation-logger version and the
+swipe gesture — and picks **one-click done with undo**. It is the reason this moved
+from "worth deciding later" to the top of the quarter.
 
-### 4. The project pauses after ~7 days idle
-Already cost a full debugging session once. A paused project loses its DNS record and
-the app dies with no useful error. The red banner in `js/db.js` explains it when it
-happens, but the fragility remains. Options: a scheduled ping, or accept it and rely on
-the banner.
+**ORB-18 Audio transcription is new.** It was not in this file at all. High priority,
+starting Aug 12 alongside AI talking points.
 
-### 5. Loose ends
-- Orphan `internship_id` columns on `contacts` and `storage_files`, left over from the
-  dropped table. Drop statements are commented at the bottom of `drop-legacy-tables.sql`.
-- The local folder is still `internship-tracker` while the repo is `orbit`. Purely
-  cosmetic — renaming it moves your editor and terminal paths.
+**The old "suggested order" was stale.** It recommended AI talking points as the first
+feature and told you to use the app for a week first. The Confluence sequencing
+supersedes it: ORB-13 and ORB-14 start today, talking points on Aug 12.
+
+**Other answered questions, and what they mean for the build:**
+
+| Question | Answer | Consequence |
+|---|---|---|
+| Fixed cadence the right model? | Good for now; adapt to observed behaviour later | Do not over-fit the cadence code — a seasonal/adaptive model is coming |
+| Is 7 days the right grace window? | A guess; validate by interview | Keep `GRACE_DAYS` a single named constant. It already is |
+| Suggest people to add? | Feels invasive; revisit with ORB-15 | Not a standalone feature — a Calendar sub-feature at most |
+| Holds up at 500 contacts? | Edge case. Cap free tier ~50, paid above | No virtualisation work needed now |
+| Is CSV export enough? | Yes for now | ORB-12 stays shipped as-is |
 
 ---
 
-## 🟢 Features
+## ⏸ Paused here — 2026-08-08
 
-### 6. Marking someone as reached out is not intuitive  ← open design problem
-**The problem.** To record that you reached out, you click a button labelled
-**Reach out**, which opens a modal, where you click **I reached out**. The button
-name describes the thing you are about to do, but you are actually reporting
-something you already did. Two clicks and a modal for what should be one gesture,
-and the label points the wrong way in time.
+**Done and committed:** ORB-13 and ORB-14, plus the dark-mode button fix.
 
-No decision yet — noting it so it does not get lost. Some directions, roughly cheapest
-first:
+**Not yet pushed.** Nothing is live on either deployment until you `git push`.
 
-- **Rename only.** The row button becomes "Mark reached out" or "Log conversation".
-  One line, removes the tense confusion, keeps the modal.
-- **One-click done.** A checkmark on the row that marks it done immediately, with an
-  undo toast. Fastest for the common case; loses the chance to capture notes.
-- **Make it the conversation logger.** The row opens the conversation form
-  pre-filled with that person, so marking it done and recording what was said are
-  the same action. Most consistent with the rest of the app now that the log page
-  works this way — and the cadence only rolls forward when there is something to
-  show for it.
-- **Swipe / drag off the list.** Satisfying, but hides the action and is awkward on
-  desktop.
+**Next up, per the Confluence dates.** Three items also start Aug 8:
 
-Worth deciding after a week of real use — which of these is right depends on whether
-you usually have notes to add or just want the row gone.
+- **ORB-20 · PDF on a conversation** — Low/Low, and the smallest of the three.
+  `db.uploadFileToStorage()` already takes a `contactId` and the profile form
+  already accepts a PDF, so the work is adding that field to the Networking Log's
+  conversation logger and showing attachments in the history.
+- **ORB-15 · Google Calendar** and **ORB-16 · scheduled email** — both High effort
+  and both need the same server-side infrastructure, so they should be sequenced
+  together rather than picked up separately. ORB-15 is also blocked on having real
+  contacts with emails saved.
 
-### 7. A conversation logged from the + button seems to vanish  ← papercut
-**The data is fine — this is a display gap.** The conversation is saved with its notes
-(covered by the "a brand-new person gets one conversation" test), but neither page that
-has the **+** button shows it back to you:
+**Worth doing before more features:** actually use the new one-click flow for a few
+days. ORB-13's open question was answered "they just want the row gone" — the build
+takes that at its word and captures no notes. Real use is what tells you whether
+that holds.
+
+**Unscoped and will need a spec before it can start:** ORB-18 audio transcription
+(Aug 12, High priority). The open engineering questions are listed under its
+heading below.
+
+---
+
+## Engineering notes by item
+
+### ORB-13 — "marked as reached out" flow · ✅ done 2026-08-08
+**The problem.** To record that you reached out, you click **Reach out** — a
+future-tense label — which opens a modal, where you click **I reached out**. Two
+clicks and a modal for one gesture, and the label points the wrong way in time.
+
+**Decided shape** (from the answered open question): the row's primary action marks
+it done in **one click**, past-tense label, with an **undo toast**. No modal on the
+happy path. The existing modal keeps its genuinely useful parts — draft message,
+snooze, remove schedule — behind a secondary action.
+
+Notes capture is deliberately *not* built. The answer says wait and see whether
+people want it; the conversation logger already exists for when they do.
+
+**Shipped as:** `markReachedOut()` in `js/main.js`. Rows on the Dashboard and My
+Network show **✓ Reached out** (one click) beside a demoted **Draft** button. The
+old modal survives as the draft/snooze/remove-schedule path and is retitled
+"Draft a message to X", matching the profile button that already opened it. The
+profile gained the same one-click action so the habit transfers. Marking done
+from anywhere confirms with undo.
+
+### ORB-14 — confirm a logged conversation landed · ✅ done 2026-08-08
+**The data is correct; this is a display gap.** The conversation saves with its notes.
+The problem is that no page which offers **+** ever shows it back:
 
 | Page | Has **+** | Shows conversations? |
 |---|---|---|
-| Dashboard | yes | No — it only lists people who *need attention*, and someone you just spoke to is healthy, so they are correctly absent |
-| My Network | yes | No — rows show role, company and health, never conversation notes |
-| Networking Log | **no** | Yes — this is the only page that previews conversations, and it has no **+** |
+| Dashboard | yes | No — it lists people who *need attention*, and someone you just spoke to is healthy, so they are correctly absent |
+| My Network | yes | No — rows show role, company and health, never notes |
+| Networking Log | **no** | Yes — the only page that previews conversations |
 
-So the one page that would show you the thing you just wrote is the one page you cannot
-create it from. You save, nothing visibly changes, and it looks like it did not work.
+Worse, the modal prints its confirmation and then destroys itself 1.1s later, so the
+one piece of feedback that exists is thrown away with the DOM.
 
-**Options**
-- **Confirm with a link.** "Logged with Marcus — view conversation" after saving. Cheapest,
-  and honest about where the thing went.
-- **Show the latest conversation in My Network rows**, the way the log already does.
-  Makes the page useful for more than names.
-- **Add a "Recently logged" strip to the dashboard** — the last few conversations, so the
-  page reflects what you just did.
-- **Put the + on the Networking Log too**, so create and read live together.
-
-The first is a one-liner and probably enough on its own; the second is the better fix if
-the underlying complaint is "My Network does not show me anything about the relationship".
+**Shape:** the confirmation outlives the modal and names the person, with a link to
+where the conversation is actually visible.
 
 **Acceptance criteria**
-- After logging a conversation, the user sees confirmation that names the person
+- After logging, the user sees confirmation that names the person
 - There is a path from that confirmation to where the conversation is visible
 - No page offers creating something it will never display
 
-### 8. Scheduled email reminders  — deferred by choice
-The in-app nudge only fires when you open Orbit, and "Open in email" hands the draft to
-your mail client. Neither is a reminder that arrives on its own.
+**Shipped as:** `showToast()` in `js/main.js` — a confirmation appended to
+`document.body`, so it survives both the modal closing and the page re-rendering.
+The quick-add modal now closes first and confirms outside itself, naming the person
+and linking to **View in log**. The inline widget on the Networking Log keeps its
+inline message, because that page already shows the conversation underneath.
 
-A real one needs something awake when you are not: a **Supabase Edge Function** on a cron
-schedule that queries overdue contacts and sends through an email provider (Resend has a
-free tier). Same class of infrastructure as #9, so they are worth doing together.
+*Shared the toast with ORB-13 — one component, two uses.*
 
-### 9. Google Calendar auto-logging  ★ highest leverage
+**Found while building this:** every primary `.btn` in dark mode was white text on
+a white background. `.btn` is `background: var(--text)` and dark mode sets
+`--text: #FAFAF9`, the same value as its own `color`. Orange CTAs escaped only
+because they are an explicit allow-list of form submits and ids. Fixed in
+`css/style.css` with a `body.dark` override that leaves that allow-list and
+`.btn-secondary` alone. Pre-existing, unrelated to these tickets — it just became
+visible when a primary button landed in the dashboard rows.
+
+### ORB-15 — Google Calendar auto-logging ★ highest leverage
 Orbit only works if you remember to log touchpoints — exactly the habit that fails.
-Auto-logging from calendar events fixes the core weakness.
+Auto-logging fixes the core weakness.
 
 **Shape:** Google Cloud project → OAuth consent screen → `calendar.events.readonly` →
-Google Identity Services with PKCE in the browser → poll recent events → match attendee
-emails against `contacts.email` → create a conversation and roll the cadence forward.
+Google Identity Services with PKCE in the browser → poll recent events → match
+attendee emails against `contacts.email` → create a conversation and roll the
+cadence forward.
 
 **Costs:** only works for contacts whose email you saved; Google requires app
 verification before non-test users can grant the scope; needs a token-refresh story.
+**Blocked on** having real contacts with emails saved.
 
-### 10. AI talking points
-`generateFollowUpSuggestions()` is a keyword heuristic — it pattern-matches action verbs
-in your notes. It works, but reads mechanically. A real model call would make "things to
-bring up next" genuinely useful. Self-contained, no external auth: the best first feature.
+### ORB-16 — Scheduled email reminders
+The in-app nudge only fires when you open Orbit, and "Open in email" hands the draft
+to your mail client. Neither is a reminder that arrives on its own.
 
-### 11. Two-factor authentication
-The Security tab explains the options but nothing is wired. **Authenticator app (TOTP)**
-is free on Supabase and is the one worth building; SMS needs a paid provider and is
-weaker (SIM-swap).
+A real one needs something awake when you are not: a **Supabase Edge Function** on a
+cron schedule querying overdue contacts, plus an email provider (Resend has a free
+tier). Same class of infrastructure as ORB-15 — **sequence them together**.
 
-### 12. PDF notes on a conversation
-Attach a PDF to a conversation entry — handwritten notes, a deck they shared, a
-one-pager. The plumbing already exists: `db.uploadFileToStorage()` takes a
-`contactId`, and the contact profile's conversation form already accepts a PDF.
-What is missing is the same field on the Networking Log's conversation logger, and
-showing attachments alongside the conversation in the history.
+### ORB-17 — AI talking points
+`generateFollowUpSuggestions()` is a keyword heuristic that pattern-matches action
+verbs in your notes. It works but reads mechanically. Self-contained, no external
+auth. Must degrade to the current heuristic if the model call fails.
 
-### 13. Draft a thank-you from the conversation
-After logging a conversation, offer a thank-you message written from what you just
-wrote — not the generic reconnect template. Needs the same model call as #10, so build
-them together: one prompt path, two entry points.
+### ORB-18 — Audio transcription *(new from Confluence)*
+Record a conversation and store the transcript automatically, so notes never have to
+be retyped. High leverage: it removes the transcription step entirely and pulls more
+of the networking workflow inside the app.
 
-### 14. Smaller ideas
-- A `starred` / "key people" tier (needs `alter table contacts add column starred boolean`)
-- Trend over time: is my network getting healthier or worse?
-- Company logos on profiles (needs an external logo API — deliberately skipped)
+**Unscoped.** Open engineering questions before this can be estimated:
+- Capture: `MediaRecorder` in-browser, or upload an existing file?
+- Transcription: which model, and does audio go through an Edge Function (the API key
+  cannot live in the browser)?
+- Storage: audio in the existing bucket, or transcript text only?
+- Consent: recording another person has legal requirements that vary by jurisdiction
+
+### ORB-19 — Thank-you draft from a conversation
+A thank-you written from what you just wrote, not the generic reconnect template.
+Same model call as ORB-17 — one prompt path, two entry points.
+
+### ORB-20 — PDF notes on a conversation
+Mostly existing plumbing: `db.uploadFileToStorage()` already takes a `contactId`, and
+the contact profile's conversation form already accepts a PDF. Missing: the same field
+on the Networking Log's conversation logger, and showing attachments in the history.
+
+### ORB-21 — Two-factor authentication
+The Security tab explains the options but nothing is wired. **Authenticator app
+(TOTP)** is the one to build — free on Supabase and works offline. SMS needs a paid
+provider and is weaker (SIM-swap).
+
+### ORB-22 — Key people tier
+Needs `alter table contacts add column starred boolean`. Note `contactToRow()` in
+`js/db.js` currently omits `starred` on purpose because the column does not exist.
+
+### ORB-23 — Network health over time
+Requires historical snapshots, which are not stored. Needs a schema decision before
+anything else: a periodic snapshot table, or derive from `interactions` history.
+
+### ORB-24 — Idle-pause resilience
+Free-tier Supabase pauses after ~7 days idle and the project loses its DNS record, so
+the app dies with no useful error. Already cost a full debugging session once. The red
+banner in `js/db.js` explains it when it happens; the fragility remains. Options: a
+scheduled ping, or accept it and rely on the banner.
+
+### ORB-25 — Company logos · won't have
+Needs an external logo API on every render — a runtime dependency for decoration.
+Deliberately skipped.
 
 ---
 
-## Suggested order
+## Housekeeping (not in Confluence)
 
-1. **#1 and #2** — ten minutes, and everything else depends on them
-2. **Use it for a week** — add real people, set real cadences. This surfaces the UX
-   problems that speculation will not, and produces the contacts-with-emails that #9 needs
-3. **#10 AI talking points** — self-contained, immediately visible
-4. **#8 + #9 together** — both need server-side infrastructure, so build that once
+- Orphan `internship_id` columns on `contacts` and `storage_files`, left from the
+  dropped table. Drop statements are commented at the bottom of
+  `supabase/drop-legacy-tables.sql`.
+- The local folder is still `internship-tracker` while the repo is `orbit`. Cosmetic —
+  renaming moves your editor and terminal paths.
 
 ---
 
-## ✅ Done
+## Shipped — M0
 
-**Backend** — dead anon key replaced with the publishable key; `industry` column; storage
-bucket policies; schema backed up to `supabase/schema.sql`; the "Allow all (dev)" RLS
-policies replaced with owner-scoped ones (they had left every row readable by anyone
-holding the public key).
+**Backend** — dead anon key replaced with the publishable key; `industry` column;
+storage bucket policies; schema backed up to `supabase/schema.sql`; the "Allow all
+(dev)" RLS policies replaced with owner-scoped ones (they had left every row readable
+by anyone holding the public key); legacy `internships`, `logs`, `interactions` and
+`follow_ups` tables dropped.
 
 **App** — renamed to Orbit and scoped down from an internship tracker. Mission Control
 with status tiles, a health ring and a breakdown bar. Relationship health with a
 one-week grace window on new cadences. My Network (A–Z), Networking Log, Files with
-document previews and in-app rename, connection profiles, two-pane Settings, edit-profile
-modal, collapsible icon-rail sidebar, CSV export.
+document previews and in-app rename, connection profiles, two-pane Settings,
+edit-profile modal, collapsible icon-rail sidebar, CSV export. Orbit favicon, tab
+titles and link-preview cards.
 
-**Fixes found by rendering rather than reading** — a status label that contradicted the
-countdown beside it, a container with no CSS rule that stacked every card flush, a 0%
-ring painting a stray dot, and a dead-CSS sweep that would have broken the status colors.
-
-**109 automated tests** across health logic, chart rendering, the grace window, and filters.
+**Fixes found by rendering rather than reading** — a status label that contradicted
+the countdown beside it, a container with no CSS rule that stacked every card flush,
+a 0% ring painting a stray dot, and a dead-CSS sweep that would have broken the
+status colors.
