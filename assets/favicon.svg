@@ -1,17 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Orbit">
   <title>Orbit</title>
+  <!--
+    Geometry is chosen so every edge lands on a whole pixel at 32px, where the
+    viewBox scales by 0.5:
+      ring stroke 6  -> 3px      centre r 8   -> 4px radius
+      ring r 18      -> 9px      satellite r 6 -> 3px radius
+    The previous 3.5 stroke resolved to 1.75px and could only render soft.
+  -->
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#FB923C"/>
-      <stop offset="100%" stop-color="#EA580C"/>
+      <stop offset="100%" stop-color="#E4570B"/>
     </linearGradient>
+    <!-- Knocks a gap in the orbital path so the satellite reads as a separate
+         body rather than a lump on the ring. -->
+    <mask id="gap">
+      <rect width="64" height="64" fill="#fff"/>
+      <circle cx="32" cy="14" r="10" fill="#000"/>
+    </mask>
   </defs>
-  <!-- rounded tile so the mark reads at 16px instead of dissolving -->
-  <rect width="64" height="64" rx="14" fill="url(#g)"/>
-  <!-- the orbital path -->
-  <circle cx="32" cy="32" r="17" fill="none" stroke="#fff" stroke-width="3.5" opacity="0.9"/>
-  <!-- the body at its centre -->
-  <circle cx="32" cy="32" r="6.5" fill="#fff"/>
-  <!-- a satellite on the path, so it reads as motion rather than a target -->
-  <circle cx="32" cy="15" r="4.5" fill="#fff"/>
+
+  <rect width="64" height="64" rx="14" fill="url(#tile)"/>
+  <circle cx="32" cy="32" r="18" fill="none" stroke="#fff" stroke-width="6" mask="url(#gap)"/>
+  <circle cx="32" cy="32" r="8" fill="#fff"/>
+  <circle cx="32" cy="14" r="6" fill="#fff"/>
 </svg>
