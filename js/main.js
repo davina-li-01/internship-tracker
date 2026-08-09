@@ -2555,6 +2555,69 @@ async function openProfileModal() {
   modal.querySelector("#epName").focus();
 }
 
+// ── Calendar auto-sync on load (ORB-15) ───────────────────────────────────────
+
+/**
+ * Check the calendar in the background once you have connected it.
+ *
+ * The first version of this lived behind Settings → Integrations, which is a
+ * screen you visit once. A sync you have to remember to run is the same habit
+ * problem Orbit exists to fix, so it now runs itself and only speaks up when it
+ * has found something.
+ *
+ * Three things it is careful about:
+ *   - it never blocks the page, and never throws
+ *   - it never opens a Google popup unprompted; a silent grant that fails just
+ *     means no sync this time
+ *   - it is throttled, because every page here is a full load and syncing on
+ *     each one would hammer Google for no benefit
+ */
+async function initCalendarAutoSync() {
+  if (!calendar.isRemembered()) return;
+
+  const now = Date.now();
+  if (!calendar.autoSyncDue(now)) return;
+
+  const contacts = (await db.getContacts()) || [];
+  if (!contacts.some((c) => (c.email || "").trim())) return;
+
+  const candidates = await calendar.silentSync(contacts, todayDateString());
+
+  if (candidates === null) {
+    // Google would need to ask something. Say so at most once a day — an app
+    // that nags every page load about a background feature is worse than one
+    // that quietly stops.
+    if (calendar.reconnectNudgeDue(now)) {
+      calendar.markReconnectNudged(now);
+      showToast("Calendar access expired.", {
+        actionLabel: "Reconnect",
+        duration: 8000,
+        onAction: async () => {
+          try {
+            const found = await calendar.connectCalendar(contacts, todayDateString());
+            calendar.markSynced(Date.now());
+            if (found.length) openCalendarReviewModal(found, contacts);
+            else showToast("No new meetings in the last " + calendar.LOOKBACK_DAYS + " days.");
+          } catch (err) {
+            showToast(String(err.message || err));
+          }
+        }
+      });
+    }
+    return;
+  }
+
+  calendar.markSynced(now);
+  if (!candidates.length) return;
+
+  showToast(candidates.length + (candidates.length === 1
+    ? " meeting found on your calendar." : " meetings found on your calendar."), {
+    actionLabel: "Review",
+    duration: 10000,
+    onAction: () => openCalendarReviewModal(candidates, contacts)
+  });
+}
+
 // ── Calendar review (ORB-15) ──────────────────────────────────────────────────
 
 /**
@@ -2705,6 +2768,7 @@ async function openSettingsModal(section = "general") {
   const emailMode = ["daily", "weekly"].includes(prefs.email_reminders)
     ? prefs.email_reminders : "off";
   const reminderTarget = (prefs.your_email || "").trim() || authEmail || "no address saved";
+  const calendarLinked = calendar.isRemembered();
 
   const modal = document.createElement("div");
   modal.id = "settingsModal";
@@ -2802,9 +2866,25 @@ async function openSettingsModal(section = "general") {
     + '<li><strong>Matched by email</strong>, so only connections whose email you have '
     + 'saved can be found.</li>'
     + '</ul>'
+    + settingsRow("Status", '<span class="settings-static">'
+        + (calendarLinked
+          ? 'Connected — checked automatically every few hours'
+          : 'Not connected')
+        + '</span>')
+    + '<p class="field-hint">' + (calendarLinked
+        ? 'When it finds something, Orbit tells you on whichever page you are on. '
+          + 'You still confirm each one before it is logged.'
+        : 'Once connected, Orbit checks in the background and only speaks up when '
+          + 'it has found something.') + '</p>'
     + '<p id="calMsg" class="success" aria-live="polite"></p>'
     + '<p id="calErr" class="error" aria-live="polite"></p>'
-    + '<button class="btn" id="calSyncBtn" type="button">Find meetings from my calendar</button>'
+    + '<div class="modal-actions">'
+    + '<button class="btn" id="calSyncBtn" type="button">'
+    + (calendarLinked ? 'Check now' : 'Connect Google Calendar') + '</button>'
+    + (calendarLinked
+      ? '<button class="btn btn-secondary" id="calDisconnectBtn" type="button">Disconnect</button>'
+      : '')
+    + '</div>'
     + '</section>'
 
     // ── Security ─────────────────────────────────────────────────────────
@@ -2935,9 +3015,10 @@ async function openSettingsModal(section = "general") {
         return;
       }
       const candidates = await calendar.connectCalendar(contacts, todayDateString());
+      calendar.markSynced(Date.now());
       if (!candidates.length) {
         msg.textContent = "No new meetings found in the last "
-          + calendar.LOOKBACK_DAYS + " days.";
+          + calendar.LOOKBACK_DAYS + " days. Orbit will keep checking on its own.";
         return;
       }
       modal.remove();
@@ -2946,8 +3027,14 @@ async function openSettingsModal(section = "general") {
       err.textContent = String(error.message || error);
     } finally {
       btn.disabled = false;
-      btn.textContent = "Find meetings from my calendar";
+      btn.textContent = calendarLinked ? "Check now" : "Connect Google Calendar";
     }
+  });
+
+  modal.querySelector("#calDisconnectBtn")?.addEventListener("click", () => {
+    calendar.disconnectCalendar();
+    modal.remove();
+    showToast("Google Calendar disconnected. Nothing was stored, so nothing to clean up.");
   });
 
   modal.querySelector("#savePw").addEventListener("click", async () => {
@@ -3067,4 +3154,7 @@ async function checkRemindersOnLoad() {
   await initContactPage();
   await initFilesPage();
   await checkRemindersOnLoad();
+  // Last, and deliberately not awaited into anything that renders: it talks to
+  // Google over the network and must never hold up the page.
+  initCalendarAutoSync().catch(() => {});
 })();

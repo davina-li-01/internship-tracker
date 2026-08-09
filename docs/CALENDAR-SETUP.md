@@ -77,12 +77,25 @@ const CLIENT_ID = "4293730503-517jknqdk0kfkouikg9h20hsektkrcsf.apps.googleuserco
 that is the whole reason this design needs no server and stores no tokens.
 Changing project means changing this line.
 
-### 6 · Use it
+### 6 · Connect it, once
 
-Settings → **Integrations** → **Find meetings from my calendar**.
+Settings → **Integrations** → **Connect Google Calendar**.
 
-Google asks for permission, then Orbit shows what it found with everything
-pre-ticked. Untick anything wrong, press **Log selected**.
+Google asks for permission. Expect an **"unverified app"** warning — that is
+Testing mode, not a problem. Click *Advanced* → *Go to Orbit (unsafe)*.
+
+**After that you never open Settings for this again.** Orbit checks on its own
+every few hours when you open it, and only speaks up when it has found
+something:
+
+```
+3 meetings found on your calendar.   [Review]  ✕
+```
+
+**Review** opens the pre-ticked list. Untick anything wrong, press **Log
+selected**.
+
+Settings keeps **Check now** for forcing a sync, and **Disconnect**.
 
 ---
 
@@ -126,8 +139,19 @@ already wrote up by hand.
 | Popup never appears | Browser blocked it. Allow popups for this site |
 
 **Expect to re-authorise roughly weekly.** Google expires tokens for apps in
-Testing mode. The alternative is verification review, which is not worth it for
-one user.
+Testing mode. When that happens the background sync stops silently and Orbit
+offers a **Reconnect** toast — at most once a day, because an app that nags on
+every page load about a background feature is worse than one that goes quiet.
+
+### How the background sync behaves
+
+| | |
+|---|---|
+| Frequency | At most once every 4 hours. Every page here is a full page load, so without a throttle it would hit Google on every navigation |
+| Popups | Never unprompted. It asks Google to reissue silently; if that needs a popup, the browser blocks it (no user gesture) and the sync is simply skipped |
+| Timeout | 8 seconds. `requestAccessToken` only settles when Google calls back, so without one a blocked popup would leave a promise pending forever and the sync stamp would never be written |
+| Failure | Silent. Returns no candidates, keeps the connection remembered, retries later |
+| Stored | Still nothing but a flag saying you connected before. No token, ever |
 
 ---
 

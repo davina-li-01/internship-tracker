@@ -219,12 +219,102 @@ export function isConnected() {
   return Boolean(accessToken);
 }
 
+// ── Remembering that you connected ────────────────────────────────────────────
+//
+// The token itself is still never stored. All that is kept is a flag saying you
+// have granted access before, which is what lets Orbit try for a token silently
+// on load instead of making you go and ask for one. Clearing it costs you a
+// click, not your data.
+
+const CONNECTED_KEY = "orbit_calendar_connected";
+const LAST_SYNC_KEY = "orbit_calendar_last_sync";
+const LAST_NUDGE_KEY = "orbit_calendar_last_nudge";
+
+/** Every page load is a fresh load in a multi-page app — do not sync on each. */
+export const AUTO_SYNC_HOURS = 4;
+
+/** How often re-connecting may be suggested after a silent grant fails. */
+export const RECONNECT_NUDGE_HOURS = 24;
+
+/** Nothing on the background path may wait on Google indefinitely. */
+export const SILENT_TIMEOUT_MS = 8000;
+
+function withTimeout(promise, ms) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("Timed out talking to Google.")), ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); }
+    );
+  });
+}
+
+const readTime = (key) => Number(localStorage.getItem(key) || 0);
+const stampTime = (key, now) => localStorage.setItem(key, String(now));
+
+export function rememberConnection() {
+  localStorage.setItem(CONNECTED_KEY, "1");
+}
+
+export function isRemembered() {
+  return localStorage.getItem(CONNECTED_KEY) === "1";
+}
+
+export function forgetConnection() {
+  localStorage.removeItem(CONNECTED_KEY);
+  localStorage.removeItem(LAST_SYNC_KEY);
+  localStorage.removeItem(LAST_NUDGE_KEY);
+}
+
+export function autoSyncDue(now = Date.now()) {
+  if (!isRemembered()) return false;
+  return now - readTime(LAST_SYNC_KEY) >= AUTO_SYNC_HOURS * 3600_000;
+}
+
+export function markSynced(now = Date.now()) { stampTime(LAST_SYNC_KEY, now); }
+
+export function reconnectNudgeDue(now = Date.now()) {
+  return now - readTime(LAST_NUDGE_KEY) >= RECONNECT_NUDGE_HOURS * 3600_000;
+}
+
+export function markReconnectNudged(now = Date.now()) { stampTime(LAST_NUDGE_KEY, now); }
+
+/**
+ * Try to sync without any user interaction.
+ *
+ * Returns candidates on success, or null if Google would need to ask you
+ * something. It never throws and never blocks the page: a failure here is a
+ * normal Tuesday (tokens for apps in Testing mode expire in about a week), not
+ * an error worth interrupting anyone over.
+ *
+ * `prompt: ""` asks Google to reissue silently. If it cannot — no active Google
+ * session, consent withdrawn, token long expired — it would need a popup, and a
+ * popup that nobody clicked for is blocked by the browser anyway. Either way we
+ * land in the catch and return null.
+ */
+export async function silentSync(contacts, todayIso) {
+  if (!isRemembered()) return null;
+  try {
+    // The timeout is not belt and braces — it is required. requestAccessToken
+    // only settles when Google invokes its callback, so a script that never
+    // loads or a popup the browser blocked without telling us leaves that
+    // promise pending forever. On a page-load path that is a leak that also
+    // means the sync stamp never gets written, so every future load retries.
+    await withTimeout(requestAccessToken({ interactive: false }), SILENT_TIMEOUT_MS);
+    const events = await withTimeout(fetchRecentEvents(), SILENT_TIMEOUT_MS);
+    return findCandidates(events, contacts, todayIso);
+  } catch {
+    return null;
+  }
+}
+
 /** Drops the token. Nothing was stored, so there is nothing else to clear. */
 export function disconnectCalendar() {
   if (accessToken && window.google?.accounts?.oauth2) {
     window.google.accounts.oauth2.revoke(accessToken, () => {});
   }
   accessToken = "";
+  forgetConnection();
 }
 
 /** Recent events from the primary calendar. */
@@ -258,6 +348,9 @@ export async function fetchRecentEvents(lookbackDays = LOOKBACK_DAYS) {
  */
 export async function connectCalendar(contacts, todayIso, { interactive = true } = {}) {
   await requestAccessToken({ interactive });
+  // Only remembered once a grant has actually succeeded, so a cancelled popup
+  // does not leave Orbit trying silently forever.
+  rememberConnection();
   const events = await fetchRecentEvents();
   return findCandidates(events, contacts, todayIso);
 }
