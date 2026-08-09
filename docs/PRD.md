@@ -195,7 +195,7 @@ stacked bar, never a pie.
 | Resource | Link |
 |---|---|
 | Live app (GitHub Pages) | https://davina-li-01.github.io/orbit/ |
-| Live app (Vercel mirror) | https://internship-tracker-sigma.vercel.app/ |
+| Live app (Vercel mirror) | https://orbit-network-sigma.vercel.app/ |
 | Repository | https://github.com/davina-li-01/orbit |
 | Engineering roadmap | `ROADMAP.md` |
 | Build retrospective | `docs/LEARNINGS.md` |

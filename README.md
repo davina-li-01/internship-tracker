@@ -13,7 +13,7 @@ It started out as a general internship tracker (daily logs, weekly manager updat
 **[https://davina-li-01.github.io/orbit/](https://davina-li-01.github.io/orbit/)**
 
 Also mirrored on Vercel at
-[internship-tracker-sigma.vercel.app](https://internship-tracker-sigma.vercel.app/) —
+[orbit-network-sigma.vercel.app](https://orbit-network-sigma.vercel.app/) —
 both deploy from `main`.
 
 You need to make a free account to use it. Your data is saved to the cloud so it won't disappear if you close the tab.
