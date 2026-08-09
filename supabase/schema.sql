@@ -41,16 +41,32 @@ create table if not exists public.contacts (
   interactions        jsonb default '[]'::jsonb,
   company_history     jsonb default '[]'::jsonb,
   follow_ups          jsonb default '[]'::jsonb,
+  -- Last time the reminder job emailed about this person (ORB-16). Someone
+  -- stays overdue until you reach out, so without this they would appear in
+  -- every digest forever.
+  last_nudged_at      timestamptz,
   created_at          timestamp default now()
 );
 
 create index if not exists contacts_user_id_idx on public.contacts (user_id);
 
+-- The reminder job's only read: who is past their deadline.
+create index if not exists contacts_due_idx
+  on public.contacts (next_reminder)
+  where reminder_enabled = true;
+
 create table if not exists public.preferences (
-  user_id      uuid primary key references auth.users(id) on delete cascade,
-  your_name    text,
-  manager_name text,
-  next_steps   text
+  user_id               uuid primary key references auth.users(id) on delete cascade,
+  your_name             text,
+  your_email            text,
+  phone                 text,
+  manager_name          text,
+  next_steps            text,
+  -- 'off' | 'daily' | 'weekly'. Defaults to off: email is the only thing here
+  -- that reaches someone who did not open the app, so it must be opted into.
+  email_reminders       text default 'off'
+    check (email_reminders in ('off', 'daily', 'weekly')),
+  last_reminder_sent_at timestamptz
 );
 
 -- NOTE: internship_id and contact_id are `text`, not `uuid`, even though

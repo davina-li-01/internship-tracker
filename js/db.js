@@ -82,7 +82,7 @@ export async function getPreferences() {
 // your_email and phone are newer columns. If the database predates them the
 // upsert fails with PGRST204; rather than losing the whole save we drop the
 // offending key and retry, so an unrun migration costs one field, not all of them.
-const OPTIONAL_PREF_COLUMNS = ["your_email", "phone", "avatar_url"];
+const OPTIONAL_PREF_COLUMNS = ["your_email", "phone", "avatar_url", "email_reminders"];
 
 export async function savePreferences(updates) {
   const userId = await uid();

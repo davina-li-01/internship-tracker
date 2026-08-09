@@ -2563,6 +2563,13 @@ async function openSettingsModal(section = "general") {
   const theme = localStorage.getItem("orbit_theme")
     || localStorage.getItem("interntrack_theme") || "light";
   const nudge = getNudgeMode();
+  // Unlike the in-app prompt, this one lives in the database — the reminder job
+  // runs server-side and can never see localStorage. Anything other than the
+  // three known values is treated as off, which is also what an unrun migration
+  // looks like.
+  const emailMode = ["daily", "weekly"].includes(prefs.email_reminders)
+    ? prefs.email_reminders : "off";
+  const reminderTarget = (prefs.your_email || "").trim() || authEmail || "no address saved";
 
   const modal = document.createElement("div");
   modal.id = "settingsModal";
@@ -2605,7 +2612,8 @@ async function openSettingsModal(section = "general") {
     + '<p class="field-hint">Stored on your profile. Not used for sign-in codes — see Security &amp; login.</p></div>'
     + '<div class="field-group"><label for="setYourEmail">Contact email</label>'
     + '<input type="email" id="setYourEmail" value="' + escapeHtml(prefs.your_email || "") + '" placeholder="you@example.com" />'
-    + '<p class="field-hint">Shown in drafts. Your sign-in email is <strong>' + escapeHtml(authEmail) + '</strong>.</p></div>'
+    + '<p class="field-hint">Shown in drafts, and where email reminders are sent. '
+    + 'Your sign-in email is <strong>' + escapeHtml(authEmail) + '</strong>.</p></div>'
     + '<p id="profileMsg" class="success" aria-live="polite"></p>'
     + '<p id="profileErr" class="error" aria-live="polite"></p>'
     + '<button class="btn" id="saveProfile" type="button">Save profile</button>'
@@ -2622,6 +2630,24 @@ async function openSettingsModal(section = "general") {
         + '<option value="daily"' + (nudge === "daily" ? " selected" : "") + '>Once a day</option>'
         + '<option value="off"' + (nudge === "off" ? " selected" : "") + '>Never</option></select>')
     + '<p class="field-hint">Overdue people still show on the dashboard either way.</p>'
+
+    + '<hr class="settings-rule" />'
+    + '<h4 class="settings-h4">Email reminders</h4>'
+    + '<p class="settings-note">The prompt above only fires when you open Orbit. '
+    + 'This one arrives on its own — a single digest of everyone who is drifting, '
+    + 'never one email per person.</p>'
+    + settingsRow("Email me",
+        '<select id="setEmailReminders">'
+        + '<option value="off"' + (emailMode === "off" ? " selected" : "") + '>Never</option>'
+        + '<option value="daily"' + (emailMode === "daily" ? " selected" : "") + '>At most once a day</option>'
+        + '<option value="weekly"' + (emailMode === "weekly" ? " selected" : "") + '>At most once a week</option>'
+        + '</select>')
+    + '<p class="field-hint">Sent to <strong>' + escapeHtml(reminderTarget) + '</strong>. '
+    + 'The same person will not appear again for a week, so a long-overdue contact '
+    + 'does not turn into a daily guilt trip.</p>'
+    + '<p id="emailRemMsg" class="success" aria-live="polite"></p>'
+    + '<p id="emailRemErr" class="error" aria-live="polite"></p>'
+    + '<button class="btn btn-secondary btn-sm" id="saveEmailReminders" type="button">Save email setting</button>'
     + '</section>'
 
     // ── Security ─────────────────────────────────────────────────────────
@@ -2708,6 +2734,32 @@ async function openSettingsModal(section = "general") {
     msg.textContent = "Profile saved.";
     refreshProfileButton();
     setTimeout(() => { msg.textContent = ""; }, 2500);
+  });
+
+  modal.querySelector("#saveEmailReminders").addEventListener("click", async () => {
+    const msg = modal.querySelector("#emailRemMsg");
+    const err = modal.querySelector("#emailRemErr");
+    msg.textContent = ""; err.textContent = "";
+    const mode = modal.querySelector("#setEmailReminders").value;
+
+    // Turning this on with nowhere to send it would fail silently in a cron job
+    // nobody is watching, so it is refused here where there is someone to tell.
+    if (mode !== "off" && !((prefs.your_email || "").trim() || authEmail)) {
+      err.textContent = "Add a contact email under Profile first — there is nowhere to send these.";
+      return;
+    }
+
+    const result = await db.savePreferences({ email_reminders: mode });
+    if (!result.ok) { err.textContent = "Could not save — see the console (F12)."; return; }
+    if (result.skipped.includes("email_reminders")) {
+      err.textContent = "Run supabase/add-reminder-columns.sql first — the column does not exist yet.";
+      return;
+    }
+    prefs.email_reminders = mode;
+    msg.textContent = mode === "off"
+      ? "Email reminders are off."
+      : "Saved. Reminders go to " + ((prefs.your_email || "").trim() || authEmail) + ".";
+    setTimeout(() => { msg.textContent = ""; }, 3000);
   });
 
   modal.querySelector("#savePw").addEventListener("click", async () => {

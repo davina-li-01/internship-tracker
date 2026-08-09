@@ -16,8 +16,8 @@ Aligned to Confluence 2026-08-08. Every ORB key below matches the epic.
 | Aug 8 | ORB-13 | "Marked as reached out" flow | Core | **High** | High | ✅ Done |
 | Aug 8 | ORB-14 | "+" icon confirming logged conversation | Core | Med | Low | ✅ Done |
 | Aug 8 | ORB-20 | PDF attached to conversation | Core | Low | Low | ✅ Done |
-| Aug 8 | ORB-16 | Scheduled email reminders | Integrations | Med | High | Not started |
-| Aug 8 | ORB-15 | Google Calendar integration | Integrations | **High** | High | Not started |
+| Aug 8 | ORB-16 | Scheduled email reminders | Integrations | Med | High | 🔶 Built — needs deploy |
+| Aug 8 | ORB-15 | Google Calendar integration | Integrations | **High** | High | **In progress** |
 | Aug 12 | ORB-17 | AI talking points | Core | Med | Low | Not started |
 | Aug 12 | ORB-18 | Audio transcription | Core | **High** | Med | Not started |
 | Aug 17 | ORB-24 | Idle-pause resilience | Integrations | Med | Med | Not started |
@@ -160,13 +160,38 @@ cadence forward.
 verification before non-test users can grant the scope; needs a token-refresh story.
 **Blocked on** having real contacts with emails saved.
 
-### ORB-16 — Scheduled email reminders
-The in-app nudge only fires when you open Orbit, and "Open in email" hands the draft
-to your mail client. Neither is a reminder that arrives on its own.
+### ORB-16 — Scheduled email reminders · 🔶 built 2026-08-09, not yet deployed
+The in-app nudge only fires when you open Orbit. This is the first part of Orbit
+that runs when the tab is closed.
 
-A real one needs something awake when you are not: a **Supabase Edge Function** on a
-cron schedule querying overdue contacts, plus an email provider (Resend has a free
-tier). Same class of infrastructure as ORB-15 — **sequence them together**.
+**Correction to the epic:** it says ORB-16 shares infrastructure with ORB-15 and
+they should be sequenced together. That was true of a server-side calendar sync;
+it is not true of the browser-PKCE design that was chosen (2026-08-09). They share
+nothing. ORB-16 is server-side and ORB-15 is entirely client-side.
+
+**Shape:** `pg_cron` (daily, 13:00 UTC) → `pg_net` HTTP call → `send-reminders`
+Edge Function → Resend. Logic lives in `reminders.ts` with no I/O so it can be
+tested; `index.ts` is only the wiring.
+
+**It never recomputes health.** `contacts.next_reminder` is the deadline the app
+already stored, so the job's whole question is whether that date has passed. A
+second implementation of the banding rules is how the email would start
+disagreeing with the dashboard.
+
+**Three independent brakes on spam**, because this is the one feature that reaches
+you when you did not ask:
+- one digest per user, never one email per person
+- a 7-day per-contact cool-off — someone stays overdue until you reach out, so
+  without it they would be in every digest forever
+- a per-user daily/weekly cadence, tracked separately
+
+`MAX_PER_DIGEST` caps a digest at 8 names, and the overflow is deliberately **not**
+stamped — stamping someone never mentioned would silence them for a week.
+
+Defaults to **off**. Email has to be opted into, never inherited.
+
+**Blocked on you:** a Resend API key, `npx supabase functions deploy`, and running
+two SQL files. Full checklist in `docs/REMINDERS-SETUP.md`.
 
 ### ORB-17 — AI talking points
 `generateFollowUpSuggestions()` is a keyword heuristic that pattern-matches action
