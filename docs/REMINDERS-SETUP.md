@@ -47,14 +47,40 @@ inbox, verify a domain under **Domains** and set `REMINDER_FROM` in step 4.
 
 ## Step 3 — Invent a cron secret
 
-Any long random string. This is what stops anyone on the internet from
-triggering your reminder job:
+**Nothing gives you this one — you make it up.** It is a password you choose, and
+its only job is to stop anyone else from triggering your reminder job. The Edge
+Function ignores any request that does not present it.
+
+Run this in your terminal, anywhere:
 
 ```bash
 openssl rand -hex 32
 ```
 
-Keep it somewhere — you need the identical value in steps 4 and 6.
+It prints a single long line:
+
+```
+7f3a9c1e5b2d8a460f1c7e93b4a52d81c6f0e7a394b25d8f1e0c7a63b95d4e28
+```
+
+That string **is** the secret. Copy it.
+
+`hunter2` would technically work too — don't. Anyone who found the function URL
+could then run your job whenever they liked.
+
+**It goes in exactly two places, and they must match character for character:**
+
+| Where | How |
+|---|---|
+| Supabase function secret | `npx supabase secrets set CRON_SECRET=...` (step 4) |
+| Supabase Vault | replaces `REPLACE_WITH_YOUR_CRON_SECRET` (step 6) |
+
+A mismatch is the most common failure here, and it shows up as `401
+unauthorized`.
+
+You do **not** need to remember it afterwards — it lives in those two places for
+good. Keep it in your clipboard for the next few minutes; if you lose it later,
+generate a new one and update both sides.
 
 ## Step 4 — Set the function secrets
 
