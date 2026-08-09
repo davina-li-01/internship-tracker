@@ -26,7 +26,7 @@ Aligned to Confluence 2026-08-08. Every ORB key below matches the epic.
 | Sep 7 | ORB-22 | Key people tier | Core | Low | Low | Not started |
 | Sep 7 | ORB-19 | Thank-you draft from conversation | Core | Low | Low | Not started |
 | — | ORB-26 | Edit a conversation's notes | Core | **High** | Low | ✅ Done |
-| — | ORB-27 | Photos as attachments | Core | Med | Low | ✅ Done |
+| — | ORB-27 | Photos as attachments | Core | **Could have** | Low | ⚠️ Shipped ahead of priority |
 | — | ORB-28 | "Coming up" on the dashboard | Core | Med | Med | ✅ Done |
 
 Dates are current-constraint estimates and expected to move **up**, not back.
@@ -253,9 +253,21 @@ calendar review modal offers a notes box per row, because reviewing the list is
 the moment you still remember the meeting. Typed notes go under the meeting name
 rather than replacing it.
 
-### ORB-27 — Photos as attachments · ✅ done 2026-08-09 *(new)*
-Attachments were PDF-only everywhere, so the most common way people take notes —
-writing them down and photographing them — could not be filed at all.
+### ORB-27 — Photos as attachments · ⚠️ Could have, already shipped
+**Deprioritised 2026-08-09, after it was built.** The decision: typing notes is
+the expected path, and photographing handwritten ones is a nice-to-have, not
+something to design around.
+
+The code is in and tested, so it has not been removed — reverting working,
+covered code to match a priority label costs more than it saves. It is recorded
+here as **Could have** so the roadmap tells the truth about intent, and so
+nothing further is invested in it. If it should come out, the revert is
+contained: `ATTACH_ACCEPT`, `isAllowedAttachment`, `isImageFile`, the
+`.doc-preview-img` branch, and the `accept` in `files.html`.
+
+Original rationale, kept for context: attachments were PDF-only everywhere, so
+the most common way people take notes — writing them down and photographing them
+— could not be filed at all.
 
 Images are accepted wherever a PDF was, including **HEIC by extension**, since
 that is what an iPhone shoots by default and browsers report no MIME type for
