@@ -60,31 +60,30 @@ supersedes it: ORB-13 and ORB-14 start today, talking points on Aug 12.
 
 ## ⏸ Where things stand — 2026-08-09
 
-**Done and committed:** ORB-13, ORB-14 and ORB-20, plus a pre-existing dark-mode
-button fix. Every Aug 8 Core Functionality item is now closed.
+**Every Aug 8 item is closed except ORB-15**, which is in progress.
 
-**Not yet pushed.** Nothing is live on either deployment until you `git push`.
+ORB-13, ORB-14 and ORB-20 shipped, plus a pre-existing dark-mode button bug found
+on the way. **ORB-16 is live** — the cron job runs daily and a real digest has
+been delivered end to end.
 
-**Next up, per the Confluence dates.** What remains from Aug 8 is both Integrations
-work, and it is a step up in kind, not just size:
+**Two bugs surfaced during ORB-16 setup that predate it:**
+- `preferences` had RLS enabled with **zero policies**, so the whole table had been
+  silently unsaveable — your name, contact email and phone were never persisting.
+  This is invisible until a write 403s, because reads just return nothing.
+  `supabase/check-rls.sql` now catches it in one query.
+- Every primary `.btn` in dark mode was white-on-white.
 
-- **ORB-15 · Google Calendar** and **ORB-16 · scheduled email** — both High effort
-  and both need the same thing the app has never had: something running when the
-  browser tab is closed. A Supabase Edge Function plus a cron schedule, and for
-  ORB-16 an email provider. Build that foundation once and sequence them together.
-  ORB-15 is also blocked on having real contacts with emails saved.
+Both were found by exercising the app rather than reading it, which is the pattern
+worth keeping.
 
-**Then Aug 12:** ORB-17 AI talking points (self-contained, no external auth — the
-easier of the two) and ORB-18 audio transcription, which still needs a spec.
+**Next, per the Confluence dates:** finish ORB-15, then Aug 12 brings ORB-17 AI
+talking points (self-contained, no external auth — the easier of the two) and
+ORB-18 audio transcription, which still needs a spec before it can start.
 
-**Worth doing before more features:** actually use the new one-click flow for a few
-days. ORB-13's open question was answered "they just want the row gone" — the build
-takes that at its word and captures no notes. Real use is what tells you whether
-that holds.
-
-**Unscoped and will need a spec before it can start:** ORB-18 audio transcription
-(Aug 12, High priority). The open engineering questions are listed under its
-heading below.
+**Worth doing before more features:** actually use the one-click reach-out flow for
+a few days. ORB-13's open question was answered "they just want the row gone" — the
+build takes that at its word and captures no notes. Real use is what tells you
+whether that holds.
 
 ---
 
