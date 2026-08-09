@@ -105,8 +105,21 @@ policy, and this repo is public.
 ## Step 5 — Deploy the function
 
 ```bash
-npx supabase functions deploy send-reminders
+npx supabase functions deploy send-reminders --no-verify-jwt
 ```
+
+**The flag matters.** Edge Functions demand a JWT `Authorization` header by
+default. This one is invoked by pg_cron, which has no signed-in user and so no
+JWT to send — leave the gate on and every scheduled run is rejected by the
+gateway with `UNAUTHORIZED_NO_AUTH_HEADER` before the function ever runs.
+
+`supabase/config.toml` sets `verify_jwt = false` for this function too, so the
+flag is belt and braces; deploying from this repo does the right thing either
+way.
+
+This does not leave the function unprotected. It checks `CRON_SECRET` itself on
+the first line of the handler and returns 401 without it — that check *is* the
+auth, and it is the reason the secret has to be unguessable.
 
 Then test it before scheduling anything. `?dry=1` reports what it *would* send
 without sending or stamping:
@@ -123,8 +136,13 @@ curl -i "https://kctmclcjqpytswwyewti.supabase.co/functions/v1/send-reminders?dr
 | `results: []` | No user has email reminders switched on yet — that is step 7 |
 | `"skipped": "nothing due"` | Working. Nobody is overdue right now |
 | `wouldSend: {...}` | Working, and there is something to send |
-| `401 unauthorized` | The header does not match `CRON_SECRET` |
+| `{"error":"unauthorized"}` | Your header does not match `CRON_SECRET` |
+| `UNAUTHORIZED_NO_AUTH_HEADER` | Deployed without `--no-verify-jwt`. The gateway blocked it before the function ran — redeploy with the flag |
 | `"CRON_SECRET is not configured"` | Step 4 did not take — re-run and redeploy |
+
+Both failures are a 401, so read the body, not the status line. The gateway's
+rejection carries `sb-error-code`; the function's own is a plain
+`{"error":"unauthorized"}`.
 
 Drop the `?dry=1` when you want a real send.
 
