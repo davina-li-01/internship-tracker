@@ -159,3 +159,13 @@ Three tables in Supabase, all protected by Row Level Security:
 - **`contacts`** — one row per person. Their conversations, past companies, and follow-up talking points are stored as JSON columns.
 - **`storage_files`** — metadata for uploaded PDFs; the files themselves live in the `interntrack-files` storage bucket.
 - **`preferences`** — your name and email, used to sign the draft messages Orbit writes.
+
+## Running the tests
+
+```bash
+npm install
+npm test
+```
+
+11 suites, 315 assertions, no build step — they load `js/main.js` from disk with
+its Supabase imports stubbed. Details in [tests/README.md](tests/README.md).

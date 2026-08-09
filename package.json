@@ -1,0 +1,14 @@
+{
+  "name": "orbit",
+  "version": "1.0.0",
+  "description": "Orbit — a networking tracker. Keep your people in orbit.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/run.mjs",
+    "test:functions": "deno test --allow-net supabase/functions/send-reminders/reminders.test.ts"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1"
+  }
+}

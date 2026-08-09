@@ -346,6 +346,23 @@ Deliberately skipped.
 
 ---
 
+## Tests
+
+`npm test` — 11 suites, 315 assertions, no build step. `npm run test:functions`
+for the Edge Function (Deno). See `tests/README.md`.
+
+They live in the repo as of 2026-08-09. Before that they only existed in a
+scratch directory, which meant the only safety net this codebase had would have
+vanished with it.
+
+Moving them in exposed something worse: five suites imported from a **hand-made
+copy** of `js/main.js`, and that copy predated the reach-out rework, the toast,
+calendar sync and conversation attachments. 133 assertions had been passing
+against code that had not run in days. Suites now read `js/main.js` from disk at
+load time, so a passing suite is a suite that passed against what ships.
+
+---
+
 ## Housekeeping (not in Confluence)
 
 - Orphan `internship_id` columns on `contacts` and `storage_files`, left from the
