@@ -3632,3 +3632,53 @@ body.dark .cal-notes-toggle { color: var(--accent); }
   border: 0;
   pointer-events: none;
 }
+
+/* ── Coming up (ORB-15) ───────────────────────────────────────────────────────
+   The rest of the dashboard is people you are neglecting. This is the
+   conversation you are about to have, and what you meant to raise in it. */
+.upcoming-list { list-style: none; margin: 0; padding: 0; }
+.upcoming-row {
+  display: flex;
+  gap: 0.9rem;
+  padding: 0.75rem 0;
+  align-items: flex-start;
+}
+.upcoming-row + .upcoming-row { border-top: 1px solid var(--hairline); }
+.upcoming-when {
+  flex: 0 0 5.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.upcoming-day { font-size: 0.8rem; font-weight: 700; color: var(--text); }
+.upcoming-main { min-width: 0; flex: 1; }
+.upcoming-title {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 0.1rem;
+  overflow-wrap: anywhere;
+}
+.upcoming-link {
+  display: inline-block;
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--primary-deep);
+  text-decoration: none;
+}
+.upcoming-link:hover { text-decoration: underline; }
+body.dark .upcoming-link { color: var(--accent); }
+.upcoming-points {
+  margin: 0.4rem 0 0;
+  padding-left: 1rem;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.upcoming-points li { margin-bottom: 0.1rem; }
+
+@media (max-width: 640px) {
+  .upcoming-row { flex-direction: column; gap: 0.25rem; }
+  .upcoming-when { flex-direction: row; gap: 0.4rem; align-items: baseline; }
+}

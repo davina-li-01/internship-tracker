@@ -8,8 +8,12 @@
  * Runs entirely in the browser, on purpose:
  *
  *   - The access token lives in a variable and is never written to disk. There
- *     is no refresh token, nothing in localStorage, nothing in the database.
- *     Close the tab and Orbit's access is gone.
+ *     is no refresh token and nothing in the database. Close the tab and
+ *     Orbit's access is gone.
+ *   - Two things ARE kept in localStorage, and neither can be used to reach
+ *     your calendar: a flag saying you connected before, and a cache of
+ *     upcoming meeting titles so the dashboard renders without waiting on
+ *     Google. Disconnect clears both.
  *   - The client id below is NOT a secret. Google issues these to be shipped in
  *     browser code; that is what makes this design possible without a server.
  *   - The scope is calendar.events.readonly. Orbit cannot create, change or
@@ -118,6 +122,132 @@ export function alreadyLogged(contact, event) {
     if (i.sourceEventId) return i.sourceEventId === event.id;
     return Boolean(summary) && i.date === date && norm(i.notes).includes(summary);
   });
+}
+
+/** How far ahead the dashboard looks. */
+export const UPCOMING_DAYS = 7;
+
+/**
+ * How you will actually be meeting.
+ *
+ * Google puts this in three different places depending on how the invite was
+ * made, so all three are checked before falling back to the location field.
+ */
+export function meetingMedium(event) {
+  const conf = event?.conferenceData;
+  const solution = conf?.conferenceSolution?.name || "";
+  const entry = (conf?.entryPoints || []).find((p) => p.entryPointType === "video");
+
+  if (entry?.uri || event?.hangoutLink) {
+    const uri = entry?.uri || event.hangoutLink;
+    let label = solution;
+    if (!label) {
+      if (/zoom\./i.test(uri)) label = "Zoom";
+      else if (/teams\.microsoft/i.test(uri)) label = "Teams";
+      else if (/meet\.google/i.test(uri)) label = "Google Meet";
+      else label = "Video call";
+    }
+    return { label, url: uri };
+  }
+
+  const location = (event?.location || "").trim();
+  if (!location) return { label: "No location set", url: "" };
+  // A bare URL in the location field is still a link, not a place.
+  if (/^https?:\/\//i.test(location)) return { label: "Video call", url: location };
+  return { label: location, url: "" };
+}
+
+/** Start time, as a date plus a rendered clock time. Falls back for all-day. */
+export function eventStart(event) {
+  const iso = event?.start?.dateTime || "";
+  if (!iso) {
+    const date = event?.start?.date || "";
+    return { date, time: "All day", iso: date ? date + "T00:00:00Z" : "" };
+  }
+  const d = new Date(iso);
+  return {
+    date: iso.slice(0, 10),
+    time: d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+    iso
+  };
+}
+
+/**
+ * Meetings still ahead of you, with the people from your network on them.
+ *
+ * Deliberately not filtered the way findCandidates is: an event you have not
+ * responded to yet is still worth knowing about, and nothing here writes to
+ * your data, so a wrong guess costs a line on a dashboard rather than a
+ * corrupted reach-out date.
+ */
+export function findUpcoming(events, contacts, nowMs = Date.now()) {
+  const out = [];
+
+  for (const event of events || []) {
+    if (!event || event.status === "cancelled") continue;
+
+    const me = (event.attendees || []).find((a) => a.self);
+    if (me && me.responseStatus === "declined") continue;
+
+    const start = eventStart(event);
+    if (!start.iso || new Date(start.iso).getTime() < nowMs) continue;
+
+    const people = attendeesInNetwork(event, contacts);
+    if (!people.length) continue;
+
+    out.push({
+      eventId: event.id,
+      title: (event.summary || "Untitled meeting").trim(),
+      date: start.date,
+      time: start.time,
+      iso: start.iso,
+      medium: meetingMedium(event),
+      people: people.map((c) => ({
+        id: c.id,
+        name: c.name,
+        // The point of showing this at all: what you meant to bring up.
+        talkingPoints: (c.followUps || [])
+          .filter((f) => !f.completed)
+          .slice(0, 3)
+          .map((f) => f.text)
+      }))
+    });
+  }
+
+  return out.sort((a, b) => a.iso.localeCompare(b.iso));
+}
+
+// ── Cached upcoming meetings ─────────────────────────────────────────────────
+//
+// Note this is a real change to "nothing is stored": meeting titles, times and
+// the matched names are written to localStorage so the dashboard can render the
+// widget instantly instead of blocking on Google every time it loads.
+//
+// The token is still never stored, which is the part that matters for security.
+// This is display data, on your own device, and Disconnect clears it.
+
+const UPCOMING_KEY = "orbit_calendar_upcoming";
+
+export function cacheUpcoming(items, now = Date.now()) {
+  try {
+    localStorage.setItem(UPCOMING_KEY, JSON.stringify({ at: now, items }));
+  } catch { /* quota or private mode — the widget just stays empty */ }
+}
+
+export function readUpcoming(now = Date.now()) {
+  try {
+    const raw = JSON.parse(localStorage.getItem(UPCOMING_KEY) || "null");
+    if (!raw || !Array.isArray(raw.items)) return [];
+    // Drop anything that has since happened, so a stale cache cannot show you
+    // a meeting you already had as though it were still ahead.
+    return raw.items.filter((i) => new Date(i.iso).getTime() >= now);
+  } catch {
+    return [];
+  }
+}
+
+export function clearUpcoming() {
+  localStorage.removeItem(UPCOMING_KEY);
 }
 
 /** Calendar's own guess at what kind of touchpoint this was. */
@@ -301,8 +431,10 @@ export async function silentSync(contacts, todayIso) {
     // promise pending forever. On a page-load path that is a leak that also
     // means the sync stamp never gets written, so every future load retries.
     await withTimeout(requestAccessToken({ interactive: false }), SILENT_TIMEOUT_MS);
-    const events = await withTimeout(fetchRecentEvents(), SILENT_TIMEOUT_MS);
-    return findCandidates(events, contacts, todayIso);
+    const events = await withTimeout(fetchEventWindow(), SILENT_TIMEOUT_MS);
+    const upcoming = findUpcoming(events, contacts);
+    cacheUpcoming(upcoming);
+    return { candidates: findCandidates(events, contacts, todayIso), upcoming };
   } catch {
     return null;
   }
@@ -315,14 +447,21 @@ export function disconnectCalendar() {
   }
   accessToken = "";
   forgetConnection();
+  clearUpcoming();
 }
 
-/** Recent events from the primary calendar. */
-export async function fetchRecentEvents(lookbackDays = LOOKBACK_DAYS) {
+/**
+ * Events around now, in one request.
+ *
+ * Past and future come from the same call on purpose: the dashboard wants what
+ * is ahead and the sync wants what already happened, and asking Google twice
+ * for overlapping windows would be two round trips for one answer.
+ */
+export async function fetchEventWindow(backDays = LOOKBACK_DAYS, forwardDays = UPCOMING_DAYS) {
   if (!accessToken) throw new Error("Not connected to Google Calendar.");
 
-  const timeMin = new Date(Date.now() - lookbackDays * 86400000).toISOString();
-  const timeMax = new Date().toISOString();
+  const timeMin = new Date(Date.now() - backDays * 86400000).toISOString();
+  const timeMax = new Date(Date.now() + forwardDays * 86400000).toISOString();
   const url = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
     + "?timeMin=" + encodeURIComponent(timeMin)
     + "&timeMax=" + encodeURIComponent(timeMax)
@@ -342,6 +481,11 @@ export async function fetchRecentEvents(lookbackDays = LOOKBACK_DAYS) {
   return data.items || [];
 }
 
+/** Kept for callers that only care about what already happened. */
+export async function fetchRecentEvents(lookbackDays = LOOKBACK_DAYS) {
+  return fetchEventWindow(lookbackDays, 0);
+}
+
 /**
  * Connect and return the conversations worth logging.
  * Writes nothing — the caller decides what to keep.
@@ -351,6 +495,7 @@ export async function connectCalendar(contacts, todayIso, { interactive = true }
   // Only remembered once a grant has actually succeeded, so a cancelled popup
   // does not leave Orbit trying silently forever.
   rememberConnection();
-  const events = await fetchRecentEvents();
+  const events = await fetchEventWindow();
+  cacheUpcoming(findUpcoming(events, contacts));
   return findCandidates(events, contacts, todayIso);
 }

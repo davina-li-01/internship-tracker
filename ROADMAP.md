@@ -25,6 +25,9 @@ Aligned to Confluence 2026-08-08. Every ORB key below matches the epic.
 | Aug 19 | ORB-23 | Network health over time | Integrations | Med | Med | Not started |
 | Sep 7 | ORB-22 | Key people tier | Core | Low | Low | Not started |
 | Sep 7 | ORB-19 | Thank-you draft from conversation | Core | Low | Low | Not started |
+| — | ORB-26 | Edit a conversation's notes | Core | **High** | Low | ✅ Done |
+| — | ORB-27 | Photos as attachments | Core | Med | Low | ✅ Done |
+| — | ORB-28 | "Coming up" on the dashboard | Core | Med | Med | ✅ Done |
 
 Dates are current-constraint estimates and expected to move **up**, not back.
 
@@ -237,6 +240,50 @@ of the networking workflow inside the app.
   cannot live in the browser)?
 - Storage: audio in the existing bucket, or transcript text only?
 - Consent: recording another person has legal requirements that vary by jurisdiction
+
+### ORB-26 — Edit a conversation's notes · ✅ done 2026-08-09 *(new)*
+**Conversations could never be edited. Anywhere.** One was sealed the moment it
+saved, which barely showed while everything was typed by hand — but a
+calendar-synced entry starts with nothing but the event title, so "Coffee with
+Marcus" was all it would ever say. The health data updated and the substance
+never arrived.
+
+Every conversation now has **Edit notes** on the profile timeline, and the
+calendar review modal offers a notes box per row, because reviewing the list is
+the moment you still remember the meeting. Typed notes go under the meeting name
+rather than replacing it.
+
+### ORB-27 — Photos as attachments · ✅ done 2026-08-09 *(new)*
+Attachments were PDF-only everywhere, so the most common way people take notes —
+writing them down and photographing them — could not be filed at all.
+
+Images are accepted wherever a PDF was, including **HEIC by extension**, since
+that is what an iPhone shoots by default and browsers report no MIME type for
+it. Photos preview as real `<img>` tiles; PDFs keep the `<object>` preview that
+renders page one without a library. HEIC will not decode in any browser, so it
+falls back to a placeholder rather than a broken image.
+
+Spoken notes are still ORB-18.
+
+### ORB-28 — "Coming up" on the dashboard · ✅ done 2026-08-09 *(new)*
+The rest of the dashboard is about people you are neglecting. This is the other
+half: the conversation you are **about to have**, paired with that person's open
+"things to bring up next" — which would otherwise sit unread on a profile until
+after the meeting.
+
+Shows who, when, and how (Meet / Zoom / Teams / a street address), with a join
+link where there is one. Google puts the medium in three different places
+depending on how the invite was made, so all three are checked before falling
+back to `location`.
+
+Past and future come from **one** Calendar request rather than two.
+
+**A real change to "nothing is stored":** upcoming meeting titles, times and
+matched names are cached in localStorage so the dashboard renders instantly
+instead of blocking on Google. The token is still never stored — that is the
+part that matters — but this is no longer literally nothing. Disconnect clears
+it, and anything already past is dropped on read so a stale cache cannot show a
+meeting you already had.
 
 ### ORB-19 — Thank-you draft from a conversation
 A thank-you written from what you just wrote, not the generic reconnect template.

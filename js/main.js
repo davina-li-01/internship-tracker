@@ -71,6 +71,9 @@ function relativeDayLabel(value) {
   if (elapsed === null) return "no date";
   if (elapsed === 0) return "today";
   if (elapsed === 1) return "yesterday";
+  // The future branch only ever ran on "next nudge" dates until the upcoming
+  // meetings widget started calling it, where "in 1 days" was on screen.
+  if (elapsed === -1) return "tomorrow";
   if (elapsed < 0) return `in ${Math.abs(elapsed)} days`;
   if (elapsed < 30) return `${elapsed} days ago`;
   const months = Math.round(elapsed / 30);
@@ -1682,8 +1685,12 @@ async function initDashboard() {
         : '<p class="empty">You are current with everyone on a schedule. Nice work.</p>')
       + '</section>';
 
-    root.innerHTML = kpiHtml + chartsHtml + attentionHtml;
+    root.innerHTML = kpiHtml + chartsHtml
+      + '<div id="upcomingMeetings"></div>'
+      + attentionHtml;
     wirePersonRows(root, contacts, render);
+    // Renders from cache immediately; the background sync refreshes it.
+    renderUpcomingMeetings();
   }
 
   function kpiTile(band, label, value, total, sub) {
@@ -2680,7 +2687,9 @@ async function initCalendarAutoSync() {
   const contacts = (await db.getContacts()) || [];
   if (!contacts.some((c) => (c.email || "").trim())) return;
 
-  const candidates = await calendar.silentSync(contacts, todayDateString());
+  const result = await calendar.silentSync(contacts, todayDateString());
+  const candidates = result?.candidates ?? null;
+  if (result) renderUpcomingMeetings();
 
   if (candidates === null) {
     // Google would need to ask something. Say so at most once a day — an app
@@ -2715,6 +2724,67 @@ async function initCalendarAutoSync() {
     duration: 10000,
     onAction: () => openCalendarReviewModal(candidates, contacts)
   });
+}
+
+// ── Upcoming meetings widget ──────────────────────────────────────────────────
+
+/**
+ * What is ahead, paired with what you meant to bring up.
+ *
+ * The rest of the dashboard is about people you are neglecting. This is the
+ * other half: the conversation you are about to have, and the talking points
+ * that would otherwise sit unread on a profile until after it.
+ *
+ * Rendered from the localStorage cache so it appears immediately, then replaced
+ * when a sync completes. Waiting on Google before showing a dashboard would be
+ * a worse trade than briefly showing a slightly stale list.
+ */
+function renderUpcomingMeetings() {
+  const slot = document.getElementById("upcomingMeetings");
+  if (!slot) return;
+
+  if (!calendar.isRemembered()) { slot.innerHTML = ""; return; }
+
+  const items = calendar.readUpcoming().slice(0, 5);
+  if (!items.length) {
+    slot.innerHTML = '<section class="card dash-section upcoming-card">'
+      + '<div class="dash-section-header"><h2>Coming up</h2>'
+      + '<p class="muted">Meetings with people in your network, next '
+      + calendar.UPCOMING_DAYS + ' days.</p></div>'
+      + '<p class="empty">Nothing scheduled with anyone in your network.</p>'
+      + '</section>';
+    return;
+  }
+
+  const rows = items.map((item) => {
+    const who = item.people.map((p) => escapeHtml(p.name)).join(", ");
+    const points = item.people.flatMap((p) => p.talkingPoints || []);
+    return '<li class="upcoming-row">'
+      + '<div class="upcoming-when">'
+      + '<span class="upcoming-day">' + escapeHtml(relativeDayLabel(item.date)) + '</span>'
+      + '<span class="tiny muted">' + escapeHtml(item.time) + '</span>'
+      + '</div>'
+      + '<div class="upcoming-main">'
+      + '<p class="upcoming-title">' + escapeHtml(item.title) + '</p>'
+      + '<p class="tiny muted">' + who + '</p>'
+      + (item.medium.url
+        ? '<a class="upcoming-link" href="' + escapeHtml(item.medium.url)
+          + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(item.medium.label) + ' →</a>'
+        : '<span class="tiny muted">' + escapeHtml(item.medium.label) + '</span>')
+      + (points.length
+        ? '<ul class="upcoming-points">'
+          + points.map((t) => '<li>' + escapeHtml(t) + '</li>').join("")
+          + '</ul>'
+        : '')
+      + '</div>'
+      + '</li>';
+  }).join("");
+
+  slot.innerHTML = '<section class="card dash-section upcoming-card">'
+    + '<div class="dash-section-header"><h2>Coming up</h2>'
+    + '<p class="muted">Meetings with people in your network, and what you wanted to raise.</p></div>'
+    + '<ul class="upcoming-list">' + rows + '</ul>'
+    + '</section>';
 }
 
 // ── Calendar review (ORB-15) ──────────────────────────────────────────────────
