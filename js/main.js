@@ -580,6 +580,34 @@ function applyTheme() {
 
 const INTERACTION_TYPES = ["coffee chat", "meeting", "check-in", "email", "phone call", "event"];
 
+/**
+ * What may be attached to a conversation or uploaded to Files.
+ *
+ * Images matter as much as PDFs here: notes taken by hand exist as a photo on a
+ * phone, and refusing those meant the most common way people actually take
+ * notes could not be filed at all.
+ *
+ * HEIC is what an iPhone produces by default. Browsers cannot render it, so it
+ * uploads and downloads fine but will not preview — worth accepting anyway
+ * rather than rejecting the file someone actually has.
+ */
+const ATTACH_ACCEPT = ".pdf,application/pdf,image/*,.heic,.heif";
+
+function isAllowedAttachment(file) {
+  if (!file) return false;
+  const type = (file.type || "").toLowerCase();
+  if (type === "application/pdf" || type.startsWith("image/")) return true;
+  // Some browsers report an empty type for .heic — fall back to the extension.
+  return /\.(pdf|jpe?g|png|gif|webp|heic|heif)$/i.test(file.name || "");
+}
+
+const ATTACH_REJECT_MSG = "Attach a PDF or an image (a photo of handwritten notes is fine).";
+
+function isImageFile(file) {
+  const name = (file.name || "").toLowerCase();
+  return /\.(jpe?g|png|gif|webp|heic|heif|avif)$/.test(name);
+}
+
 function generateFollowUpSuggestions(contact) {
   const name = contact.name || "them";
   const sentences = [];
@@ -653,10 +681,18 @@ function renderStorageFileCard(file, contact) {
   return '<article class="doc-tile" data-file-id="' + escapeHtml(file.id) + '">'
     + '<div class="doc-preview" role="button" tabindex="0"'
     + ' data-file-url="' + escapeHtml(file.fileUrl) + '" aria-label="Open ' + escapeHtml(file.name) + '">'
-    + (previewUrl
-      ? '<object class="doc-preview-frame" data="' + previewUrl + '" type="application/pdf">'
-        + '<div class="doc-preview-fallback">📄</div></object>'
-      : '<div class="doc-preview-fallback">📄</div>')
+    // An <object type="application/pdf"> renders page one of a PDF natively but
+    // shows nothing for a photo, so images get a real <img>. HEIC lands here
+    // too and will fail to decode — onerror leaves the placeholder rather than
+    // a broken-image icon.
+    + (!file.fileUrl
+      ? '<div class="doc-preview-fallback">📄</div>'
+      : isImageFile(file)
+        ? '<img class="doc-preview-img" src="' + escapeHtml(file.fileUrl) + '" alt=""'
+          + ' loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement(\'div\'),'
+          + '{className:\'doc-preview-fallback\',textContent:\'🖼\'}))" />'
+        : '<object class="doc-preview-frame" data="' + previewUrl + '" type="application/pdf">'
+          + '<div class="doc-preview-fallback">📄</div></object>')
     + '<span class="doc-preview-veil"></span>'
     + '</div>'
     + '<div class="doc-foot">'
@@ -759,9 +795,16 @@ function renderInteractionTimeline(interactions, files = []) {
       + (item.notes ? '' : '<span class="tiny muted">no notes</span>')
       + '</summary>';
 
-    const body = item.notes
-      ? '<p class="convo-note">' + escapeHtml(item.notes) + '</p>'
-      : '<p class="convo-note muted">No notes were saved for this conversation.</p>';
+    // Every conversation is editable. Before this, a saved conversation was
+    // sealed — which mattered most for calendar-synced ones, whose notes start
+    // as nothing but the event title and could never be filled in.
+    const body = '<div class="convo-body" data-convo-id="' + escapeHtml(item.id) + '">'
+      + (item.notes
+        ? '<p class="convo-note">' + escapeHtml(item.notes) + '</p>'
+        : '<p class="convo-note muted">No notes yet — what did you talk about?</p>')
+      + '<button class="convo-edit" type="button" data-edit-convo="' + escapeHtml(item.id) + '">'
+      + (item.notes ? 'Edit notes' : 'Add notes') + '</button>'
+      + '</div>';
 
     const attachments = attached.length
       ? '<ul class="convo-files">'
@@ -976,7 +1019,7 @@ function conversationWidgetHtml() {
     + '<div class="field-group"><label>What did you talk about?</label>'
     + '<textarea class="cw-notes" rows="5" placeholder="What they are working on, what they said, anything you want to bring up next time…"></textarea></div>'
     + '<div class="field-group"><label>Attach a PDF <span class="opt-label">(optional)</span></label>'
-    + '<input type="file" class="cw-file" accept=".pdf,application/pdf" /></div>'
+    + '<input type="file" class="cw-file" accept="' + ATTACH_ACCEPT + '" /></div>'
     + '</div>'
 
     + '<p class="error cw-error" aria-live="polite"></p>'
@@ -1148,8 +1191,8 @@ function wireConversationWidget(root, getContacts, onSaved) {
     const notes = $(".cw-notes").value.trim();
 
     const docFile = $(".cw-file")?.files?.[0] || null;
-    if (docFile && docFile.type !== "application/pdf") {
-      errEl.textContent = "Only PDF files are allowed.";
+    if (docFile && !isAllowedAttachment(docFile)) {
+      errEl.textContent = ATTACH_REJECT_MSG;
       return;
     }
 
@@ -2011,7 +2054,7 @@ async function initContactPage() {
       + '<div class="field-group"><label for="cpIntNotes">Notes</label>'
       + '<textarea id="cpIntNotes" rows="5" placeholder="What did you talk about? What should you follow up on?"></textarea></div>'
       + '<div class="field-group"><label for="cpIntDocInput">Attach a PDF <span class="opt-label">(optional)</span></label>'
-      + '<input type="file" id="cpIntDocInput" accept=".pdf,application/pdf" /></div>'
+      + '<input type="file" id="cpIntDocInput" accept="' + ATTACH_ACCEPT + '" /></div>'
       + '<p id="cpIntError" class="error" aria-live="polite"></p>'
       + '<button class="btn" id="cpAddIntBtn" type="button">Save conversation</button>'
       + '</section>'
@@ -2170,8 +2213,8 @@ async function initContactPage() {
       if (!date) { errEl.textContent = "Date is required."; return; }
 
       const docFile = $("#cpIntDocInput")?.files?.[0];
-      if (docFile && docFile.type !== "application/pdf") {
-        errEl.textContent = "Only PDF files are allowed."; return;
+      if (docFile && !isAllowedAttachment(docFile)) {
+        errEl.textContent = ATTACH_REJECT_MSG; return;
       }
 
       const interaction = normalizeInteraction({
@@ -2260,6 +2303,62 @@ async function initContactPage() {
       });
     }
     attachFollowUpListeners();
+    attachConversationEditors();
+  }
+
+  /**
+   * Let any conversation's notes be rewritten in place.
+   *
+   * Follows the file-rename pattern already in this file: swap the text for an
+   * input, commit on blur or Enter, abandon on Escape. Nothing is saved unless
+   * the text actually changed, so opening an editor by accident costs nothing.
+   */
+  function attachConversationEditors() {
+    root.querySelectorAll("[data-edit-convo]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const wrap = btn.closest(".convo-body");
+        const noteEl = wrap.querySelector(".convo-note");
+        const original = noteEl.classList.contains("muted") ? "" : noteEl.textContent;
+
+        const editor = document.createElement("div");
+        editor.className = "convo-editor";
+        editor.innerHTML = '<textarea class="convo-textarea" rows="4"'
+          + ' placeholder="What did you talk about? What should you follow up on?"></textarea>'
+          + '<div class="convo-editor-actions">'
+          + '<button class="btn btn-sm convo-save" type="button">Save</button>'
+          + '<button class="btn btn-secondary btn-sm convo-cancel" type="button">Cancel</button>'
+          + '</div>';
+
+        noteEl.hidden = true;
+        btn.hidden = true;
+        wrap.appendChild(editor);
+
+        const area = editor.querySelector(".convo-textarea");
+        area.value = original;
+        area.focus();
+
+        const restore = () => { editor.remove(); noteEl.hidden = false; btn.hidden = false; };
+
+        editor.querySelector(".convo-cancel").addEventListener("click", restore);
+        area.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") { e.preventDefault(); restore(); }
+        });
+
+        editor.querySelector(".convo-save").addEventListener("click", async (e) => {
+          const next = area.value.trim();
+          if (next === original.trim()) { restore(); return; }
+          e.currentTarget.disabled = true;
+          const id = btn.dataset.editConvo;
+          await save((cur) => ({
+            ...cur,
+            interactions: (cur.interactions || []).map((i) =>
+              i.id === id ? { ...i, notes: next } : i)
+          }));
+          await renderPage();
+          showToast("Notes saved.");
+        });
+      });
+    });
   }
 
   await renderPage();
@@ -2324,8 +2423,8 @@ async function initFilesPage() {
 
   function validateAndPreview(file) {
     if (!file) return;
-    if (file.type !== "application/pdf") {
-      if (errEl) errEl.textContent = "Only PDF files are allowed.";
+    if (!isAllowedAttachment(file)) {
+      if (errEl) errEl.textContent = ATTACH_REJECT_MSG;
       return;
     }
     if (errEl) errEl.textContent = "";
@@ -2359,7 +2458,7 @@ async function initFilesPage() {
       if (msgEl) msgEl.textContent = "";
       const file = pendingFile || (fileInput && fileInput.files[0]);
       if (!file) { if (errEl) errEl.textContent = "Please select a PDF first."; return; }
-      if (file.type !== "application/pdf") { if (errEl) errEl.textContent = "Only PDF files are allowed."; return; }
+      if (!isAllowedAttachment(file)) { if (errEl) errEl.textContent = ATTACH_REJECT_MSG; return; }
 
       uploadBtn.disabled = true;
       uploadBtn.textContent = "Uploading…";
@@ -2632,6 +2731,10 @@ async function initCalendarAutoSync() {
 function openCalendarReviewModal(candidates, contacts) {
   document.getElementById("calReviewModal")?.remove();
 
+  // The notes box is here rather than only on the profile because this is the
+  // moment you actually remember the meeting. A synced conversation whose notes
+  // are just the event title is a record that it happened, not what was said —
+  // and the substance is the part Orbit exists to keep.
   const rows = candidates.map((c, i) => '<li class="cal-row">'
     + '<label class="cal-check">'
     + '<input type="checkbox" class="cal-pick" data-index="' + i + '" checked />'
@@ -2641,6 +2744,12 @@ function openCalendarReviewModal(candidates, contacts) {
     + formatDate(c.date) + ' · ' + escapeHtml(c.type) + '</span>'
     + '</span>'
     + '</label>'
+    + '<div class="cal-notes-wrap">'
+    + '<button class="cal-notes-toggle" type="button" data-notes-for="' + i + '">'
+    + '+ Add notes</button>'
+    + '<textarea class="cal-notes" data-notes-index="' + i + '" rows="3" hidden'
+    + ' placeholder="What did you talk about? What should you bring up next time?"></textarea>'
+    + '</div>'
     + '</li>').join("");
 
   const modal = document.createElement("div");
@@ -2667,10 +2776,25 @@ function openCalendarReviewModal(candidates, contacts) {
   modal.querySelector("#calReviewCancel").addEventListener("click", close);
   modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
 
+  // Collapsed by default so a long list stays scannable — the notes are
+  // optional, and most meetings will not get any.
+  modal.querySelectorAll(".cal-notes-toggle").forEach((toggle) => {
+    toggle.addEventListener("click", () => {
+      const area = modal.querySelector('[data-notes-index="' + toggle.dataset.notesFor + '"]');
+      area.hidden = !area.hidden;
+      toggle.textContent = area.hidden ? "+ Add notes" : "− Hide notes";
+      if (!area.hidden) area.focus();
+    });
+  });
+
   modal.querySelector("#calReviewSave").addEventListener("click", async (e) => {
     const btn = e.currentTarget;
     const picked = [...modal.querySelectorAll(".cal-pick:checked")]
-      .map((el) => candidates[Number(el.dataset.index)]);
+      .map((el) => {
+        const index = Number(el.dataset.index);
+        const typed = modal.querySelector('[data-notes-index="' + index + '"]')?.value.trim() || "";
+        return { ...candidates[index], notes: typed };
+      });
     if (!picked.length) { close(); return; }
 
     btn.disabled = true;
@@ -2715,7 +2839,9 @@ async function applyCalendarCandidates(picked, contacts) {
     const added = items.map((item) => normalizeInteraction({
       date: item.date,
       type: item.type,
-      notes: item.title,
+      // Anything typed goes under the meeting name rather than replacing it —
+      // "Coffee with Marcus" is worth keeping as the heading for what follows.
+      notes: item.notes ? item.title + "\n\n" + item.notes : item.title,
       sourceEventId: item.eventId
     }));
 

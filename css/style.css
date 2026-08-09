@@ -3581,3 +3581,54 @@ body.dark .convo-file { background: rgba(255,255,255,0.05); }
 /* The row is a <label>, which is 700 by default here — the caption line under
    the title should not inherit that. */
 .cal-row-main .tiny { font-weight: 400; }
+
+/* ── Editing a conversation's notes (ORB-15/20 follow-up) ─────────────────────
+   Conversations used to be sealed once saved, which mattered most for
+   calendar-synced ones: their notes start as nothing but the event title. */
+.convo-body { padding: 0 0.9rem 0.75rem 2.05rem; }
+.convo-body .convo-note { padding: 0; }
+.convo-edit {
+  margin-top: 0.35rem;
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--primary-deep);
+  cursor: pointer;
+}
+.convo-edit:hover { text-decoration: underline; }
+.convo-edit:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+body.dark .convo-edit { color: var(--accent); }
+
+.convo-editor { margin-top: 0.4rem; }
+.convo-textarea { font-size: 0.82rem; line-height: 1.5; resize: vertical; }
+.convo-editor-actions { display: flex; gap: 0.4rem; margin-top: 0.45rem; }
+
+/* Notes captured at review time, while the meeting is still fresh. */
+.cal-notes-wrap { padding: 0 0.85rem 0.6rem 2.05rem; }
+.cal-notes-toggle {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: var(--primary-deep);
+  cursor: pointer;
+}
+.cal-notes-toggle:hover { text-decoration: underline; }
+body.dark .cal-notes-toggle { color: var(--accent); }
+.cal-notes { margin-top: 0.4rem; font-size: 0.82rem; resize: vertical; }
+
+/* Photos of handwritten notes preview as real images; PDFs keep the <object>. */
+.doc-preview-img {
+  /* Matches .doc-preview-frame's height so image and PDF tiles line up. */
+  width: 100%;
+  height: 260px;
+  object-fit: cover;
+  display: block;
+  border: 0;
+  pointer-events: none;
+}
