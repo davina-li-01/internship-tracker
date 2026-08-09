@@ -16,7 +16,7 @@ Aligned to Confluence 2026-08-08. Every ORB key below matches the epic.
 | Aug 8 | ORB-13 | "Marked as reached out" flow | Core | **High** | High | ✅ Done |
 | Aug 8 | ORB-14 | "+" icon confirming logged conversation | Core | Med | Low | ✅ Done |
 | Aug 8 | ORB-20 | PDF attached to conversation | Core | Low | Low | ✅ Done |
-| Aug 8 | ORB-16 | Scheduled email reminders | Integrations | Med | High | 🔶 Built — needs deploy |
+| Aug 8 | ORB-16 | Scheduled email reminders | Integrations | Med | High | ✅ Done — live |
 | Aug 8 | ORB-15 | Google Calendar integration | Integrations | **High** | High | **In progress** |
 | Aug 12 | ORB-17 | AI talking points | Core | Med | Low | Not started |
 | Aug 12 | ORB-18 | Audio transcription | Core | **High** | Med | Not started |
@@ -160,7 +160,7 @@ cadence forward.
 verification before non-test users can grant the scope; needs a token-refresh story.
 **Blocked on** having real contacts with emails saved.
 
-### ORB-16 — Scheduled email reminders · 🔶 built 2026-08-09, not yet deployed
+### ORB-16 — Scheduled email reminders · ✅ live 2026-08-09
 The in-app nudge only fires when you open Orbit. This is the first part of Orbit
 that runs when the tab is closed.
 
@@ -190,8 +190,15 @@ stamped — stamping someone never mentioned would silence them for a week.
 
 Defaults to **off**. Email has to be opted into, never inherited.
 
-**Blocked on you:** a Resend API key, `npx supabase functions deploy`, and running
-two SQL files. Full checklist in `docs/REMINDERS-SETUP.md`.
+**Deployed and verified end to end 2026-08-09** — cron job `orbit-send-reminders`
+active on `0 13 * * *`, one real digest delivered to the inbox (not spam). Setup
+steps are in `docs/REMINDERS-SETUP.md`.
+
+**Two things went wrong that the docs now cover.** Edge Functions require a JWT by
+default, so the first deploy was rejected by the gateway before the function ever
+ran — `supabase/config.toml` now sets `verify_jwt = false`. And `preferences` had
+RLS enabled with **zero policies**, which had made the whole table silently
+unsaveable; `supabase/check-rls.sql` now catches that in one query.
 
 ### ORB-17 — AI talking points
 `generateFollowUpSuggestions()` is a keyword heuristic that pattern-matches action
