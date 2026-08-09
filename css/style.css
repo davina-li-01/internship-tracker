@@ -3146,7 +3146,8 @@ label {
 }
 .field-group > label { display: block; margin-bottom: 0.3rem; }
 /* Labels that are really controls, not field captions */
-.cp-toggle, .followup-check, .settings-tab, .fb-pop-head h3 { text-transform: none; letter-spacing: normal; }
+.cp-toggle, .followup-check, .settings-tab, .fb-pop-head h3,
+.cal-check { text-transform: none; letter-spacing: normal; }
 
 /* ── Headings ────────────────────────────────────────────────── */
 .page-heading { font-size: 1.7rem; letter-spacing: -0.035em; }
@@ -3536,3 +3537,47 @@ body.dark .convo-count { color: var(--accent); }
 .convo-file-icon { flex-shrink: 0; font-size: 0.85rem; }
 .convo-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 body.dark .convo-file { background: rgba(255,255,255,0.05); }
+
+/* ── Calendar review (ORB-15) ─────────────────────────────────────────────────
+   Everything arrives ticked, so the common case is one click. The list exists
+   so a wrong match can be caught before it moves someone's reach-out date. */
+.cal-list {
+  list-style: none;
+  margin: 0.85rem 0 0;
+  padding: 0;
+  max-height: 46vh;
+  overflow-y: auto;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-input);
+}
+.cal-row + .cal-row { border-top: 1px solid var(--hairline); }
+.cal-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.65rem 0.85rem;
+  cursor: pointer;
+}
+.cal-check:hover { background: var(--row-hover); }
+/* The global `input { width: 100% }` applies to checkboxes too, so without
+   explicit dimensions this claimed the whole row and — being flex-shrink:0 —
+   refused to give any back, collapsing the text beside it to zero width.
+   Same reason .followup-check and .focus-item size theirs by hand. */
+.cal-pick {
+  width: 15px; height: 15px; min-width: 15px;
+  padding: 0; margin-top: 0.2rem;
+  flex-shrink: 0; accent-color: var(--primary);
+}
+/* flex:1 is load-bearing. With min-width:0 and nothing telling it to grow,
+   this column collapsed to zero width and wrapped the title one character
+   per line. */
+.cal-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+.cal-row-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+/* The row is a <label>, which is 700 by default here — the caption line under
+   the title should not inherit that. */
+.cal-row-main .tiny { font-weight: 400; }

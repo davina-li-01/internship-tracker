@@ -17,7 +17,7 @@ Aligned to Confluence 2026-08-08. Every ORB key below matches the epic.
 | Aug 8 | ORB-14 | "+" icon confirming logged conversation | Core | Med | Low | ✅ Done |
 | Aug 8 | ORB-20 | PDF attached to conversation | Core | Low | Low | ✅ Done |
 | Aug 8 | ORB-16 | Scheduled email reminders | Integrations | Med | High | ✅ Done — live |
-| Aug 8 | ORB-15 | Google Calendar integration | Integrations | **High** | High | **In progress** |
+| Aug 8 | ORB-15 | Google Calendar integration | Integrations | **High** | High | 🔶 Built — needs your Google client |
 | Aug 12 | ORB-17 | AI talking points | Core | Med | Low | Not started |
 | Aug 12 | ORB-18 | Audio transcription | Core | **High** | Med | Not started |
 | Aug 17 | ORB-24 | Idle-pause resilience | Integrations | Med | Med | Not started |
@@ -146,18 +146,40 @@ because they are an explicit allow-list of form submits and ids. Fixed in
 `.btn-secondary` alone. Pre-existing, unrelated to these tickets — it just became
 visible when a primary button landed in the dashboard rows.
 
-### ORB-15 — Google Calendar auto-logging ★ highest leverage
+### ORB-15 — Google Calendar sync ★ highest leverage · 🔶 built 2026-08-09
 Orbit only works if you remember to log touchpoints — exactly the habit that fails.
-Auto-logging fixes the core weakness.
 
-**Shape:** Google Cloud project → OAuth consent screen → `calendar.events.readonly` →
-Google Identity Services with PKCE in the browser → poll recent events → match
-attendee emails against `contacts.email` → create a conversation and roll the
-cadence forward.
+**Browser-only, decided 2026-08-09.** Google Identity Services token flow, the
+Calendar REST API called straight from the page. The access token lives in a
+variable and is never persisted: no refresh token, nothing in localStorage,
+nothing in the database. The client id is not a secret — Google issues these to
+be shipped in browser code, which is what removes the server entirely.
 
-**Costs:** only works for contacts whose email you saved; Google requires app
-verification before non-test users can grant the scope; needs a token-refresh story.
-**Blocked on** having real contacts with emails saved.
+The cost is that sync only happens while Orbit is open. That was taken over
+storing refresh tokens and submitting for Google's verification review.
+
+**It proposes, it does not auto-write.** The epic says "auto-log"; this shows a
+pre-ticked list instead, so the common case is still one click. The reason is
+that a calendar entry is an intention, not a record — and logging one rolls the
+cadence forward, so a wrong match makes a drifting relationship look healthy.
+That is the one failure this app cannot afford. Flip it to silent auto-logging
+by calling `applyCalendarCandidates()` directly from the sync handler.
+
+**Filtering before you ever see a candidate:** cancelled events, future events,
+ones you declined, ones the contact declined, anything over `MAX_ATTENDEES` (12,
+a broadcast rather than a conversation), and anything already logged.
+
+**Dedupe** stores the calendar event id on the interaction (`sourceEventId`),
+which needs no migration for the same reason ORB-20's `fileIds` did not —
+interactions are jsonb. Synced entries compare by id, so a renamed meeting is
+still recognised. Hand-typed entries have no id, so those fall back to date plus
+title, which is what stops the first sync duplicating a history you wrote up
+yourself.
+
+**Known cost:** matching is by email, so contacts without one can never match.
+
+**Blocked on you:** a Google Cloud project and OAuth client. See
+`docs/CALENDAR-SETUP.md`. Client id is already wired into `js/calendar.js`.
 
 ### ORB-16 — Scheduled email reminders · ✅ live 2026-08-09
 The in-app nudge only fires when you open Orbit. This is the first part of Orbit

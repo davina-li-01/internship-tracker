@@ -16,6 +16,7 @@
  */
 import { requireAuth, supabase } from "./supabase.js";
 import * as db from "./db.js";
+import * as calendar from "./calendar.js";
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -313,7 +314,12 @@ function normalizeInteraction(item = {}) {
     // attaching a PDF to a conversation needs no schema migration. Ids that no
     // longer resolve — the file was deleted from the Files page — are dropped
     // at render time rather than cleaned up here.
-    fileIds: Array.isArray(item.fileIds) ? item.fileIds.filter(Boolean) : []
+    fileIds: Array.isArray(item.fileIds) ? item.fileIds.filter(Boolean) : [],
+    // The Google Calendar event this came from, when it came from one (ORB-15).
+    // Syncing is re-run every time you open Orbit, so this is what stops the
+    // same meeting being logged again on every sync. Empty for anything typed
+    // by hand.
+    sourceEventId: (item.sourceEventId || "").trim()
   };
 }
 
@@ -1650,6 +1656,9 @@ async function initDashboard() {
   }
 
   await render();
+  // Lets the calendar review modal refresh whatever page it was opened from,
+  // so newly logged meetings appear without a reload (ORB-15).
+  window.__orbitRefresh = render;
   initQuickAddButton(() => cached, render);
 }
 
@@ -1721,6 +1730,7 @@ async function initMyNetwork() {
   }
 
   await load();
+  window.__orbitRefresh = load;
   initQuickAddButton(() => cached, load);
 }
 
@@ -1842,6 +1852,7 @@ async function initNetworkingLog() {
   wireConversationWidget(widgetRoot, () => cached, reload);
 
   await reload();
+  window.__orbitRefresh = reload;
 }
 
 // ── Contact profile ───────────────────────────────────────────────────────────
@@ -2252,6 +2263,7 @@ async function initContactPage() {
   }
 
   await renderPage();
+  window.__orbitRefresh = renderPage;
 }
 
 // ── Files ─────────────────────────────────────────────────────────────────────
@@ -2543,12 +2555,135 @@ async function openProfileModal() {
   modal.querySelector("#epName").focus();
 }
 
+// ── Calendar review (ORB-15) ──────────────────────────────────────────────────
+
+/**
+ * Confirm what the calendar found before writing any of it.
+ *
+ * Everything is pre-ticked, so the common case is still one click — the point
+ * of ORB-15 is to remove the remembering, not to add a chore. What it does not
+ * do is write silently: logging a meeting moves that person's next reach-out
+ * date, so a wrong entry makes a drifting relationship look healthy. That is
+ * the one failure this app cannot afford.
+ */
+function openCalendarReviewModal(candidates, contacts) {
+  document.getElementById("calReviewModal")?.remove();
+
+  const rows = candidates.map((c, i) => '<li class="cal-row">'
+    + '<label class="cal-check">'
+    + '<input type="checkbox" class="cal-pick" data-index="' + i + '" checked />'
+    + '<span class="cal-row-main">'
+    + '<span class="cal-row-title">' + escapeHtml(c.title) + '</span>'
+    + '<span class="tiny muted">' + escapeHtml(c.contactName) + ' · '
+    + formatDate(c.date) + ' · ' + escapeHtml(c.type) + '</span>'
+    + '</span>'
+    + '</label>'
+    + '</li>').join("");
+
+  const modal = document.createElement("div");
+  modal.id = "calReviewModal";
+  modal.className = "modal-overlay";
+  modal.innerHTML = '<div class="modal-card quick-add-card">'
+    + '<div class="quick-add-header">'
+    + '<h3>' + candidates.length + (candidates.length === 1 ? ' meeting' : ' meetings') + ' found</h3>'
+    + '<button class="icon-btn" id="calReviewClose" type="button" aria-label="Close">✕</button>'
+    + '</div>'
+    + '<p class="muted">Untick anything you would rather not log. Logging one moves '
+    + 'that person to the back of your reach-out queue.</p>'
+    + '<ul class="cal-list">' + rows + '</ul>'
+    + '<p id="calReviewErr" class="error" aria-live="polite"></p>'
+    + '<div class="modal-actions">'
+    + '<button class="btn" id="calReviewSave" type="button">Log selected</button>'
+    + '<button class="btn btn-secondary" id="calReviewCancel" type="button">Not now</button>'
+    + '</div>'
+    + '</div>';
+  document.body.appendChild(modal);
+
+  const close = () => modal.remove();
+  modal.querySelector("#calReviewClose").addEventListener("click", close);
+  modal.querySelector("#calReviewCancel").addEventListener("click", close);
+  modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+
+  modal.querySelector("#calReviewSave").addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    const picked = [...modal.querySelectorAll(".cal-pick:checked")]
+      .map((el) => candidates[Number(el.dataset.index)]);
+    if (!picked.length) { close(); return; }
+
+    btn.disabled = true;
+    btn.textContent = "Logging…";
+    const { logged, failed } = await applyCalendarCandidates(picked, contacts);
+    close();
+
+    if (!logged) {
+      showToast("Could not log those — nothing was changed.");
+      return;
+    }
+    showToast(logged + (logged === 1 ? " conversation logged." : " conversations logged.")
+      + (failed ? " " + failed + " could not be saved." : ""), {
+      actionLabel: "View in log",
+      href: "network.html",
+      duration: 7000
+    });
+    if (typeof window.__orbitRefresh === "function") await window.__orbitRefresh();
+  });
+}
+
+/**
+ * Write the confirmed meetings as conversations.
+ *
+ * Grouped by contact so someone with three meetings costs one write, not three
+ * — and so their cadence is recalculated once, from the most recent.
+ */
+async function applyCalendarCandidates(picked, contacts) {
+  const byContact = new Map();
+  for (const c of picked) {
+    if (!byContact.has(c.contactId)) byContact.set(c.contactId, []);
+    byContact.get(c.contactId).push(c);
+  }
+
+  let logged = 0;
+  let failed = 0;
+
+  for (const [contactId, items] of byContact) {
+    const contact = contacts.find((c) => c.id === contactId);
+    if (!contact) { failed += items.length; continue; }
+
+    const added = items.map((item) => normalizeInteraction({
+      date: item.date,
+      type: item.type,
+      notes: item.title,
+      sourceEventId: item.eventId
+    }));
+
+    const merged = [...added, ...(contact.interactions || [])]
+      .sort((a, b) => b.date.localeCompare(a.date));
+
+    const saved = await db.saveContact(normalizeContact({
+      ...contact,
+      interactions: merged,
+      lastContacted: merged[0].date,
+      // A real touchpoint puts the relationship back on its normal rhythm,
+      // exactly as logging one by hand does.
+      nextReminder: contact.followUpFrequency === "none" || !contact.reminderEnabled
+        ? contact.nextReminder
+        : calculateNextReminder(merged[0].date, contact.followUpFrequency)
+    }));
+
+    if (saved) logged += items.length;
+    else failed += items.length;
+  }
+
+  return { logged, failed };
+}
+
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 const SETTINGS_SECTIONS = [
   { key: "general",       label: "General",          icon: "⚙" },
   { key: "profile",       label: "Profile",          icon: "◍" },
   { key: "notifications", label: "Notifications",    icon: "◔" },
+  { key: "integrations",  label: "Integrations",     icon: "⧉" },
   { key: "security",      label: "Security & login", icon: "⛨" },
   { key: "data",          label: "Data controls",    icon: "⬓" }
 ];
@@ -2648,6 +2783,28 @@ async function openSettingsModal(section = "general") {
     + '<p id="emailRemMsg" class="success" aria-live="polite"></p>'
     + '<p id="emailRemErr" class="error" aria-live="polite"></p>'
     + '<button class="btn btn-secondary btn-sm" id="saveEmailReminders" type="button">Save email setting</button>'
+    + '</section>'
+
+    // ── Integrations ─────────────────────────────────────────────────────
+    + '<section class="settings-pane" data-pane="integrations">'
+    + '<h3 class="settings-h3">Integrations</h3>'
+    + '<h4 class="settings-h4">Google Calendar</h4>'
+    + '<p class="settings-note">Orbit only works if you remember to log the people you '
+    + 'spoke to — which is the habit that fails. Connect your calendar and it finds '
+    + 'those meetings for you.</p>'
+    + '<ul class="settings-list">'
+    + '<li><strong>Read-only.</strong> Orbit cannot create, change or delete anything '
+    + 'on your calendar. Google enforces that, not us.</li>'
+    + '<li><strong>Nothing is stored.</strong> The access token lives in this tab and '
+    + 'is gone when you close it. No refresh token, nothing in the database.</li>'
+    + '<li><strong>You confirm every entry.</strong> A meeting on a calendar is not '
+    + 'proof you spoke, and logging one moves that person\'s next reach-out date.</li>'
+    + '<li><strong>Matched by email</strong>, so only connections whose email you have '
+    + 'saved can be found.</li>'
+    + '</ul>'
+    + '<p id="calMsg" class="success" aria-live="polite"></p>'
+    + '<p id="calErr" class="error" aria-live="polite"></p>'
+    + '<button class="btn" id="calSyncBtn" type="button">Find meetings from my calendar</button>'
     + '</section>'
 
     // ── Security ─────────────────────────────────────────────────────────
@@ -2760,6 +2917,37 @@ async function openSettingsModal(section = "general") {
       ? "Email reminders are off."
       : "Saved. Reminders go to " + ((prefs.your_email || "").trim() || authEmail) + ".";
     setTimeout(() => { msg.textContent = ""; }, 3000);
+  });
+
+  modal.querySelector("#calSyncBtn").addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    const msg = modal.querySelector("#calMsg");
+    const err = modal.querySelector("#calErr");
+    msg.textContent = ""; err.textContent = "";
+    btn.disabled = true;
+    btn.textContent = "Checking your calendar…";
+    try {
+      const contacts = (await db.getContacts()) || [];
+      const withEmail = contacts.filter((c) => (c.email || "").trim());
+      if (!withEmail.length) {
+        err.textContent = "None of your connections have an email saved, so there is "
+          + "nothing to match against. Add emails first.";
+        return;
+      }
+      const candidates = await calendar.connectCalendar(contacts, todayDateString());
+      if (!candidates.length) {
+        msg.textContent = "No new meetings found in the last "
+          + calendar.LOOKBACK_DAYS + " days.";
+        return;
+      }
+      modal.remove();
+      openCalendarReviewModal(candidates, contacts);
+    } catch (error) {
+      err.textContent = String(error.message || error);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Find meetings from my calendar";
+    }
   });
 
   modal.querySelector("#savePw").addEventListener("click", async () => {
