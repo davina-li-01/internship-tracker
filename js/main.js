@@ -307,7 +307,13 @@ function normalizeInteraction(item = {}) {
     date: item.date || todayDateString(),
     type: item.type || "check-in",
     notes: (item.notes || "").trim(),
-    outcome: (item.outcome || "").trim()
+    outcome: (item.outcome || "").trim(),
+    // Ids into storage_files (ORB-20). Held on the interaction rather than as a
+    // column on storage_files because interactions are jsonb on contacts, so
+    // attaching a PDF to a conversation needs no schema migration. Ids that no
+    // longer resolve — the file was deleted from the Files page — are dropped
+    // at render time rather than cleaned up here.
+    fileIds: Array.isArray(item.fileIds) ? item.fileIds.filter(Boolean) : []
   };
 }
 
@@ -384,11 +390,16 @@ function conversationPreview(contact, limit = 150) {
     .filter((i) => i.notes)
     .sort((a, b) => b.date.localeCompare(a.date))[0];
   const text = latest?.notes || contact.notes || "";
-  if (!text) return "";
+  const clips = (contact.interactions || [])
+    .reduce((n, i) => n + ((i.fileIds || []).length), 0);
+  // A conversation logged with only a PDF and no notes used to render nothing
+  // here, which is the same "did that save?" problem as ORB-14.
+  if (!text && !clips) return "";
   const count = (contact.interactions || []).length;
   return '<p class="connection-note">'
     + (latest ? '<span class="convo-count">' + count
         + (count === 1 ? " conversation" : " conversations") + '</span> ' : '')
+    + (clips ? '<span class="convo-count">📎 ' + clips + '</span> ' : '')
     + escapeHtml(text.slice(0, limit)) + (text.length > limit ? "…" : "")
     + '</p>';
 }
@@ -715,21 +726,49 @@ function attachStorageFileCardListeners(container, onChange) {
   });
 }
 
-/** Each conversation is a <details> so it can be opened and closed. */
-function renderInteractionTimeline(interactions) {
+/**
+ * Each conversation is a <details> so it can be opened and closed.
+ *
+ * @param files  The contact's storage files, so attachments can be resolved from
+ *               the ids on each interaction (ORB-20). Ids with no matching file
+ *               are skipped — deleting a PDF from the Files page should leave the
+ *               conversation intact, not a broken link.
+ */
+function renderInteractionTimeline(interactions, files = []) {
   if (!interactions || !interactions.length) return '<p class="empty">No conversations logged yet.</p>';
+  const byId = new Map(files.map((f) => [f.id, f]));
+
   return interactions.map((item, i) => {
+    const attached = (item.fileIds || []).map((id) => byId.get(id)).filter(Boolean);
+
     const summary = '<summary class="convo-summary">'
       + '<span class="convo-caret" aria-hidden="true">▸</span>'
       + '<span class="convo-date">' + formatDate(item.date) + '</span>'
       + '<span class="tag">' + escapeHtml(item.type) + '</span>'
+      // Flagged on the summary too, because a collapsed conversation would
+      // otherwise hide the fact that anything is attached to it.
+      + (attached.length
+        ? '<span class="convo-clip" title="' + attached.length + ' attached">📎 ' + attached.length + '</span>'
+        : '')
       + (item.notes ? '' : '<span class="tiny muted">no notes</span>')
       + '</summary>';
+
     const body = item.notes
       ? '<p class="convo-note">' + escapeHtml(item.notes) + '</p>'
       : '<p class="convo-note muted">No notes were saved for this conversation.</p>';
+
+    const attachments = attached.length
+      ? '<ul class="convo-files">'
+        + attached.map((f) => '<li><a class="convo-file" href="' + escapeHtml(f.fileUrl) + '"'
+          + ' target="_blank" rel="noopener noreferrer">'
+          + '<span class="convo-file-icon" aria-hidden="true">📄</span>'
+          + '<span class="convo-file-name">' + escapeHtml(f.name) + '</span></a></li>').join("")
+        + '</ul>'
+      : '';
+
     // Newest conversation starts open; the rest stay collapsed.
-    return '<details class="convo"' + (i === 0 ? " open" : "") + '>' + summary + body + '</details>';
+    return '<details class="convo"' + (i === 0 ? " open" : "") + '>'
+      + summary + body + attachments + '</details>';
   }).join("\n");
 }
 
@@ -930,6 +969,8 @@ function conversationWidgetHtml() {
     + '</div>'
     + '<div class="field-group"><label>What did you talk about?</label>'
     + '<textarea class="cw-notes" rows="5" placeholder="What they are working on, what they said, anything you want to bring up next time…"></textarea></div>'
+    + '<div class="field-group"><label>Attach a PDF <span class="opt-label">(optional)</span></label>'
+    + '<input type="file" class="cw-file" accept=".pdf,application/pdf" /></div>'
     + '</div>'
 
     + '<p class="error cw-error" aria-live="polite"></p>'
@@ -1099,9 +1140,24 @@ function wireConversationWidget(root, getContacts, onSaved) {
     }
 
     const notes = $(".cw-notes").value.trim();
+
+    const docFile = $(".cw-file")?.files?.[0] || null;
+    if (docFile && docFile.type !== "application/pdf") {
+      errEl.textContent = "Only PDF files are allowed.";
+      return;
+    }
+
     const interaction = normalizeInteraction({ date: when, type: $(".cw-type").value, notes });
 
     const existing = linkedId ? (getContacts() || []).find((c) => c.id === linkedId) : null;
+
+    // A brand-new person has no id until the contact is saved, so the upload
+    // cannot come first the way it does on the profile page. Saving first also
+    // means a storage failure costs the attachment, never the conversation.
+    if (docFile && existing) {
+      const uploaded = await db.uploadFileToStorage(docFile, { contactId: existing.id });
+      if (uploaded) interaction.fileIds = [uploaded.id];
+    }
 
     const base = existing || {};
     const merged = [interaction, ...(existing?.interactions || [])]
@@ -1138,17 +1194,38 @@ function wireConversationWidget(root, getContacts, onSaved) {
       return;
     }
 
+    // The new-person case: the id only exists now, so upload and then link the
+    // attachment onto the interaction in a second write.
+    let result = saved;
+    let attachmentFailed = Boolean(docFile) && !interaction.fileIds.length && Boolean(existing);
+    if (docFile && !existing) {
+      const uploaded = await db.uploadFileToStorage(docFile, { contactId: saved.id });
+      if (uploaded) {
+        const relinked = normalizeContact({
+          ...saved,
+          interactions: (saved.interactions || []).map((i) =>
+            i.id === interaction.id ? { ...i, fileIds: [uploaded.id] } : i)
+        });
+        const patched = await db.saveContact(relinked);
+        if (patched) result = patched;
+        else attachmentFailed = true;
+      } else {
+        attachmentFailed = true;
+      }
+    }
+
     form.reset();
     dateEl.value = todayDateString();
     customWrap.classList.add("hidden");
     setLinked(null);
-    const confirmation = existing
+    const confirmation = (existing
       ? "Conversation added to " + name + "."
-      : name + " added, with your first conversation.";
+      : name + " added, with your first conversation.")
+      + (attachmentFailed ? " The PDF could not be attached." : "");
     okEl.textContent = confirmation;
     setTimeout(() => { okEl.textContent = ""; }, 3500);
     // Callers that destroy this form on save need the confirmation to outlive it.
-    if (onSaved) await onSaved(saved, { name, confirmation, isNew: !existing });
+    if (onSaved) await onSaved(result, { name, confirmation, isNew: !existing });
   });
 }
 
@@ -1793,6 +1870,8 @@ async function initContactPage() {
       root.innerHTML = '<div class="card"><p class="error">Connection not found. <a href="contacts.html">Back to My Network</a></p></div>';
       return;
     }
+    // Needed to resolve the ids each interaction carries into real attachments.
+    const files = await db.fetchStorageFilesByContact(contactId);
 
     const health = getHealth(c);
     const isCustomFreq = c.followUpFrequency && c.followUpFrequency.startsWith("custom:");
@@ -1942,7 +2021,7 @@ async function initContactPage() {
 
       + '<section class="card profile-timeline">'
       + '<h3 class="section-title">Conversation history</h3>'
-      + '<div class="timeline">' + renderInteractionTimeline(c.interactions) + '</div>'
+      + '<div class="timeline">' + renderInteractionTimeline(c.interactions, files) + '</div>'
       + '</section>'
 
       + '</div>'
@@ -2087,6 +2166,17 @@ async function initContactPage() {
       const interaction = normalizeInteraction({
         date, type: $("#cpIntType").value, notes: $("#cpIntNotes").value.trim()
       });
+
+      // Upload before saving so the interaction carries the id from the start.
+      // The contact id is already known here, so this needs only one write.
+      // A failed upload must not cost the user the conversation.
+      let attachmentFailed = false;
+      if (docFile) {
+        const uploaded = await db.uploadFileToStorage(docFile, { contactId });
+        if (uploaded) interaction.fileIds = [uploaded.id];
+        else attachmentFailed = true;
+      }
+
       await save((cur) => {
         const newInteractions = [interaction, ...cur.interactions].sort((a, b) => b.date.localeCompare(a.date));
         return {
@@ -2096,11 +2186,12 @@ async function initContactPage() {
           nextReminder: calculateNextReminder(newInteractions[0].date, cur.followUpFrequency)
         };
       });
-      if (docFile) {
-        const uploaded = await db.uploadFileToStorage(docFile, { contactId });
-        if (!uploaded) errEl.textContent = "Conversation saved but the file upload failed.";
-      }
       await renderPage();
+      // renderPage rebuilds the form, so errEl is gone by now — the warning has
+      // to live outside it.
+      if (attachmentFailed) {
+        showToast("Conversation saved, but the PDF could not be uploaded.");
+      }
     });
 
     const addFollowUp = async () => {

@@ -15,7 +15,7 @@ Aligned to Confluence 2026-08-08. Every ORB key below matches the epic.
 |---|---|---|---|---|---|---|
 | Aug 8 | ORB-13 | "Marked as reached out" flow | Core | **High** | High | ✅ Done |
 | Aug 8 | ORB-14 | "+" icon confirming logged conversation | Core | Med | Low | ✅ Done |
-| Aug 8 | ORB-20 | PDF attached to conversation | Core | Low | Low | Not started |
+| Aug 8 | ORB-20 | PDF attached to conversation | Core | Low | Low | ✅ Done |
 | Aug 8 | ORB-16 | Scheduled email reminders | Integrations | Med | High | Not started |
 | Aug 8 | ORB-15 | Google Calendar integration | Integrations | **High** | High | Not started |
 | Aug 12 | ORB-17 | AI talking points | Core | Med | Low | Not started |
@@ -58,22 +58,24 @@ supersedes it: ORB-13 and ORB-14 start today, talking points on Aug 12.
 
 ---
 
-## ⏸ Paused here — 2026-08-08
+## ⏸ Where things stand — 2026-08-09
 
-**Done and committed:** ORB-13 and ORB-14, plus the dark-mode button fix.
+**Done and committed:** ORB-13, ORB-14 and ORB-20, plus a pre-existing dark-mode
+button fix. Every Aug 8 Core Functionality item is now closed.
 
 **Not yet pushed.** Nothing is live on either deployment until you `git push`.
 
-**Next up, per the Confluence dates.** Three items also start Aug 8:
+**Next up, per the Confluence dates.** What remains from Aug 8 is both Integrations
+work, and it is a step up in kind, not just size:
 
-- **ORB-20 · PDF on a conversation** — Low/Low, and the smallest of the three.
-  `db.uploadFileToStorage()` already takes a `contactId` and the profile form
-  already accepts a PDF, so the work is adding that field to the Networking Log's
-  conversation logger and showing attachments in the history.
 - **ORB-15 · Google Calendar** and **ORB-16 · scheduled email** — both High effort
-  and both need the same server-side infrastructure, so they should be sequenced
-  together rather than picked up separately. ORB-15 is also blocked on having real
-  contacts with emails saved.
+  and both need the same thing the app has never had: something running when the
+  browser tab is closed. A Supabase Edge Function plus a cron schedule, and for
+  ORB-16 an email provider. Build that foundation once and sequence them together.
+  ORB-15 is also blocked on having real contacts with emails saved.
+
+**Then Aug 12:** ORB-17 AI talking points (self-contained, no external auth — the
+easier of the two) and ORB-18 audio transcription, which still needs a spec.
 
 **Worth doing before more features:** actually use the new one-click flow for a few
 days. ORB-13's open question was answered "they just want the row gone" — the build
@@ -187,10 +189,25 @@ of the networking workflow inside the app.
 A thank-you written from what you just wrote, not the generic reconnect template.
 Same model call as ORB-17 — one prompt path, two entry points.
 
-### ORB-20 — PDF notes on a conversation
-Mostly existing plumbing: `db.uploadFileToStorage()` already takes a `contactId`, and
-the contact profile's conversation form already accepts a PDF. Missing: the same field
-on the Networking Log's conversation logger, and showing attachments in the history.
+### ORB-20 — PDF notes on a conversation · ✅ done 2026-08-09
+**No schema migration was needed.** `storage_files` has a `contact_id` but nothing
+tying a file to one *conversation*. Rather than add a column — which would have
+meant running SQL in the Supabase dashboard — the link lives as `fileIds` on the
+interaction, and interactions are a jsonb column on `contacts`. Free to add.
+
+The profile page uploads before saving, since the contact id is already known, so
+that path is a single write. The Networking Log has to save first when the person
+is brand new — there is no id to attach to until then — so that path writes twice
+and patches the link on. Either way **a storage failure costs the attachment, never
+the conversation**, and says so.
+
+Attachments render as chips inside the conversation in the profile timeline, with a
+📎 count on the collapsed summary so nothing hides. Ids that no longer resolve are
+skipped at render time, so deleting a PDF from the Files page leaves the
+conversation intact rather than a broken link.
+
+Also closed a small ORB-14-shaped gap found on the way: a conversation logged with
+a PDF and no notes used to render nothing at all in the Networking Log.
 
 ### ORB-21 — Two-factor authentication
 The Security tab explains the options but nothing is wired. **Authenticator app

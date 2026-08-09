@@ -3497,3 +3497,42 @@ body.dark .convo-count { color: var(--accent); }
 .row-actions { display: flex; align-items: center; gap: 0.35rem; }
 .row-actions .btn-sm { white-space: nowrap; }
 .row-actions .btn { padding-inline: 0.85rem; }
+
+/* ── Conversation attachments (ORB-20) ────────────────────────────────────────
+   Aligned to .convo-note's text column (2.05rem) so the attachment reads as
+   part of the conversation rather than a separate block. */
+.convo-clip {
+  margin-left: auto;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.convo-files {
+  list-style: none;
+  margin: 0;
+  padding: 0 0.9rem 0.9rem 2.05rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.convo-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 100%;
+  padding: 0.32rem 0.6rem;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--input-bg);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color var(--trans), color var(--trans);
+}
+.convo-file:hover { border-color: var(--primary); color: var(--primary); }
+.convo-file:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.convo-file-icon { flex-shrink: 0; font-size: 0.85rem; }
+.convo-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.dark .convo-file { background: rgba(255,255,255,0.05); }
