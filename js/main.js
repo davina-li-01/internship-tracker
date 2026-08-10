@@ -2108,29 +2108,47 @@ async function initContactPage() {
           + '</span>'
         : '')
 
-      + '<button class="btn btn-secondary btn-sm add-detail-btn" id="cpToggleEdit" type="button">+ Add role, company or industry</button>'
-
-      // Inline editor replaces the old separate "Roles & Companies" card.
-      + '<div class="inline-edit hidden" id="cpInlineEdit">'
+      // Always visible. This was behind a "+ Add role, company or industry"
+      // toggle, which read as a way to ADD things and gave no hint that what
+      // you had already entered was in there — so the only way to check a
+      // saved value was to open an editor you had no reason to open.
+      + '<div class="inline-edit" id="cpInlineEdit">'
       + companyDatalist(allContacts, "cpCompanies")
       + industryDatalist(allContacts, "cpIndustries")
       + '<div class="inline-edit-grid">'
-      + '<div class="field-group"><label>Role / Title</label>'
+
+      + '<div class="field-group"><label for="cpRole">Role / Title</label>'
       + '<input type="text" id="cpRole" value="' + escapeHtml(c.role) + '" placeholder="Product Manager" /></div>'
-      + '<div class="field-group"><label>Current company</label>'
+
+      + '<div class="field-group"><label for="cpCompany">Current company</label>'
       + '<input type="text" id="cpCompany" list="cpCompanies" value="' + escapeHtml(c.company) + '" placeholder="Where they work now" /></div>'
-      + '<div class="field-group"><label>Industry</label>'
+
+      + '<div class="field-group"><label for="cpIndustry">Industry '
+      + '<span class="opt-label">(optional)</span></label>'
       + '<input type="text" id="cpIndustry" list="cpIndustries" value="' + escapeHtml(c.industry) + '" placeholder="Technology" /></div>'
-      + '<div class="field-group"><label>Email</label>'
+
+      // Repeatable fields carry a + on the label rather than a sentence
+      // underneath — it sits with the thing it adds to, and stays out of the
+      // way once there are several rows.
+      + '<div class="field-group field-multi">'
+      + '<div class="field-head"><label>Email</label>'
+      + '<button class="field-add" id="cpAddEmail" type="button"'
+      + ' aria-label="Add another email address" title="Add another address">+</button></div>'
       + '<div id="cpEmailList" class="email-list">'
-      + c.emails.map((e, i) => emailRowHtml(e, i)).join("")
+      + (c.emails.length
+        ? c.emails.map((e, i) => emailRowHtml(e, i)).join("")
+        : emailRowHtml(normalizeEmail({ label: "personal" }), 0))
+      + '</div></div>'
+
+      + '<div class="field-group field-multi">'
+      + '<div class="field-head"><label for="cpAddPast">Past companies</label>'
+      + '<button class="field-add" id="cpAddPastBtn" type="button"'
+      + ' aria-label="Add a past company" title="Add a past company">+</button></div>'
+      + '<input type="text" id="cpAddPast" list="cpCompanies" placeholder="Where else have they worked?" />'
+      + '<p class="field-hint">Shown above once added. Changing the current company '
+      + 'moves the old one here automatically.</p>'
       + '</div>'
-      + '<button class="link-btn email-add" id="cpAddEmail" type="button">+ Add another address</button>'
-      + '</div>'
-      + '</div>'
-      + '<div class="inline-edit-actions">'
-      + '<input type="text" id="cpAddPast" list="cpCompanies" placeholder="Add a past company…" />'
-      + '<button class="btn btn-secondary" id="cpAddPastBtn" type="button">Add past</button>'
+
       + '</div>'
       + '<button class="btn" id="cpSaveDetailsBtn" type="button">Save details</button>'
       + '<p id="cpSaveDetailsMsg" class="success" aria-live="polite"></p>'
@@ -2243,33 +2261,39 @@ async function initContactPage() {
       await save((cur) => ({ ...cur, name: newName }));
     });
 
-    const inlineEdit = $("#cpInlineEdit");
-    $("#cpToggleEdit").addEventListener("click", () => {
-      // classList.toggle returns true when the class was ADDED — i.e. now hidden.
-      const isHidden = inlineEdit.classList.toggle("hidden");
-      $("#cpToggleEdit").textContent = isHidden ? "+ Add role, company or industry" : "− Hide details";
-      if (!isHidden) $("#cpRole").focus();
-    });
+    /** Everything currently typed into the details form. */
+    function readDetails() {
+      return {
+        role: $("#cpRole").value.trim(),
+        company: $("#cpCompany").value.trim(),
+        industry: $("#cpIndustry").value.trim(),
+        emails: readEmailRows()
+      };
+    }
+
+    /** Applies the form to a contact, moving a replaced company into history. */
+    function applyDetails(cur, extraPast = "") {
+      const form = readDetails();
+      const history = [...(cur.companyHistory || [])];
+      if (cur.company && form.company && cur.company !== form.company
+          && !history.includes(cur.company)) {
+        history.push(cur.company);
+      }
+      if (extraPast && !history.includes(extraPast)) history.push(extraPast);
+      return {
+        ...cur,
+        role: form.role,
+        company: form.company,
+        industry: form.industry,
+        // normalizeContact keeps `email` in sync as the primary, so it is not
+        // set here — doing both would let them disagree.
+        emails: form.emails,
+        companyHistory: history
+      };
+    }
 
     $("#cpSaveDetailsBtn").addEventListener("click", async () => {
-      const company = $("#cpCompany").value.trim();
-      await save((cur) => {
-        // Moving to a new company pushes the old one into history automatically.
-        const history = [...(cur.companyHistory || [])];
-        if (cur.company && company && cur.company !== company && !history.includes(cur.company)) {
-          history.push(cur.company);
-        }
-        return {
-          ...cur,
-          role: $("#cpRole").value.trim(),
-          company,
-          industry: $("#cpIndustry").value.trim(),
-          // normalizeContact keeps `email` in sync as the primary, so it is not
-          // set here — doing both would let them disagree.
-          emails: readEmailRows(),
-          companyHistory: history
-        };
-      });
+      await save(applyDetails);
       const msg = $("#cpSaveDetailsMsg");
       msg.textContent = "Saved!";
       setTimeout(() => { msg.textContent = ""; }, 2000);
@@ -2314,10 +2338,11 @@ async function initContactPage() {
     const addPast = async () => {
       const value = $("#cpAddPast").value.trim();
       if (!value) return;
-      await save((cur) => ({
-        ...cur,
-        companyHistory: cur.companyHistory.includes(value) ? cur.companyHistory : [...cur.companyHistory, value]
-      }));
+      // Saves the rest of the form alongside it. This used to save only the
+      // history and then re-render, throwing away anything typed into the
+      // other fields — harmless while they were hidden behind a toggle,
+      // destructive now that they are always on screen.
+      await save((cur) => applyDetails(cur, value));
       await renderPage();
     };
     $("#cpAddPastBtn").addEventListener("click", addPast);

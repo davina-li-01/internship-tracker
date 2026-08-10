@@ -4011,3 +4011,46 @@ body.dark .email-label { background: rgba(253, 186, 116, 0.16); color: var(--acc
   .email-row { grid-template-columns: 1fr auto; }
   .email-kind { grid-column: 1 / -1; }
 }
+
+/* ── Repeatable profile fields ────────────────────────────────────────────────
+   A + on the label rather than a sentence underneath: it sits with the thing
+   it adds to, and stays out of the way once there are several rows. */
+.field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+.field-head label { margin: 0; }
+.field-add {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--input-border);
+  border-radius: 50%;
+  background: var(--input-bg);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: border-color var(--trans), color var(--trans), background var(--trans);
+}
+.field-add:hover { border-color: var(--primary); color: var(--primary); }
+.field-add:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.field-multi .field-hint { margin-top: 0.35rem; }
+
+
+/* A field-group is a grid, so by default its input stretches to fill whatever
+   height a taller neighbour forces on the row — which stranded the Industry
+   input halfway down the card. */
+.field-group { align-content: start; }
+
+/* The repeatable fields take the full width. Email rows are a three-column
+   grid of their own, and squeezed into half the card the address was truncated
+   to "marcus@str…" — unreadable for the one field where the exact string is
+   the whole point. */
+.inline-edit-grid .field-multi { grid-column: 1 / -1; }
