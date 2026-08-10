@@ -1716,7 +1716,7 @@ async function initDashboard() {
           + chartCard("Breakdown", "Where your scheduled connections stand",
               splitBarHtml(counts), "chart-card-wide")
         : "")
-      + '<div id="upcomingMeetings" class="chart-card upcoming-slot"></div>'
+      + '<section id="upcomingMeetings" class="card chart-card upcoming-slot"></section>'
       + '</div>';
 
     const attentionHtml = '<section class="card dash-section">'
@@ -2799,7 +2799,7 @@ function calendarCardHtml({ connecting = false } = {}) {
 
   return '<article class="int-card int-' + meta.tone + '">'
     + '<div class="int-head">'
-    + '<span class="int-icon" aria-hidden="true">📅</span>'
+    + googleCalendarMark()
     + '<div class="int-title">'
     + '<p class="int-name">Google Calendar</p>'
     + '<p class="int-status">' + status + '</p>'
@@ -2883,6 +2883,20 @@ function renderIntegrationCards(root, { connecting = false } = {}) {
   });
 }
 
+/**
+ * The Google Calendar mark.
+ *
+ * onerror swaps in the emoji, so a missing or renamed file degrades to what was
+ * there before rather than a broken-image icon. The filename has a space in it,
+ * hence the encoding.
+ */
+function googleCalendarMark(cls = "int-icon") {
+  return '<img class="' + cls + ' gcal-mark" src="assets/google%20calendar.png"'
+    + ' alt="" width="24" height="24" loading="lazy"'
+    + ' onerror="this.replaceWith(Object.assign(document.createElement(\'span\'),'
+    + '{className:\'' + cls + '\',textContent:\'📅\'}))" />';
+}
+
 // ── Integrations in Settings (ORB-36) ─────────────────────────────────────────
 
 /**
@@ -2908,7 +2922,7 @@ function renderSettingsIntegrations(root, calendars = null) {
 
   root.innerHTML = '<div class="int-settings">'
     + '<div class="int-head">'
-    + '<span class="int-icon" aria-hidden="true">📅</span>'
+    + googleCalendarMark()
     + '<div class="int-title">'
     + '<p class="int-name">Google Calendar</p>'
     + '<p class="int-status">' + escapeHtml(label)
@@ -3220,12 +3234,14 @@ function renderUpcomingMeetings() {
   // entry point is gone by then, and it deliberately does not come back for an
   // expired token. So it has to carry the error and point at where the fix is.
   const syncBar = '<div class="sync-bar' + (state === "needs-reauth" ? ' sync-bar-warn' : '') + '">'
+    + '<span class="sync-source">' + googleCalendarMark("sync-mark")
+    + '<span>Google Calendar</span></span>'
     + '<span class="sync-status">'
     + (state === "needs-reauth"
       ? '<span class="sync-warn">Calendar access expired — nothing is syncing.</span>'
       : 'Synced ' + escapeHtml(timeAgo(calendar.lastSyncedAt()))
         + (run && run.logged
-          ? ' · ' + run.logged + (run.logged === 1 ? ' conversation logged' : ' conversations logged')
+          ? ' · ' + run.logged + (run.logged === 1 ? ' conversation' : ' conversations') + ' logged'
           : ''))
     + '</span>'
     + (state === "needs-reauth"

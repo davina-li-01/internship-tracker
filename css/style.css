@@ -3861,15 +3861,32 @@ body.dark .int-details > summary { color: var(--accent); }
 /* ── Sync bar (ORB-35) ────────────────────────────────────────────────────────
    A sync button is only trustworthy beside evidence it ran. */
 .sync-bar {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
+  gap: 0.3rem 0.6rem;
   padding: 0.5rem 0 0.7rem;
   margin-bottom: 0.35rem;
   border-bottom: 1px solid var(--hairline);
 }
+/* Source and button share the top line; the timestamp gets the full width
+   underneath. In a third-width column the status wraps otherwise, and a
+   two-line status beside a button reads as broken rather than dense.
+   Placement is explicit so the DOM can stay in reading order. */
+.sync-source { grid-area: 1 / 1 / 2 / 2; }
+.sync-bar .btn { grid-area: 1 / 2 / 2 / 3; }
+.sync-status { grid-area: 2 / 1 / 3 / -1; }
+
+/* "Synced 2 hours ago" never said by what. */
+.sync-source {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.sync-mark { width: 15px; height: 15px; flex-shrink: 0; }
 .sync-status { font-size: 0.76rem; color: var(--text-faint); }
 .sync-warn { color: #A16207; font-weight: 600; }
 body.dark .sync-warn { color: #FCD34D; }
@@ -3942,3 +3959,9 @@ body.dark .link-btn { color: var(--accent); }
 .upcoming-slot .upcoming-points { font-size: 0.73rem; }
 .upcoming-slot .sync-bar { padding-top: 0; }
 .upcoming-empty { margin: auto 0; }
+
+
+/* The Google mark, wherever the calendar identifies itself. Sized rather than
+   left to the image so a different export cannot change the layout. */
+.gcal-mark { object-fit: contain; display: block; }
+img.int-icon { width: 26px; height: 26px; }
