@@ -468,17 +468,44 @@ export async function fetchEventWindow(backDays = LOOKBACK_DAYS, forwardDays = U
     + "&singleEvents=true&orderBy=startTime&maxResults=250";
 
   const res = await fetch(url, { headers: { Authorization: "Bearer " + accessToken } });
+  if (res.ok) return (await res.json()).items || [];
 
-  if (res.status === 401 || res.status === 403) {
+  // 401 and 403 are NOT the same thing, and treating them alike sent people off
+  // to reconnect over and over when the real answer was that the Calendar API
+  // was never switched on for the project. Google explains itself in the
+  // response body; the job here is to stop swallowing it.
+  let detail = "";
+  try {
+    const body = await res.json();
+    detail = body?.error?.message || "";
+  } catch { /* not JSON — fall through to the status code */ }
+
+  if (res.status === 401) {
+    // Genuinely an expired or revoked token. This one IS worth reconnecting.
     accessToken = "";
     throw new Error("Google access expired. Connect again.");
   }
-  if (!res.ok) {
-    throw new Error("Google Calendar returned " + res.status + ".");
+
+  if (res.status === 403) {
+    accessToken = "";
+    if (/has not been used|is disabled|SERVICE_DISABLED/i.test(detail)) {
+      throw new Error(
+        "The Google Calendar API is not enabled for this project. "
+        + "Google Cloud Console → APIs & Services → Library → Google Calendar API → Enable, "
+        + "then wait a minute and try again."
+      );
+    }
+    if (/insufficient|scope/i.test(detail)) {
+      throw new Error(
+        "Google granted access without calendar permission. Disconnect, then connect "
+        + "again and make sure the calendar checkbox stays ticked on the consent screen."
+      );
+    }
+    throw new Error("Google refused the request: " + (detail || "no reason given") + ".");
   }
 
-  const data = await res.json();
-  return data.items || [];
+  throw new Error("Google Calendar returned " + res.status
+    + (detail ? ": " + detail : "") + ".");
 }
 
 /** Kept for callers that only care about what already happened. */
@@ -492,10 +519,12 @@ export async function fetchRecentEvents(lookbackDays = LOOKBACK_DAYS) {
  */
 export async function connectCalendar(contacts, todayIso, { interactive = true } = {}) {
   await requestAccessToken({ interactive });
-  // Only remembered once a grant has actually succeeded, so a cancelled popup
-  // does not leave Orbit trying silently forever.
-  rememberConnection();
+  // The fetch comes BEFORE remembering, deliberately. Marking the connection
+  // good on the strength of a token alone meant Settings reported "Connected"
+  // while every read failed — a token proves Google knows who you are, not that
+  // Orbit can see your calendar. Connected has to mean the round trip worked.
   const events = await fetchEventWindow();
+  rememberConnection();
   cacheUpcoming(findUpcoming(events, contacts));
   return findCandidates(events, contacts, todayIso);
 }
