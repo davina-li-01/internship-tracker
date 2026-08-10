@@ -10,9 +10,7 @@ const check = (label, actual, expected) => {
      : (fail++, console.log(`  FAIL  ${label}\n        expected ${JSON.stringify(expected)}\n        got      ${JSON.stringify(actual)}`));
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
-const daysAgo = (n) => { const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - n); return d.toISOString().slice(0,10); };
-const daysAhead = (n) => daysAgo(-n);
+import { today, daysAgo, daysAhead } from "./helpers/dates.mjs";
 
 console.log("\n── firstDeadlineFor: grace only when already blown ──");
 check("stale contact gets today + 7",

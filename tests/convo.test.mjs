@@ -5,8 +5,7 @@ const { normalizeContact, normalizeInteraction, calculateNextReminder, firstDead
 let pass=0, fail=0;
 const check=(l,a,e)=>{const ok=JSON.stringify(a)===JSON.stringify(e);
   ok?(pass++,console.log("  pass  "+l)):(fail++,console.log(`  FAIL  ${l}\n        expected ${JSON.stringify(e)}\n        got      ${JSON.stringify(a)}`));};
-const daysAgo=(n)=>{const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-n);return d.toISOString().slice(0,10);};
-const today=()=>new Date().toISOString().slice(0,10);
+import { today, daysAgo, daysAhead } from "./helpers/dates.mjs";
 
 // Mirrors the widget's submit handler.
 function logConversation(existing, { name, role, company, email, when, type, notes, frequency }) {
@@ -43,7 +42,7 @@ check("newest conversation is first", updated.interactions[0].notes, "Talked abo
 check("older conversation survives", updated.interactions[1].notes, "First chat");
 check("lastContacted moves to today", updated.lastContacted, today());
 check("dateMet is NOT overwritten", updated.dateMet, daysAgo(200));
-check("cadence rolls forward 30 days", updated.nextReminder.slice(0,10), (()=>{const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()+30);return d.toISOString().slice(0,10);})());
+check("cadence rolls forward 30 days", updated.nextReminder.slice(0,10), daysAhead(30));
 check("no longer overdue", getHealth(updated).band, "good");
 
 console.log("\n── back-dating a conversation ──");

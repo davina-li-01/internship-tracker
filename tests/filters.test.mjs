@@ -4,7 +4,7 @@ const { normalizeContact, cadenceKey, matchesConnectionFilters, countByBand } = 
 let pass=0, fail=0;
 const check=(l,a,e)=>{const ok=JSON.stringify(a)===JSON.stringify(e);
   ok?(pass++,console.log("  pass  "+l)):(fail++,console.log(`  FAIL  ${l}\n        expected ${JSON.stringify(e)}\n        got      ${JSON.stringify(a)}`));};
-const daysAgo=(n)=>{const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-n);return d.toISOString().slice(0,10);};
+import { daysAgo } from "./helpers/dates.mjs";
 const C=(o)=>normalizeContact(o);
 
 console.log("\n── cadenceKey ──");

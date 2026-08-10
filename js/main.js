@@ -39,8 +39,28 @@ function parseDateOnly(value) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+/**
+ * A Date to a YYYY-MM-DD string, in the user's own timezone.
+ *
+ * Not `toISOString().slice(0, 10)`, which is what this used to be. That formats
+ * in UTC, while `parseDateOnly` and `daysSince` work in local time — so west of
+ * UTC the app spent every afternoon and evening stamping tomorrow's date while
+ * measuring elapsed days against today's. In Hawaii that is a ten-hour window,
+ * daily, in which clicking "Reached out" recorded a conversation on a date that
+ * had not happened yet, and a grace window came out a day too long.
+ *
+ * Every date in Orbit is a calendar day, not an instant. Calendar days belong
+ * to whoever is looking at the calendar.
+ */
+function toDateString(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function todayDateString() {
-  return new Date().toISOString().split("T")[0];
+  return toDateString(new Date());
 }
 
 function escapeHtml(value = "") {
@@ -131,7 +151,11 @@ function calculateNextReminder(lastContacted, frequency) {
   const date = parseDateOnly(lastContacted) || new Date(lastContacted);
   if (Number.isNaN(date.getTime())) return "";
   date.setDate(date.getDate() + interval);
-  return date.toISOString();
+  // A date, not an instant. This used to return a full toISOString(), which is
+  // a local midnight rendered in UTC — so east of UTC, everything that reads
+  // the first ten characters of it got the day before the one intended. The
+  // column in Postgres is a `date` anyway, so the time was never stored.
+  return toDateString(date);
 }
 
 // ── Relationship health ───────────────────────────────────────────────────────
@@ -146,7 +170,10 @@ function addDays(dateStr, n) {
   const d = parseDateOnly(dateStr);
   if (!d) return "";
   d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
+  // parseDateOnly built this at LOCAL midnight, so it has to be read back the
+  // same way. Going through toISOString here shifted the answer a day east of
+  // UTC — the same mismatch that made todayDateString wrong west of it.
+  return toDateString(d);
 }
 
 /**
@@ -1453,7 +1480,7 @@ async function showReminderModal(contact, onChanged) {
   modal.querySelector("#modalLater").addEventListener("click", async () => {
     const saved = await db.saveContact(normalizeContact({
       ...contact,
-      nextReminder: new Date(Date.now() + 3 * 86400000).toISOString()
+      nextReminder: addDays(todayDateString(), 3)
     }));
     if (saved) showToast("Snoozed — " + contact.name + " comes back in 3 days.");
     else showToast("Could not save that — " + contact.name + " is unchanged.");

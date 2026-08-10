@@ -346,6 +346,31 @@ Deliberately skipped.
 
 ---
 
+## A timezone bug the tests found on their first day
+
+`todayDateString()` formatted in **UTC** while `parseDateOnly` and `daysSince`
+worked in **local time**. West of UTC that means every afternoon and evening the
+app stamped tomorrow's date on anything you logged, then measured elapsed days
+against today's. In Hawaii that is a ten-hour window, daily.
+
+Clicking **✓ Reached out** at 2pm recorded a conversation on a day that had not
+happened yet. A grace window came out a day longer than the one promised.
+Nothing errored.
+
+`addDays` and `calculateNextReminder` had the mirror-image version of the same
+fault — both built a local midnight and then read it back through
+`toISOString()`, which is a day early anywhere east of UTC.
+
+It survived because the tests reimplemented the same conversion, so they agreed
+with the code for fourteen hours a day and disagreed for ten. It surfaced the
+first time the suite ran in the evening rather than the morning.
+
+All date helpers now go through one local `toDateString()`, and
+`tests/helpers/dates.mjs` exists so no suite reimplements the thing it is
+checking with a different clock. `tests/dates.test.mjs` holds the invariant.
+
+---
+
 ## Tests
 
 `npm test` — 11 suites, 315 assertions, no build step. `npm run test:functions`

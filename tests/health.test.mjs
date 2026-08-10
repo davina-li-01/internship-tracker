@@ -14,12 +14,7 @@ function checkFn(label, fn) {
   catch (e) { fail++; console.log(`  FAIL  ${label} — threw ${e.message}`); }
 }
 
-const daysAgo = (n) => {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
-};
+import { daysAgo } from "./helpers/dates.mjs";
 
 console.log("\n── getIntervalDays ──");
 check("weekly", getIntervalDays("weekly"), 7);
