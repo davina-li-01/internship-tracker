@@ -58,12 +58,25 @@ Under **Authorized JavaScript origins**, add every origin Orbit runs on:
 
 ```
 http://localhost:5500
+http://localhost:5501
+http://127.0.0.1:5500
+http://127.0.0.1:5501
 https://davina-li-01.github.io
 https://orbit-network-sigma.vercel.app
 ```
 
-Origins are scheme + host + port — **no trailing slash, no path**. Leave
-**Authorized redirect URIs** empty; the token flow does not use them.
+**Both `localhost` and `127.0.0.1` are listed on purpose.** They are the same
+machine but *different origins* to Google, and which one Live Server hands you
+is not something you chose. Both ports are listed for the same reason: Live
+Server claims 5500 and silently moves up if it is taken.
+
+Origins are scheme + host + port — **no trailing slash, no path**.
+`http://localhost:5500` is right; `http://localhost:5500/` is not.
+
+Leave **Authorized redirect URIs** empty; the token flow does not use them.
+
+Changes take a minute to propagate, and the browser caches the old config — do
+a hard reload (`Cmd+Shift+R`) before deciding it did not work.
 
 ### 5 · Put the client ID in the code
 
@@ -131,7 +144,10 @@ already wrote up by hand.
 
 | What you see | Cause |
 |---|---|
-| `redirect_uri_mismatch` | The origin you are on is not in the list from step 4. Live Server often uses 5501, not 5500 — check your address bar |
+| `Error 400: origin_mismatch` | The address in your bar is not in the list from step 4. Check it exactly — `127.0.0.1` and `localhost` are different origins to Google, and Live Server moves off 5500 when it is taken. After fixing, wait a minute and hard-reload |
+| `redirect_uri_mismatch` | Same cause as above |
+| "Google hasn't verified this app" | Expected in Testing mode. *Advanced* → *Go to Orbit (unsafe)* |
+| `access_denied` | Your Google account is not on the **Test users** list from step 3 |
 | "Google sign-in was closed" | The popup was dismissed. Try again |
 | "Google access expired. Connect again." | Normal. Testing-mode tokens are short-lived — click the button again |
 | "None of your connections have an email saved" | Matching is by email. Add some |
