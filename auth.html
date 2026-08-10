@@ -73,6 +73,11 @@
         <div class="field-group">
           <label for="suPassword">Password <span class="muted" id="pwHint" style="font-weight:400;text-transform:none;letter-spacing:0"></span></label>
           <input id="suPassword" type="password" autocomplete="new-password" required placeholder="••••••••" />
+          <div class="pw-meter" id="pwMeter" hidden>
+            <div class="pw-meter-track"><div class="pw-meter-fill" id="pwMeterFill"></div></div>
+            <p class="pw-meter-label" id="pwMeterLabel" aria-live="polite"></p>
+          </div>
+          <div id="pwAdvice"></div>
         </div>
         <p id="suError" class="error" aria-live="polite"></p>
         <p id="suSuccess" class="success" aria-live="polite"></p>
@@ -113,6 +118,7 @@
 
   <script type="module">
     import { supabase, getUser } from "./js/supabase.js";
+    import { MIN_PASSWORD, attachStrengthMeter, passwordAdviceHtml } from "./js/password.js";
 
     // Already logged in → go to workspace
     getUser().then((user) => { if (user) window.location.href = "index.html"; });
@@ -129,8 +135,13 @@
     // minimum on top, which is what a 56-character requirement turned out to be.
     // Supabase is the authority; this is only for fast feedback before the
     // round trip, so it must never claim to be stricter than the server.
-    const MIN_PASSWORD = 8;
+    document.getElementById("pwAdvice").innerHTML = passwordAdviceHtml();
     document.getElementById("pwHint").textContent = `(min ${MIN_PASSWORD} characters)`;
+    attachStrengthMeter(
+      document.getElementById("suPassword"),
+      document.getElementById("pwMeter"),
+      () => document.getElementById("suEmail").value
+    );
 
     let pendingConfirmEmail = "";
 

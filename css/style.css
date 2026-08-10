@@ -3747,3 +3747,55 @@ body.dark .cal-row-clash { background: rgba(249, 115, 22, 0.08); }
   padding: 0; margin-top: 0.15rem;
   flex-shrink: 0; accent-color: var(--primary);
 }
+
+/* ── Password strength (sign-up) ──────────────────────────────────────────────
+   Scored on length and unpredictability rather than character classes. Current
+   guidance (NIST SP 800-63B) advises against mandatory composition rules —
+   they push people towards P@ssw0rd1, which is short and predictable.
+
+   Advice only: nothing here blocks a password above the minimum. Rules that
+   fight the user get worked around rather than obeyed. */
+.pw-meter { margin-top: 0.5rem; }
+.pw-meter-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--input-border);
+  overflow: hidden;
+}
+.pw-meter-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  transition: width var(--trans), background var(--trans);
+}
+.pw-weak   { background: #DC2626; }
+.pw-fair   { background: #CA8A04; }
+.pw-good   { background: #65A30D; }
+.pw-strong { background: #16A34A; }
+
+/* Meaning never rides on the bar's colour alone. */
+.pw-meter-label { margin: 0.3rem 0 0; font-size: 0.75rem; font-weight: 600; }
+.pw-text-weak   { color: #B91C1C; }
+.pw-text-fair   { color: #A16207; }
+.pw-text-good   { color: #4D7C0F; }
+.pw-text-strong { color: #15803D; }
+body.dark .pw-text-weak   { color: #F87171; }
+body.dark .pw-text-fair   { color: #FCD34D; }
+body.dark .pw-text-good   { color: #A3E635; }
+body.dark .pw-text-strong { color: #4ADE80; }
+
+.pw-advice {
+  margin: 0.6rem 0 0;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.pw-advice strong { color: var(--text); }
+.pw-advice em { font-style: normal; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.pw-advice-list {
+  margin: 0.35rem 0 0;
+  padding-left: 1rem;
+  font-size: 0.74rem;
+  line-height: 1.55;
+  color: var(--text-faint);
+}

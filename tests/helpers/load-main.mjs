@@ -147,10 +147,11 @@ export async function loadMain() {
   mkdirSync(HARNESS, { recursive: true });
   writeFileSync(join(HARNESS, "db.js"), DB_STUB);
   writeFileSync(join(HARNESS, "supabase.js"), SUPABASE_STUB);
-  // calendar.js is pure and needs no stubbing — copied so the relative import
-  // inside main.js resolves.
-  writeFileSync(join(HARNESS, "calendar.js"),
-    readFileSync(join(ROOT, "js", "calendar.js"), "utf8"));
+  // calendar.js and password.js are pure and need no stubbing — copied so the
+  // relative imports inside main.js resolve.
+  for (const name of ["calendar.js", "password.js"]) {
+    writeFileSync(join(HARNESS, name), readFileSync(join(ROOT, "js", name), "utf8"));
+  }
 
   const source = readFileSync(join(ROOT, "js", "main.js"), "utf8")
     + "\nexport { " + EXPORTS.join(", ") + " };\n";

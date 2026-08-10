@@ -58,6 +58,9 @@ storage error must never cost someone their notes.
 | `calendar-matching` | Which calendar events become conversations, and dedupe (ORB-15) |
 | `calendar-autosync` | Background sync throttling, reconnect nudges, timeouts |
 | `calendar-upcoming` | Upcoming meetings, meeting medium, the display cache |
+| `calendar-collisions` | Same-day clashes, deleting, the collapsed conversation row |
+| `dates` | Every date helper agrees, in the local timezone |
+| `password` | Strength scoring and the one shared minimum |
 
 ## Writing one
 

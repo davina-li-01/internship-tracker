@@ -17,6 +17,7 @@
 import { requireAuth, supabase } from "./supabase.js";
 import * as db from "./db.js";
 import * as calendar from "./calendar.js";
+import { MIN_PASSWORD, attachStrengthMeter, passwordAdviceHtml } from "./password.js";
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -3225,7 +3226,14 @@ async function openSettingsModal(section = "general") {
     + '<h3 class="settings-h3">Security &amp; login</h3>'
     + '<h4 class="settings-h4">Change password</h4>'
     + '<div class="field-group"><label for="setPw1">New password</label>'
-    + '<input type="password" id="setPw1" autocomplete="new-password" placeholder="At least 8 characters" /></div>'
+    + '<input type="password" id="setPw1" autocomplete="new-password" placeholder="At least '
+    + MIN_PASSWORD + ' characters" />'
+    + '<div class="pw-meter" id="setPwMeter" hidden>'
+    + '<div class="pw-meter-track"><div class="pw-meter-fill"></div></div>'
+    + '<p class="pw-meter-label" aria-live="polite"></p>'
+    + '</div>'
+    + passwordAdviceHtml()
+    + '</div>'
     + '<div class="field-group"><label for="setPw2">Confirm new password</label>'
     + '<input type="password" id="setPw2" autocomplete="new-password" /></div>'
     + '<p id="pwMsg" class="success" aria-live="polite"></p>'
@@ -3306,6 +3314,12 @@ async function openSettingsModal(section = "general") {
     setTimeout(() => { msg.textContent = ""; }, 2500);
   });
 
+  attachStrengthMeter(
+    modal.querySelector("#setPw1"),
+    modal.querySelector("#setPwMeter"),
+    () => authEmail
+  );
+
   modal.querySelector("#saveEmailReminders").addEventListener("click", async () => {
     const msg = modal.querySelector("#emailRemMsg");
     const err = modal.querySelector("#emailRemErr");
@@ -3376,7 +3390,10 @@ async function openSettingsModal(section = "general") {
     msg.textContent = ""; err.textContent = "";
     const pw1 = modal.querySelector("#setPw1").value;
     const pw2 = modal.querySelector("#setPw2").value;
-    if (pw1.length < 8) { err.textContent = "Use at least 8 characters."; return; }
+    if (pw1.length < MIN_PASSWORD) {
+      err.textContent = "Use at least " + MIN_PASSWORD + " characters.";
+      return;
+    }
     if (pw1 !== pw2) { err.textContent = "The two passwords do not match."; return; }
     const { error } = await supabase.auth.updateUser({ password: pw1 });
     if (error) { err.textContent = error.message; return; }
