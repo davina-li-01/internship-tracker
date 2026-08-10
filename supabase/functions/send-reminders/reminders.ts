@@ -18,11 +18,38 @@
  *      TypeScript is how the email would end up disagreeing with the dashboard.
  */
 
-/** Days before the same person may appear in another digest. */
-export const CONTACT_COOLOFF_DAYS = 7;
+/**
+ * The rhythm (ORB-27).
+ *
+ * The first version emailed whenever someone crossed their deadline, then
+ * fought the consequences with a per-contact cool-off and a per-user throttle.
+ * Event-driven delivery arrives unpredictably, so it can never become a habit —
+ * it can only ever interrupt, and interruption is what gets email muted.
+ *
+ * A fixed period fixes that structurally: one email per fortnight, by
+ * construction rather than by throttling, containing whoever is drifting at
+ * that moment. The schedule IS the grouping, so no batching heuristic is
+ * needed.
+ *
+ * The rhythm anchors itself. Fourteen days is exactly two weeks, so once the
+ * first digest goes out on a Tuesday, every subsequent one is a Tuesday —
+ * without this function needing to know anything about the user's timezone or
+ * pick a weekday on their behalf.
+ */
+export const PERIOD_DAYS = 14;
 
 /** Most names in one email. A wall of them is a guilt trip, not a priority list. */
 export const MAX_PER_DIGEST = 8;
+
+/**
+ * After this many consecutive digests, a name stops being listed.
+ *
+ * Repeating someone you have ignored three times is nagging, and by then the
+ * problem has changed: it is no longer that you forgot, it is that you said
+ * monthly and meant quarterly. So they collapse into one line pointing at the
+ * cadence, which is a settings fix rather than a guilt trip.
+ */
+export const CHRONIC_AFTER = 3;
 
 export type Contact = {
   id: string;
@@ -32,6 +59,7 @@ export type Contact = {
   company: string | null;
   next_reminder: string | null;
   last_nudged_at: string | null;
+  nudge_streak: number | null;
 };
 
 export type Prefs = {
@@ -42,7 +70,10 @@ export type Prefs = {
   last_reminder_sent_at: string | null;
 };
 
-export type Ranked = { contact: Contact; days: number };
+export type Ranked = { contact: Contact; days: number; streak: number };
+
+/** What one digest contains: names to act on, plus a count of the chronic ones. */
+export type Digest = { shown: Ranked[]; held: number; chronic: Ranked[] };
 
 export type Deps = {
   /** Users who have opted in. */
@@ -52,7 +83,7 @@ export type Deps = {
   /** The address they signed up with, used when Settings has no contact email. */
   lookupAuthEmail: (userId: string) => Promise<string>;
   sendEmail: (to: string, subject: string, text: string, html: string) => Promise<void>;
-  stampContacts: (ids: string[], at: string) => Promise<void>;
+  stampContacts: (updates: { id: string; streak: number }[], at: string) => Promise<void>;
   stampUser: (userId: string, at: string) => Promise<void>;
   now: Date;
   appUrl: string;
@@ -81,34 +112,59 @@ export function describe(c: Contact): string {
   return role || company || "";
 }
 
-/** How often the digest itself may arrive, independent of the per-contact cool-off. */
-export function cadenceDaysFor(mode: string | null): number | null {
-  if (mode === "daily") return 1;
-  if (mode === "weekly") return 7;
-  return null; // 'off', null, or anything unrecognised
+/**
+ * Is this user opted in?
+ *
+ * 'daily' and 'weekly' are legacy values from before ORB-27 and are honoured as
+ * opted-in rather than silently switched off — a migration that stops someone's
+ * email without telling them is worse than one that changes its rhythm.
+ */
+export function isOptedIn(mode: string | null): boolean {
+  return mode === "fortnightly" || mode === "weekly" || mode === "daily";
 }
 
-/** Contacts that are due AND out of their cool-off window. */
-export function eligibleContacts(due: Contact[], now: Date): Ranked[] {
+/**
+ * Rank everyone overdue, carrying how many digests running they have appeared in.
+ *
+ * A streak only continues if the last nudge was recent. Someone who lapsed,
+ * was contacted, and drifted again starts from one — they are not a chronic
+ * case, they are a normal one that came back around.
+ */
+export function rankOverdue(due: Contact[], now: Date): Ranked[] {
   return due
-    .filter((c) => {
-      if (!c.next_reminder) return false;
-      if (!c.last_nudged_at) return true;
-      return daysBetween(now, new Date(c.last_nudged_at)) >= CONTACT_COOLOFF_DAYS;
+    .filter((c) => Boolean(c.next_reminder))
+    .map((contact) => {
+      const sinceNudge = contact.last_nudged_at
+        ? daysBetween(now, new Date(contact.last_nudged_at))
+        : Infinity;
+      const continuing = sinceNudge <= PERIOD_DAYS * 2;
+      return {
+        contact,
+        days: daysBetween(now, new Date(contact.next_reminder + "T00:00:00Z")),
+        streak: continuing ? (contact.nudge_streak || 0) + 1 : 1
+      };
     })
-    .map((contact) => ({
-      contact,
-      days: daysBetween(now, new Date(contact.next_reminder + "T00:00:00Z"))
-    }))
     // Most overdue first — the digest is a priority list, not a dump.
     .sort((a, b) => b.days - a.days);
+}
+
+/** Split the ranked list into what gets named and what gets summarised. */
+export function buildDigest(ranked: Ranked[]): Digest {
+  const chronic = ranked.filter((r) => r.streak > CHRONIC_AFTER);
+  const fresh = ranked.filter((r) => r.streak <= CHRONIC_AFTER);
+  return {
+    shown: fresh.slice(0, MAX_PER_DIGEST),
+    held: Math.max(0, fresh.length - MAX_PER_DIGEST),
+    chronic
+  };
 }
 
 export function buildEmail(
   name: string,
   rows: Ranked[],
   hiddenCount: number,
-  appUrl: string
+  appUrl: string,
+  chronicCount = 0
 ): { subject: string; text: string; html: string } {
   const greeting = name ? `Hi ${name},` : "Hi,";
   const count = rows.length;
@@ -130,6 +186,9 @@ export function buildEmail(
       return `• ${contact.name || "Unnamed"}${detail ? ` — ${detail}` : ""} (${overdueLabel(days)})`;
     }),
     ...(hiddenCount > 0 ? ["", `…and ${hiddenCount} more waiting.`] : []),
+    ...(chronicCount > 0 ? ["",
+      `${chronicCount} ${chronicCount === 1 ? "person has" : "people have"} been overdue `
+      + "for a while now — the cadence you set for them may be wrong."] : []),
     "",
     `Open Orbit: ${appUrl}`,
     "",
@@ -161,6 +220,13 @@ export function buildEmail(
     ${hiddenCount > 0
       ? `<p style="color:#A8A29E;font-size:13px;margin:14px 0 0;">…and ${hiddenCount} more waiting.</p>`
       : ""}
+    ${chronicCount > 0
+      ? `<p style="color:#78716C;font-size:13px;line-height:1.5;margin:14px 0 0;padding:10px 12px;`
+        + `background:#F5EDE3;border-radius:8px;">`
+        + `<strong>${chronicCount} ${chronicCount === 1 ? "person has" : "people have"} been overdue for a while.</strong> `
+        + `The cadence you set for them may be wrong — worth changing it rather than `
+        + `seeing them here again.</p>`
+      : ""}
     <a href="${escapeHtml(appUrl)}"
        style="display:inline-block;margin-top:24px;background:#F97316;color:#fff;text-decoration:none;
               padding:11px 22px;border-radius:10px;font-weight:600;font-size:14px;">Open Orbit</a>
@@ -188,16 +254,18 @@ export async function runReminders(deps: Deps, dryRun = false): Promise<UserResu
   const results: UserResult[] = [];
 
   for (const prefs of await deps.listOptedInUsers()) {
-    const cadence = cadenceDaysFor(prefs.email_reminders);
-    if (cadence === null) {
+    if (!isOptedIn(prefs.email_reminders)) {
       results.push({ user: prefs.user_id, skipped: "reminders off" });
       continue;
     }
 
+    // The whole throttle, in one check. One email per period, by construction.
+    // Because the period is exactly two weeks, the rhythm anchors itself to
+    // whatever weekday the first digest landed on and stays there.
     if (prefs.last_reminder_sent_at) {
       const since = daysBetween(deps.now, new Date(prefs.last_reminder_sent_at));
-      if (since < cadence) {
-        results.push({ user: prefs.user_id, skipped: "within cadence", detail: since });
+      if (since < PERIOD_DAYS) {
+        results.push({ user: prefs.user_id, skipped: "within period", detail: since });
         continue;
       }
     }
@@ -210,14 +278,19 @@ export async function runReminders(deps: Deps, dryRun = false): Promise<UserResu
       continue;
     }
 
-    const ranked = eligibleContacts(due, deps.now);
+    const ranked = rankOverdue(due, deps.now);
     if (!ranked.length) {
+      // Nothing to say. Deliberately does NOT stamp the period — an empty
+      // fortnight should not push the next digest two weeks further out.
       results.push({ user: prefs.user_id, skipped: "nothing due" });
       continue;
     }
 
-    const shown = ranked.slice(0, MAX_PER_DIGEST);
-    const held = ranked.length - shown.length;
+    const digest = buildDigest(ranked);
+    if (!digest.shown.length && !digest.chronic.length) {
+      results.push({ user: prefs.user_id, skipped: "nothing to say" });
+      continue;
+    }
 
     let to = (prefs.your_email || "").trim();
     if (!to) {
@@ -232,14 +305,22 @@ export async function runReminders(deps: Deps, dryRun = false): Promise<UserResu
       continue;
     }
 
+    // Everyone chronic and nobody fresh means the only thing to say is "your
+    // cadences are wrong", which is not worth an email of its own every
+    // fortnight. It rides along with real names or it waits.
+    if (!digest.shown.length) {
+      results.push({ user: prefs.user_id, skipped: "only chronic overdue" });
+      continue;
+    }
+
     const { subject, text, html } = buildEmail(
-      prefs.your_name || "", shown, held, deps.appUrl
+      prefs.your_name || "", digest.shown, digest.held, deps.appUrl, digest.chronic.length
     );
 
     if (dryRun) {
       results.push({
         user: prefs.user_id,
-        wouldSend: { to, subject, names: shown.map((s) => s.contact.name) }
+        wouldSend: { to, subject, names: digest.shown.map((s) => s.contact.name) }
       });
       continue;
     }
@@ -252,14 +333,23 @@ export async function runReminders(deps: Deps, dryRun = false): Promise<UserResu
       continue;
     }
 
-    // Stamp ONLY what was in the email. A name held back by MAX_PER_DIGEST has
-    // not been nudged, so it must stay eligible rather than going quiet for a
-    // week without anyone ever being told about it.
+    // Streaks advance for everyone the digest accounted for, named or
+    // summarised — a chronic case that was counted has still been reported.
+    // Names held back by MAX_PER_DIGEST are NOT stamped: they were never
+    // mentioned, so their streak must not advance on their behalf.
     const at = deps.now.toISOString();
-    await deps.stampContacts(shown.map((s) => s.contact.id), at);
+    await deps.stampContacts(
+      [...digest.shown, ...digest.chronic].map((r) => ({ id: r.contact.id, streak: r.streak })),
+      at
+    );
     await deps.stampUser(prefs.user_id, at);
 
-    results.push({ user: prefs.user_id, sent: shown.length, held, to });
+    results.push({
+      user: prefs.user_id,
+      sent: digest.shown.length,
+      held: digest.held,
+      to
+    });
   }
 
   return results;

@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
       const { data, error } = await supabase
         .from("preferences")
         .select("user_id, your_name, your_email, email_reminders, last_reminder_sent_at")
-        .in("email_reminders", ["daily", "weekly"]);
+        .in("email_reminders", ["fortnightly", "weekly", "daily"]);
       if (error) throw new Error(error.message);
       return (data || []) as Prefs[];
     },
@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
     listDueContacts: async (userId, today) => {
       const { data, error } = await supabase
         .from("contacts")
-        .select("id, user_id, name, role, company, next_reminder, last_nudged_at")
+        .select("id, user_id, name, role, company, next_reminder, last_nudged_at, nudge_streak")
         .eq("user_id", userId)
         .eq("reminder_enabled", true)
         .not("next_reminder", "is", null)
@@ -85,9 +85,15 @@ Deno.serve(async (req) => {
 
     sendEmail: sendViaResend,
 
-    stampContacts: async (ids, at) => {
-      if (!ids.length) return;
-      await supabase.from("contacts").update({ last_nudged_at: at }).in("id", ids);
+    // Each row gets its own streak, so this cannot be one bulk update. The list
+    // is capped at MAX_PER_DIGEST plus however many are chronic, so the write
+    // count stays small.
+    stampContacts: async (updates, at) => {
+      for (const { id, streak } of updates) {
+        await supabase.from("contacts")
+          .update({ last_nudged_at: at, nudge_streak: streak })
+          .eq("id", id);
+      }
     },
 
     stampUser: async (userId, at) => {

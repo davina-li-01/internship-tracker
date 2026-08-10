@@ -2865,7 +2865,6 @@ function renderIntegrationCards(root, { connecting = false } = {}) {
           "Nothing new in the last " + calendar.LOOKBACK_DAYS + " days.";
         return;
       }
-      document.getElementById("settingsModal")?.remove();
       openCalendarReviewModal(candidates, contacts);
     } catch (error) {
       renderIntegrationCards(root);
@@ -2878,6 +2877,14 @@ function renderIntegrationCards(root, { connecting = false } = {}) {
     renderIntegrationCards(root);
     showToast("Google Calendar disconnected. No token was stored, so there is nothing else to clear.");
   });
+}
+
+/** The Integrations page (ORB-34). Its own tab now, not a settings pane. */
+async function initIntegrationsPage() {
+  const root = document.getElementById("integrationCards");
+  if (!root) return;
+  renderIntegrationCards(root);
+  window.__orbitRefresh = () => renderIntegrationCards(root);
 }
 
 // ── Calendar auto-sync on load (ORB-15) ───────────────────────────────────────
@@ -3272,7 +3279,6 @@ const SETTINGS_SECTIONS = [
   { key: "general",       label: "General",          icon: "⚙" },
   { key: "profile",       label: "Profile",          icon: "◍" },
   { key: "notifications", label: "Notifications",    icon: "◔" },
-  { key: "integrations",  label: "Integrations",     icon: "⧉" },
   { key: "security",      label: "Security & login", icon: "⛨" },
   { key: "data",          label: "Data controls",    icon: "⬓" }
 ];
@@ -3291,8 +3297,10 @@ async function openSettingsModal(section = "general") {
   // runs server-side and can never see localStorage. Anything other than the
   // three known values is treated as off, which is also what an unrun migration
   // looks like.
-  const emailMode = ["daily", "weekly"].includes(prefs.email_reminders)
-    ? prefs.email_reminders : "off";
+  // 'daily' and 'weekly' predate the fortnightly rhythm (ORB-27) and still mean
+  // opted-in, so an old value shows as on rather than silently reading "Never".
+  const emailMode = ["fortnightly", "weekly", "daily"].includes(prefs.email_reminders)
+    ? "fortnightly" : "off";
   const reminderTarget = (prefs.your_email || "").trim() || authEmail || "no address saved";
 
   const modal = document.createElement("div");
@@ -3363,27 +3371,16 @@ async function openSettingsModal(section = "general") {
     + settingsRow("Email me",
         '<select id="setEmailReminders">'
         + '<option value="off"' + (emailMode === "off" ? " selected" : "") + '>Never</option>'
-        + '<option value="daily"' + (emailMode === "daily" ? " selected" : "") + '>At most once a day</option>'
-        + '<option value="weekly"' + (emailMode === "weekly" ? " selected" : "") + '>At most once a week</option>'
+        + '<option value="fortnightly"' + (emailMode === "fortnightly" ? " selected" : "")
+        + '>Every two weeks</option>'
         + '</select>')
-    + '<p class="field-hint">Sent to <strong>' + escapeHtml(reminderTarget) + '</strong>. '
-    + 'The same person will not appear again for a week, so a long-overdue contact '
-    + 'does not turn into a daily guilt trip.</p>'
+    + '<p class="field-hint">Sent to <strong>' + escapeHtml(reminderTarget) + '</strong>, '
+    + 'on the same day every fortnight — one email, everyone who is drifting, most '
+    + 'overdue first. Anyone still overdue after three of them stops being listed and '
+    + 'becomes a note that their cadence may be wrong.</p>'
     + '<p id="emailRemMsg" class="success" aria-live="polite"></p>'
     + '<p id="emailRemErr" class="error" aria-live="polite"></p>'
     + '<button class="btn btn-secondary btn-sm" id="saveEmailReminders" type="button">Save email setting</button>'
-    + '</section>'
-
-    // ── Integrations (ORB-34) ────────────────────────────────────────────
-    // One card per integration, carrying its own state. The benefits copy that
-    // used to fill this pane unconditionally now lives inside the card and only
-    // unfolds when asked — it is a sales pitch, and a sales pitch shown to
-    // someone who already bought is just noise between them and the controls.
-    + '<section class="settings-pane" data-pane="integrations">'
-    + '<h3 class="settings-h3">Integrations</h3>'
-    + '<p class="settings-note">Bring outside data into Orbit so staying current '
-    + 'stops depending on you remembering.</p>'
-    + '<div id="integrationCards"></div>'
     + '</section>'
 
     // ── Security ─────────────────────────────────────────────────────────
@@ -3501,17 +3498,16 @@ async function openSettingsModal(section = "general") {
     const result = await db.savePreferences({ email_reminders: mode });
     if (!result.ok) { err.textContent = "Could not save — see the console (F12)."; return; }
     if (result.skipped.includes("email_reminders")) {
-      err.textContent = "Run supabase/add-reminder-columns.sql first — the column does not exist yet.";
+      err.textContent = "Run supabase/add-reminder-columns.sql and add-digest-streak.sql first.";
       return;
     }
     prefs.email_reminders = mode;
     msg.textContent = mode === "off"
       ? "Email reminders are off."
-      : "Saved. Reminders go to " + ((prefs.your_email || "").trim() || authEmail) + ".";
+      : "Saved. The first digest goes out within a fortnight, to "
+        + ((prefs.your_email || "").trim() || authEmail) + ".";
     setTimeout(() => { msg.textContent = ""; }, 3000);
   });
-
-  renderIntegrationCards(modal.querySelector("#integrationCards"));
 
   modal.querySelector("#savePw").addEventListener("click", async () => {
     const msg = modal.querySelector("#pwMsg");
@@ -3632,6 +3628,7 @@ async function checkRemindersOnLoad() {
   await initNetworkingLog();
   await initContactPage();
   await initFilesPage();
+  await initIntegrationsPage();
   await checkRemindersOnLoad();
   // Last, and deliberately not awaited into anything that renders: it talks to
   // Google over the network and must never hold up the page.

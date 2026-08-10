@@ -3867,3 +3867,6 @@ body.dark .int-details > summary { color: var(--accent); }
 .sync-status { font-size: 0.76rem; color: var(--text-faint); }
 .sync-warn { color: #A16207; font-weight: 600; }
 body.dark .sync-warn { color: #FCD34D; }
+
+/* Integrations is its own page now, so the cards get room to breathe. */
+.integration-grid { display: grid; gap: 0.9rem; }

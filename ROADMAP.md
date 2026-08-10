@@ -30,6 +30,7 @@ Aligned to Confluence 2026-08-08. Every ORB key below matches the epic.
 | — | ORB-28 | "Coming up" on the dashboard | Core | Med | Med | ✅ Done |
 | Aug 9 | ORB-34 | Integrations tab | Integrations | Med | Med | ✅ Done |
 | Aug 9 | ORB-35 | Sync from the dashboard | Integrations | Med | Med | ✅ Done |
+| Aug 9 | ORB-27 | Revisit email reminder logic | Integrations | Med | Med | 🔶 Built — needs SQL |
 
 Dates are current-constraint estimates and expected to move **up**, not back.
 
@@ -390,9 +391,40 @@ load time, so a passing suite is a suite that passed against what ships.
 
 ---
 
+### ORB-27 — Revisit email reminder logic · 🔶 built 2026-08-10
+**The first version was the wrong shape, not the wrong numbers.** It emailed
+whenever someone crossed their deadline, then fought the consequences with a
+per-contact cool-off and a per-user throttle. Event-driven delivery arrives
+unpredictably, so it can never become a habit — only an interruption, and
+interruption is what gets email muted.
+
+**Now a fixed fortnight.** One email per period by construction, containing
+whoever is drifting at that moment, most overdue first. The schedule *is* the
+grouping, so the cool-off is gone entirely.
+
+**It anchors itself.** Fourteen days is exactly two weeks, so the first digest
+fixes the weekday for every one after it, without the function knowing anything
+about the user's timezone.
+
+**Chronic cases are demoted.** Someone still overdue after `CHRONIC_AFTER` (3)
+consecutive digests stops being named and becomes one line: *"the cadence you
+set for them may be wrong."* Repeating a name ignored three times is nagging,
+and by then the problem has changed — it is not that you forgot, it is that you
+said monthly and meant quarterly.
+
+Streaks reset for anyone who lapsed and came back; they are a normal case
+returning, not a chronic one. A quiet fortnight does not stamp the period, so it
+cannot silently become a month. Legacy `daily`/`weekly` values still count as
+opted in — a migration that stops someone's email without telling them is worse
+than one that changes its rhythm.
+
+**Blocked on you:** `supabase/add-digest-streak.sql`, then redeploy the function.
+
 ### ORB-34 — Integrations tab · ✅ done 2026-08-10
-One card per integration carrying its own state, absorbing the standalone
-benefits copy, both pop-ups and the loading screen.
+**Its own page under Networking Log**, not a settings pane — moved 2026-08-10
+because an integration you connect once still needs a home you can find when it
+breaks. One card per integration carrying its own state, absorbing the
+standalone benefits copy, both pop-ups and the loading screen.
 
 **Four states, because two could not describe reality.** The state that happens
 most is: connected weeks ago, Google has since expired the grant, nothing works

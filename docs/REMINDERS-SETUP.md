@@ -28,11 +28,11 @@ the email would start disagreeing with the dashboard.
 
 ## Step 1 — Run the migration
 
-Supabase dashboard → **SQL Editor** → paste `supabase/add-reminder-columns.sql`
-→ Run.
+Supabase dashboard → **SQL Editor** → run **both**, in order:
 
-It should print three rows: `contacts.last_nudged_at`,
-`preferences.email_reminders`, `preferences.last_reminder_sent_at`.
+1. `supabase/add-reminder-columns.sql` — prints three rows
+2. `supabase/add-digest-streak.sql` — adds `contacts.nudge_streak` and the
+   fortnightly rhythm (ORB-27)
 
 ## Step 2 — Get a Resend API key
 
@@ -175,10 +175,17 @@ reaches you when you are not asking for it.
 
 | Brake | Effect |
 |---|---|
+| **A fixed fortnight** | One email per period, by construction rather than by throttling. The schedule *is* the grouping, so there is no batching heuristic to get wrong |
 | **One digest per user** | Five overdue people produce one email listing five names, never five emails |
-| **Per-contact cool-off (7 days)** | Someone stays overdue until you actually reach out. Without this they would be in every digest forever |
-| **Per-user cadence** | Your daily/weekly choice, tracked by `last_reminder_sent_at`, independent of the cool-off |
 | **`MAX_PER_DIGEST` = 8** | A wall of names is a guilt trip, not a prioritised list. The rest wait — and are *not* stamped, so they surface next time |
+| **`CHRONIC_AFTER` = 3** | A name you have ignored three fortnights running stops being listed and becomes *"your cadence for them may be wrong"* — which is a settings fix rather than a guilt trip |
+
+**The rhythm anchors itself.** Fourteen days is exactly two weeks, so once the
+first digest lands on a Tuesday, every one after it is a Tuesday — without the
+function needing to know your timezone or pick a day on your behalf.
+
+**A quiet fortnight does not push the next one out.** Nothing due means nothing
+is stamped, so the clock only starts when an email actually goes.
 
 The cron job runs daily regardless. Running daily is not the same as emailing
 daily: most days it finds nothing eligible and sends nothing.
