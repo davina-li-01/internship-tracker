@@ -83,16 +83,45 @@ export function eventDate(event) {
 }
 
 /**
+ * When this meeting is over, in ms.
+ *
+ * Google's all-day `end.date` is EXCLUSIVE — a one-day event on the 10th ends
+ * on the 11th — so that date parsed at midnight is already the moment it is
+ * over. A timed event ends when it says it does. Returns null when the event
+ * carries no usable end at all, and callers treat that as "cannot say".
+ */
+export function eventEndMs(event) {
+  const timed = event?.end?.dateTime || event?.start?.dateTime;
+  if (timed) {
+    const ms = new Date(timed).getTime();
+    return Number.isNaN(ms) ? null : ms;
+  }
+  const allDay = event?.end?.date || event?.start?.date;
+  if (!allDay) return null;
+  const ms = new Date(String(allDay).slice(0, 10) + "T00:00:00").getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/**
  * Did this meeting actually happen, as far as the calendar knows?
  *
  * A calendar entry is an intention, not a record. Cancelled events, ones you
- * declined, and things still in the future are all evidence of nothing.
+ * declined, and things still ahead of you are all evidence of nothing.
+ *
+ * "Still ahead" used to mean a whole DAY ahead, which was the wrong unit. A
+ * coffee at four in the afternoon carries today's date from breakfast onwards,
+ * so Orbit spent the morning offering to log a conversation that had not
+ * happened yet — while the same meeting sat in "Coming up" on the dashboard.
+ * The clock is the honest boundary: a meeting is loggable once it is over.
  */
-export function eventHappened(event, todayIso) {
+export function eventHappened(event, todayIso, nowMs = Date.now()) {
   if (!event || event.status === "cancelled") return false;
 
   const date = eventDate(event);
   if (!date || date > todayIso) return false;
+
+  const end = eventEndMs(event);
+  if (end === null || end > nowMs) return false;
 
   const attendees = event.attendees || [];
   if (attendees.length > MAX_ATTENDEES) return false;
@@ -226,7 +255,13 @@ export function findUpcoming(events, contacts, nowMs = Date.now()) {
     if (me && me.responseStatus === "declined") continue;
 
     const start = eventStart(event);
-    if (!start.iso || new Date(start.iso).getTime() < nowMs) continue;
+    if (!start.iso) continue;
+    // Held until it ENDS, not until it starts. Filtering on the start time made
+    // a meeting disappear from the dashboard the moment it began and reappear
+    // as something to log only once it finished — so the hour you were most
+    // likely to be looking at it was the one hour it was invisible.
+    const end = eventEndMs(event);
+    if ((end === null ? new Date(start.iso).getTime() : end) < nowMs) continue;
 
     const people = attendeesInNetwork(event, contacts);
     if (!people.length) continue;
@@ -237,6 +272,7 @@ export function findUpcoming(events, contacts, nowMs = Date.now()) {
       date: start.date,
       time: start.time,
       iso: start.iso,
+      endIso: end === null ? start.iso : new Date(end).toISOString(),
       medium: meetingMedium(event),
       people: people.map((c) => ({
         id: c.id,
@@ -274,9 +310,11 @@ export function readUpcoming(now = Date.now()) {
   try {
     const raw = JSON.parse(localStorage.getItem(UPCOMING_KEY) || "null");
     if (!raw || !Array.isArray(raw.items)) return [];
-    // Drop anything that has since happened, so a stale cache cannot show you
-    // a meeting you already had as though it were still ahead.
-    return raw.items.filter((i) => new Date(i.iso).getTime() >= now);
+    // Drop anything that has since finished, so a stale cache cannot show you a
+    // meeting you already had as though it were still ahead. Keyed on the end
+    // time for the same reason findUpcoming is: a meeting in progress is still
+    // worth showing. Falls back to the start for items cached before endIso.
+    return raw.items.filter((i) => new Date(i.endIso || i.iso).getTime() >= now);
   } catch {
     return [];
   }
@@ -303,11 +341,11 @@ export function interactionTypeFor(event) {
  * Getting that wrong makes a drifting relationship look healthy, which is worse
  * than logging nothing at all. The user confirms; Orbit does the remembering.
  */
-export function findCandidates(events, contacts, todayIso) {
+export function findCandidates(events, contacts, todayIso, nowMs = Date.now()) {
   const candidates = [];
 
   for (const event of events || []) {
-    if (!eventHappened(event, todayIso)) continue;
+    if (!eventHappened(event, todayIso, nowMs)) continue;
 
     for (const contact of attendeesInNetwork(event, contacts)) {
       if (alreadyLogged(contact, event)) continue;
@@ -327,6 +365,10 @@ export function findCandidates(events, contacts, todayIso) {
         eventId: event.id,
         title: (event.summary || "Untitled meeting").trim(),
         date,
+        // When it finished, so the caller can tell "this just happened, ask how
+        // it went" apart from "here is a month of backlog" and pick the right
+        // interruption for each.
+        endedMs: eventEndMs(event),
         type: interactionTypeFor(event),
         existing: sameDay
           ? { id: sameDay.id, notes: sameDay.notes || "", type: sameDay.type }
@@ -337,6 +379,22 @@ export function findCandidates(events, contacts, todayIso) {
 
   // Most recent first, so the list reads the way the log does.
   return candidates.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/**
+ * How long after a meeting ends it still counts as "that just happened".
+ *
+ * The window exists because the two cases deserve different interruptions. A
+ * conversation you had this morning is worth a dialog — you still remember it,
+ * and the notes are the whole point. A meeting from three weeks ago is worth a
+ * line you can ignore, because opening a modal over a month of backlog is an
+ * ambush, not a prompt.
+ */
+export const JUST_ENDED_HOURS = 24;
+
+export function justEnded(candidates, nowMs = Date.now()) {
+  const cutoff = nowMs - JUST_ENDED_HOURS * 3600_000;
+  return (candidates || []).filter((c) => typeof c.endedMs === "number" && c.endedMs >= cutoff);
 }
 
 // ── Google Identity Services ──────────────────────────────────────────────────

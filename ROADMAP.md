@@ -32,6 +32,7 @@ Aligned to Confluence 2026-08-08. Every ORB key below matches the epic.
 | Aug 9 | ORB-36 | Integrations pane in Settings | Integrations | Med | Med | ✅ Done |
 | Aug 9 | ORB-35 | Sync from the dashboard | Integrations | Med | Med | ✅ Done |
 | Aug 9 | ORB-27 | Revisit email reminder logic | Integrations | Med | Med | 🔶 Built — needs SQL |
+| — | ORB-37 | Match calendar events by name, not just email | Integrations | Med | High | 📋 Backlog — spec below, not started |
 
 Dates are current-constraint estimates and expected to move **up**, not back.
 
@@ -527,6 +528,24 @@ a poor guardian of the only copy. Removing the newest conversation moves
 `lastContacted` back to whatever is now newest, or the health bar keeps counting
 from a touchpoint that no longer exists.
 
+**One missing `</div>` wrecked the whole profile.** The view/edit split dropped
+the tag that closed `.profile-identity`, so `.reachout-strip` became its child
+instead of its sibling. `.profile-identity` is a flex **row**: the entire
+reach-out panel lined up beside the name, the detail grid was squeezed into
+~190px, and the labels overlapped each other. Every card below it ended up
+nested inside the hero card as well.
+
+Nothing caught it. It does not throw, the tests all passed, and the browser
+silently repairs the markup into the broken-but-valid shape. What was missing
+was any test that asked the parsed DOM *what contains what* —
+`tests/profile-structure.test.mjs` now does, and removing that one tag again
+fails eight assertions.
+
+Second cause, same screenshot: `.profile-name` was already the sidebar's
+account-name class. Unscoped, it also caught the contact's name on the profile
+and applied `white-space: nowrap; overflow: hidden` at 0.8rem, shaving the
+heading down to a sliver. Both rules are now scoped to their own container.
+
 **Every conversation opened expanded.** The newest auto-opened and pushed the
 rest down the page. All collapsed now, with the first line of the notes on the
 closed row — for calendar-logged entries that is the meeting title, plus a 📅
@@ -550,6 +569,99 @@ single-address behaviour if the column is missing rather than failing every save
 the way an unknown `starred` column once would have.
 
 `supabase/add-contact-emails.sql` back-fills from the address already stored.
+
+---
+
+## A meeting is over when it ENDS — 2026-08-10
+
+Two lists are built from the same calendar feed: what is ahead of you ("Coming
+up") and what already happened (the conversations worth logging). They were
+divided on the **date**, which is the wrong unit — a coffee at four in the
+afternoon carries today's date from breakfast onwards. So all morning Orbit
+asked how a conversation had gone that had not started yet, while the same
+meeting sat on the dashboard under Coming up. One feed, two answers.
+
+The boundary is now the clock:
+
+| | Rule |
+|---|---|
+| Coming up | shown until the event's **end** time |
+| Loggable | offered once the **end** time has passed |
+
+Holding a meeting in Coming up until it ends rather than until it starts also
+closes a gap where it belonged to neither list for the hour you were most likely
+to be looking at it. In-progress rows read `now` instead of `today`.
+
+`eventEndMs` handles the one thing that is easy to get wrong: Google's all-day
+`end.date` is **exclusive**, so a one-day event on the 10th ends on the 11th —
+that date at midnight is the moment it is over, not a day early.
+
+**Which interruption, and when.** A meeting that ended within
+`JUST_ENDED_HOURS` (24) opens the log dialog directly, headed *"How did it go
+with —?"*, with the notes box already open. That is the minute you still
+remember what was said, and a toast you can miss wastes it. Anything older gets
+the dismissible toast it always had, because opening a modal over a month of
+backlog is an ambush rather than a prompt. Nothing is dropped either way — the
+dialog lists everything found, whichever entry triggered it.
+
+`tests/calendar-timing.test.mjs` pins the partition directly: for a meeting
+ahead, in progress, and finished, exactly one of the two lists claims it.
+
+---
+
+## ORB-37 — matching by name when there is no invite · 📋 backlog, not started
+
+**The gap.** Every match today runs through `attendeesInNetwork`, which is
+email-only, because an address is the one identifier both sides share. That
+covers meetings created from an invite. It covers nothing else:
+
+- an in-person coffee you put in your own calendar as *"Coffee — Assaf"*
+- *"you don't need to send an invite, just come by"*
+- a meeting someone booked from a personal address you have never seen
+- a calendar entry with a location and a name and no attendees at all
+
+These are exactly the touchpoints Orbit exists to catch, and they are currently
+invisible to the sync — which reads as *"no meetings found"*, indistinguishable
+from a sync that worked.
+
+**Why it is not just a name lookup.** Email matching is safe because an address
+is unique. A name is not, and the cost of a wrong match is not cosmetic: logging
+a conversation rolls that person's cadence forward, so a false match makes a
+relationship that is actually drifting look healthy. That is the specific
+failure Orbit exists to prevent, so a name match can never be applied silently
+the way an email match is.
+
+**Shape it would take.**
+
+1. **Extract candidate names** from `summary` and `location` — mostly first
+   names, sometimes *"Coffee with Assaf K"*, sometimes *"Assaf / Davina"*.
+2. **Score against the network**, not just equality: exact full name, full name
+   with an initial, unique first name, first name shared by several contacts.
+3. **Never auto-log.** A name match is always a question, never a candidate that
+   arrives pre-ticked.
+4. **Ask when the answer is genuinely ambiguous** — *"Coffee — Assaf. Is this
+   Assaf Karmon, or Assaf Levine?"*, with **Neither** as a first-class answer,
+   because most calendar entries mentioning a name have nothing to do with the
+   network.
+5. **Remember the answer per contact**, so *"Coffee — Assaf"* is asked once and
+   afterwards matched directly. This is the part that makes it bearable; without
+   it a recurring one-to-one asks the same question every fortnight.
+
+**Depends on:**
+
+- **A nickname/alias field on the contact** — this is where step 5's answers are
+  stored, and it is the smallest piece that has to exist first. jsonb on
+  `contacts`, same as `emails`, so no migration when the shape grows.
+- **A confidence level on an interaction.** *"Matched by name, you confirmed"*
+  is weaker evidence than *"they accepted the invite"*, and if health is ever
+  going to be explainable (ORB-23) the record has to say which it was.
+- **Deciding what a rejected match means.** *Neither* has to be sticky per
+  event id, or the same entry is offered every sync forever.
+
+**Deliberately deferred**, not forgotten: the email path had to be right first,
+and `contacts.emails` (several addresses per person) removes a large share of
+the misses on its own — a personal-address invite is now matched, and that was
+a good part of what looked like it needed name matching.
 
 ---
 

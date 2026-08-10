@@ -122,7 +122,9 @@ const EXPORTS = [
   // attachments
   "isAllowedAttachment", "isImageFile", "ATTACH_ACCEPT",
   // integrations
-  "calendarCardHtml", "timeAgo"
+  "calendarCardHtml", "timeAgo",
+  // whole-page renderers, for structural tests
+  "initContactPage"
 ];
 
 let cached = null;

@@ -2196,10 +2196,14 @@ async function initContactPage() {
           + '<p id="cpSaveDetailsMsg" class="success" aria-live="polite"></p>'
           + '</div>'
         : detailsViewHtml(c, pastCompanies))
-      + '</div>'
-      + '</div>'
+      + '</div>'   // .inline-edit
+      + '</div>'   // .profile-id-text
+      + '</div>'   // .profile-identity
 
       // Wide horizontal reach-out strip: ring, facts, and controls in one row.
+      // A sibling of .profile-identity, not a child — .profile-identity is a
+      // flex ROW, so nesting it here put the strip beside the name instead of
+      // beneath it and squeezed the details into a ~190px column.
       + '<div class="reachout-strip">'
       + '<div class="reachout-ring">'
       + ringHtml({
@@ -3402,6 +3406,16 @@ async function initCalendarAutoSync() {
   calendar.markSynced(now);
   if (!candidates.length) return;
 
+  // Two different moments, two different interruptions. A conversation that
+  // finished today is asked about directly — that is the minute you remember
+  // what was said, and a toast you can miss wastes it. A month of backlog gets
+  // a line you can ignore, because a modal over twenty old meetings is an
+  // ambush. Nothing is dropped either way: the dialog lists everything found.
+  if (calendar.justEnded(candidates, now).length) {
+    openCalendarReviewModal(candidates, contacts, { justHappened: true });
+    return;
+  }
+
   showToast(candidates.length + (candidates.length === 1
     ? " meeting found on your calendar." : " meetings found on your calendar."), {
     actionLabel: "Review",
@@ -3469,12 +3483,21 @@ function renderUpcomingMeetings() {
     return;
   }
 
+  const now = Date.now();
   const rows = items.map((item) => {
     const who = item.people.map((p) => escapeHtml(p.name)).join(", ");
     const points = item.people.flatMap((p) => p.talkingPoints || []);
-    return '<li class="upcoming-row">'
+    // A meeting stays on this list until it ends, so some of them are happening
+    // right now. "Today · 9:30 AM" for something you are already in the middle
+    // of reads as a thing you might still miss.
+    const inProgress = new Date(item.iso).getTime() <= now
+      && new Date(item.endIso || item.iso).getTime() >= now;
+    return '<li class="upcoming-row' + (inProgress ? ' upcoming-now' : '') + '">'
       + '<div class="upcoming-when">'
-      + '<span class="upcoming-day">' + escapeHtml(relativeDayLabel(item.date)) + '</span>'
+      + '<span class="upcoming-day">'
+      // Lower case to sit beside "today" and "tomorrow", which is what the
+      // other rows in this column say.
+      + (inProgress ? "now" : escapeHtml(relativeDayLabel(item.date))) + '</span>'
       + '<span class="tiny muted">' + escapeHtml(item.time) + '</span>'
       + '</div>'
       + '<div class="upcoming-main">'
@@ -3548,15 +3571,37 @@ function wireDashboardSync(slot) {
  * date, so a wrong entry makes a drifting relationship look healthy. That is
  * the one failure this app cannot afford.
  */
-function openCalendarReviewModal(candidates, contacts) {
+function openCalendarReviewModal(candidates, contacts, { justHappened = false } = {}) {
   document.getElementById("calReviewModal")?.remove();
+
+  // What this dialog is FOR changes with when the meetings happened, so the
+  // heading does too. "3 meetings found" is a report; "How did it go with
+  // Marcus?" is a question — and a question is what gets notes written.
+  const fresh = calendar.justEnded(candidates);
+  const names = [...new Set(fresh.map((c) => c.contactName))];
+  const heading = !justHappened || !fresh.length
+    ? candidates.length + (candidates.length === 1 ? " meeting found" : " meetings found")
+    : names.length === 1
+      ? "How did it go with " + escapeHtml(names[0]) + "?"
+      : "How did those conversations go?";
+  const intro = justHappened && fresh.length
+    ? "Just finished. Add what you talked about while it is fresh — that is the part "
+      + "you will want later. Untick anything you would rather not log."
+    : "Untick anything you would rather not log. Logging one moves that person to "
+      + "the back of your reach-out queue.";
 
   // The notes box is here rather than only on the profile because this is the
   // moment you actually remember the meeting. A synced conversation whose notes
   // are just the event title is a record that it happened, not what was said —
   // and the substance is the part Orbit exists to keep.
+  // Open the box for the meeting we are asking about. Asking "how did it go?"
+  // and then hiding the answer behind "+ Add notes" is a question with no
+  // visible place to reply.
+  const freshIds = new Set(justHappened ? fresh.map((c) => c.eventId) : []);
+
   const rows = candidates.map((c, i) => {
     const clash = c.existing;
+    const openNotes = freshIds.has(c.eventId) && !clash;
     // A candidate landing on a day you already wrote about is not a duplicate
     // Orbit can resolve on its own — only you know whether they were the same
     // conversation. So it is unticked, flagged, and offers the three answers
@@ -3594,8 +3639,9 @@ function openCalendarReviewModal(candidates, contacts) {
       + clashHtml
       + '<div class="cal-notes-wrap">'
       + '<button class="cal-notes-toggle" type="button" data-notes-for="' + i + '">'
-      + '+ Add notes</button>'
-      + '<textarea class="cal-notes" data-notes-index="' + i + '" rows="3" hidden'
+      + (openNotes ? '− Hide notes' : '+ Add notes') + '</button>'
+      + '<textarea class="cal-notes" data-notes-index="' + i + '" rows="3"'
+      + (openNotes ? '' : ' hidden')
       + ' placeholder="What did you talk about? What should you bring up next time?"></textarea>'
       + '</div>'
       + '</li>';
@@ -3606,11 +3652,10 @@ function openCalendarReviewModal(candidates, contacts) {
   modal.className = "modal-overlay";
   modal.innerHTML = '<div class="modal-card quick-add-card">'
     + '<div class="quick-add-header">'
-    + '<h3>' + candidates.length + (candidates.length === 1 ? ' meeting' : ' meetings') + ' found</h3>'
+    + '<h3>' + heading + '</h3>'
     + '<button class="icon-btn" id="calReviewClose" type="button" aria-label="Close">✕</button>'
     + '</div>'
-    + '<p class="muted">Untick anything you would rather not log. Logging one moves '
-    + 'that person to the back of your reach-out queue.</p>'
+    + '<p class="muted">' + intro + '</p>'
     + '<ul class="cal-list">' + rows + '</ul>'
     + '<p id="calReviewErr" class="error" aria-live="polite"></p>'
     + '<div class="modal-actions">'
