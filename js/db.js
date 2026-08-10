@@ -196,6 +196,26 @@ export async function deleteContact(contactId) {
   if (error) dbErr("deleteContact", error);
 }
 
+/**
+ * The address list, always usable.
+ *
+ * This is where the legacy single column is folded in, rather than in the app's
+ * normalizer — here we can actually tell "the database has no list for this
+ * person" (an old row, or the `emails` column not yet added) apart from "the
+ * list is empty because every address was deleted". The normalizer sees only
+ * an object and cannot distinguish the two, which is how deleting the primary
+ * address used to put it straight back.
+ */
+function rowEmails(row) {
+  if (Array.isArray(row.emails) && row.emails.length) return row.emails;
+  const legacy = String(row.email || "").trim();
+  if (!legacy) return [];
+  const id = (typeof crypto !== "undefined" && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : `id_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  return [{ id, label: "personal", address: legacy }];
+}
+
 function rowToContact(row) {
   return {
     id: row.id,
@@ -212,7 +232,7 @@ function rowToContact(row) {
     interests: row.interests || "",
     reminderEnabled: row.reminder_enabled || false,
     nextReminder: row.next_reminder || "",
-    emails: Array.isArray(row.emails) ? row.emails : [],
+    emails: rowEmails(row),
     interactions: Array.isArray(row.interactions) ? row.interactions : [],
     companyHistory: Array.isArray(row.company_history) ? row.company_history : [],
     followUps: Array.isArray(row.follow_ups) ? row.follow_ups : []

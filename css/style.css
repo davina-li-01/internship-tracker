@@ -561,7 +561,12 @@ input::placeholder, textarea::placeholder { color: var(--text-faint); }
   font-weight: 600;
   cursor: pointer;
   transition: all var(--trans);
-  border: none;
+  /* Transparent rather than none, so a primary button occupies the same box as
+     .btn-secondary's 1px border. With `none` a Save was 38px tall beside a
+     40px Cancel and sat a pixel lower — invisible until they are side by side,
+     and then it is the only thing you can see. Every row pairing the two had
+     it; rows that stretch their items were hiding it. */
+  border: 1px solid transparent;
   background: var(--text);
   color: #FAFAF9;
   letter-spacing: -0.01em;
@@ -4114,10 +4119,12 @@ body.dark .email-label { background: rgba(253, 186, 116, 0.16); color: var(--acc
    Save sat directly under the email input with the same left edge, reading as
    part of that field rather than as the action for the whole form. It gets its
    own line, a rule above it, and the full width of the grid. */
-.inline-edit .btn {
-  margin-top: 1rem;
-  padding-top: 0;
-}
+/* `padding-top: 0` used to live here, overriding only the TOP of .btn's
+   symmetric 0.58rem padding. The label was then centred in a content box with
+   no space above it and 8.7px below, so it sat about 4px high inside every
+   button on this form — visible on Save and Cancel side by side. Spacing above
+   the row is .inline-edit-save's job; a button's padding is what centres its
+   own label. */
 .inline-edit-save {
   margin-top: 1.1rem;
   padding-top: 0.9rem;
@@ -4126,7 +4133,6 @@ body.dark .email-label { background: rgba(253, 186, 116, 0.16); color: var(--acc
   align-items: center;
   gap: 0.75rem;
 }
-.inline-edit-save .btn { margin-top: 0; }
 .inline-edit-save .success { margin: 0; }
 
 /* ── Contact profile: view first, edit on request ─────────────────────────────

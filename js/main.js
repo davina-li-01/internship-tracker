@@ -417,6 +417,23 @@ function emailRowHtml(entry, index) {
 }
 
 /**
+ * The past-company chips.
+ *
+ * Its own function because the editor rebuilds just this block after a company
+ * is added, rather than re-rendering the whole page — a full re-render while
+ * you are still typing in the form above would throw away the caret and any
+ * other field you had part-way through.
+ */
+function pastTokensHtml(pastCompanies) {
+  if (!pastCompanies.length) return "";
+  return '<div class="past-tokens">' + pastCompanies.map((co) =>
+    '<span class="token token-past">' + escapeHtml(co)
+    + '<button class="token-x" type="button" data-remove-company="' + escapeHtml(co)
+    + '" aria-label="Remove ' + escapeHtml(co) + '">✕</button></span>').join("")
+    + '</div>';
+}
+
+/**
  * Addresses a person can be reached at.
  *
  * One field was never enough: people have a work address, a personal one, one
@@ -447,7 +464,13 @@ function normalizeEmails(contact = {}) {
   const raw = Array.isArray(contact.emails) ? contact.emails : [];
   const list = raw.map(normalizeEmail).filter((e) => e.address);
 
-  // A contact saved before this existed has only the single column.
+  // A contact saved before this existed has only the single column, and the
+  // capture form still writes one address into it — so an `email` the list does
+  // not know about is a new address, and gets promoted to primary.
+  //
+  // The corollary matters as much: a caller editing the list must not leave a
+  // STALE `email` behind, or this puts the address it just removed straight
+  // back. See applyDetails on the profile.
   const legacy = String(contact.email || "").trim();
   if (legacy && !list.some((e) => e.address.toLowerCase() === legacy.toLowerCase())) {
     list.unshift(normalizeEmail({ label: "personal", address: legacy }));
@@ -2179,13 +2202,7 @@ async function initContactPage() {
           + '<div class="field-head"><label for="cpAddPast">Past companies</label>'
           + '<button class="field-add" id="cpAddPastBtn" type="button"'
           + ' aria-label="Add a past company" title="Add a past company">+</button></div>'
-          + (pastCompanies.length
-            ? '<div class="past-tokens">' + pastCompanies.map((co) =>
-                '<span class="token token-past">' + escapeHtml(co)
-                + '<button class="token-x" type="button" data-remove-company="' + escapeHtml(co)
-                + '" aria-label="Remove ' + escapeHtml(co) + '">✕</button></span>').join("")
-              + '</div>'
-            : '')
+          + '<div id="cpPastTokens">' + pastTokensHtml(pastCompanies) + '</div>'
           + '<input type="text" id="cpAddPast" list="cpCompanies" placeholder="Add a past company" />'
           + '</div>'
 
@@ -2344,11 +2361,38 @@ async function initContactPage() {
         role: form.role,
         company: form.company,
         industry: form.industry,
-        // normalizeContact keeps `email` in sync as the primary, so it is not
-        // set here — doing both would let them disagree.
         emails: form.emails,
+        // Set explicitly, because leaving the old value in place made the
+        // primary address undeletable: normalizeEmails treats an `email` the
+        // list does not contain as a new address to promote, so removing the
+        // first row put it straight back and the delete looked like it had
+        // silently failed. This form owns the whole list, so it owns the
+        // primary too.
+        email: form.emails[0]?.address || "",
         companyHistory: history
       };
+    }
+
+    /**
+     * Save what is on screen, and stay where you are.
+     *
+     * The repeatable fields commit when you leave them rather than waiting for
+     * the Save button, because "type an address, click the next field, lose it"
+     * is the failure people actually hit — and a `+` you have to find first is
+     * a gesture the rest of the form does not ask for.
+     *
+     * Deliberately does NOT re-render. You are still in the form; rebuilding it
+     * under you would take the caret and anything else half-typed with it.
+     */
+    async function commitDetails(extraPast = "") {
+      await save((cur) => applyDetails(cur, extraPast));
+      const msg = $("#cpSaveDetailsMsg");
+      if (!msg) return;
+      // Quiet, and it says what happened. A toast for every field you tab out
+      // of would be the app applauding itself.
+      msg.textContent = "Saved";
+      clearTimeout(commitDetails._timer);
+      commitDetails._timer = setTimeout(() => { msg.textContent = ""; }, 2000);
     }
 
     $("#cpSaveDetailsBtn")?.addEventListener("click", async () => {
@@ -2386,39 +2430,71 @@ async function initContactPage() {
       });
 
       list.querySelectorAll(".email-remove").forEach((btn) => {
-        btn.addEventListener("click", () => {
+        btn.addEventListener("click", async () => {
           btn.closest(".email-row").remove();
           // An empty list still needs somewhere to type.
           if (!list.querySelector(".email-row")) {
             list.innerHTML = emailRowHtml(normalizeEmail({ label: "personal" }), 0);
             attachEmailListeners();
           }
+          // Removing is an edit like any other. Without this, deleting an
+          // address and navigating away left it exactly where it was.
+          await commitDetails();
         });
+      });
+
+      // `change` rather than `blur`: it fires when you leave a field you
+      // actually altered, so tabbing through a form you only read does not
+      // write to the database on every stop.
+      list.querySelectorAll(".email-address, .email-kind").forEach((field) => {
+        field.addEventListener("change", () => commitDetails());
       });
     }
     attachEmailListeners();
 
+    /**
+     * Commit a past company and show its chip, without rebuilding the form.
+     *
+     * Only this block is re-rendered. Re-rendering the page instead — which is
+     * what this used to do — is fine after a deliberate click on Save, but not
+     * when you are simply moving to the next field.
+     */
     const addPast = async () => {
-      const value = $("#cpAddPast").value.trim();
+      const input = $("#cpAddPast");
+      const value = input.value.trim();
       if (!value) return;
-      // Saves the rest of the form alongside it. This used to save only the
-      // history and then re-render, throwing away anything typed into the
-      // other fields — harmless while they were hidden behind a toggle,
-      // destructive now that they are always on screen.
-      await save((cur) => applyDetails(cur, value));
-      await renderPage();
+      // Saves the rest of the form alongside it, so adding a company never
+      // discards something typed above and not yet committed.
+      await commitDetails(value);
+      input.value = "";
+
+      const slot = $("#cpPastTokens");
+      const contact = await freshContact();
+      if (slot && contact) {
+        slot.innerHTML = pastTokensHtml(
+          (contact.companyHistory || []).filter((co) => co !== contact.company)
+        );
+        wirePastRemovals();
+      }
     };
+
+    // Three ways in, because each is something someone will actually do:
+    // click +, press Enter, or just move on to the next field.
     $("#cpAddPastBtn")?.addEventListener("click", addPast);
     $("#cpAddPast")?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addPast(); } });
+    $("#cpAddPast")?.addEventListener("change", addPast);
 
-    root.querySelectorAll("[data-remove-company]").forEach((btn) => {
-      btn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        const target = btn.dataset.removeCompany;
-        await save((cur) => ({ ...cur, companyHistory: cur.companyHistory.filter((co) => co !== target) }));
-        await renderPage();
+    function wirePastRemovals() {
+      root.querySelectorAll("[data-remove-company]").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const target = btn.dataset.removeCompany;
+          await save((cur) => ({ ...cur, companyHistory: cur.companyHistory.filter((co) => co !== target) }));
+          btn.closest(".token-past")?.remove();
+        });
       });
-    });
+    }
+    wirePastRemovals();
 
     const freqSelect = $("#cpFrequency");
     const customGroup = $("#cpCustomDaysGroup");

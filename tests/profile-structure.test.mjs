@@ -144,4 +144,95 @@ eq("and shows in the read-only view",
 eq("nothing else was lost",
   state.store.get("c1").role, "CEO");
 
+group("Leaving a field saves it — no Save button required");
+// "Type an address, click the next field, lose it" is the failure people
+// actually hit, and a + you have to find first is a gesture nothing else on
+// this form asks for.
+document.querySelectorAll(".toast-stack").forEach((n) => n.remove());
+root.querySelector("#cpEditBtn").click();
+await new Promise((r) => setTimeout(r, 20));
+
+const fire = (el, type) => el.dispatchEvent(new window.Event(type, { bubbles: true }));
+const addressInputs = () => [...root.querySelectorAll("#cpEmailList .email-address")];
+const stored = () => state.store.get("c1");
+
+const third = root.querySelector("#cpAddEmail");
+third.click();
+await new Promise((r) => setTimeout(r, 20));
+const fresh = addressInputs().at(-1);
+fresh.value = "taylor@hostready.ai";
+fire(fresh, "change");
+await new Promise((r) => setTimeout(r, 20));
+
+eq("the new address was saved on leaving the field",
+  stored().emails.map((e) => e.address).includes("taylor@hostready.ai"), true);
+eq("and you are still in the form", Boolean(root.querySelector("#cpEmailList")), true);
+ok("with quiet confirmation, not a toast",
+  root.querySelector("#cpSaveDetailsMsg").textContent === "Saved"
+  && !document.querySelector(".toast-stack"));
+
+const kind = root.querySelector("#cpEmailList .email-kind");
+kind.value = "school";
+fire(kind, "change");
+await new Promise((r) => setTimeout(r, 20));
+eq("changing the label saves too", stored().emails[0].label, "school");
+
+group("Removing an address is an edit like any other");
+// Including the FIRST one. normalizeEmails used to fold contact.email back in
+// whenever the list did not contain it, so deleting the primary put it
+// straight back and the delete looked like it had silently failed.
+const before = stored().emails.length;
+const primary = stored().emails[0].address;
+root.querySelector("#cpEmailList .email-remove").click();
+await new Promise((r) => setTimeout(r, 20));
+eq("the removal reached the database", stored().emails.length, before - 1);
+eq("the primary address is genuinely gone",
+  stored().emails.some((e) => e.address === primary), false);
+eq("and the primary moved to whatever is now first",
+  stored().email, stored().emails[0].address);
+
+group("Removing every address leaves none");
+while (root.querySelectorAll("#cpEmailList .email-row").length > 1) {
+  root.querySelector("#cpEmailList .email-remove").click();
+  await new Promise((r) => setTimeout(r, 20));
+}
+root.querySelector("#cpEmailList .email-remove").click();
+await new Promise((r) => setTimeout(r, 20));
+eq("the list is empty, not silently repopulated", stored().emails.length, 0);
+eq("and the primary column is cleared with it", stored().email, "");
+
+// Put one back for the rest of the suite.
+const again = root.querySelector("#cpEmailList .email-address");
+again.value = "taylor@hostready.ai";
+fire(again, "change");
+await new Promise((r) => setTimeout(r, 20));
+
+group("A past company commits when you move on");
+const past = root.querySelector("#cpAddPast");
+past.value = "Expedia";
+fire(past, "change");
+await new Promise((r) => setTimeout(r, 30));
+eq("it was saved without clicking +",
+  stored().companyHistory.includes("Expedia"), true);
+eq("its chip appears straight away",
+  [...root.querySelectorAll(".token-past")].some((t) => t.textContent.startsWith("Expedia")), true);
+eq("and the input is clear for the next one", past.value, "");
+ok("the form was not rebuilt underneath you", root.querySelector("#cpAddPast") === past);
+
+group("Removing a chip sticks");
+const chipX = [...root.querySelectorAll("[data-remove-company]")]
+  .find((b) => b.dataset.removeCompany === "Expedia");
+chipX.click();
+await new Promise((r) => setTimeout(r, 20));
+eq("gone from the database", stored().companyHistory.includes("Expedia"), false);
+eq("and gone from the screen",
+  [...root.querySelectorAll(".token-past")].some((t) => t.textContent.startsWith("Expedia")), false);
+
+group("An empty field writes nothing");
+const savesBefore = state.saves.length;
+past.value = "   ";
+fire(past, "change");
+await new Promise((r) => setTimeout(r, 20));
+eq("blank input is not a company", state.saves.length, savesBefore);
+
 done();

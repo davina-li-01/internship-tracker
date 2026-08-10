@@ -11,8 +11,8 @@ alter table public.preferences add column if not exists phone      text default 
 -- manager_name and next_steps are left over from the internship tracker and are
 -- no longer written by anything. Uncomment to drop them:
 --
--- alter table public.preferences drop column if exists manager_name;
--- alter table public.preferences drop column if exists next_steps;
+alter table public.preferences drop column if exists manager_name;
+alter table public.preferences drop column if exists next_steps;
 
 -- Profile photo, set from Edit profile. Stores a public URL from the
 -- interntrack-files bucket.
