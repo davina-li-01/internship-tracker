@@ -13,7 +13,7 @@ your browser. The setup is a Google Cloud project and a client ID.
 
 | | |
 |---|---|
-| Scope | `calendar.events.readonly` — Orbit **cannot** create, change or delete anything. Google enforces this, not us |
+| Scopes | `calendar.events.readonly` and `calendar.calendarlist.readonly` — both read-only. Orbit **cannot** create, change or delete anything. Google enforces this, not us |
 | Where it runs | Your browser. Nothing routes through a server |
 | What is stored | **Nothing.** The access token lives in the tab and is gone when you close it. No refresh token, nothing in the database |
 | Cost | Free. No billing account needed. Quota is 1M queries/day; a sync uses one |
@@ -188,6 +188,15 @@ and no hint meant the chooser on top of it.
 
 You will still see a chooser if you are signed out of Google in that browser, or
 signed into several accounts and the hinted one is not among them.
+
+**The hint depends on the second scope.** Orbit learns your address from
+`calendarList` — a calendar's id *is* the address that owns it. Reading events
+does not grant that, so with only `calendar.events.readonly` the lookup 403s,
+no address is stored, no hint is sent, and the chooser appears every time. That
+scope is also what makes "change which calendar" work.
+
+Adding a scope makes Google show the consent screen once more. After that
+reconnect it should be quiet.
 
 Tokens for apps in Testing mode still expire. When that happens the background sync stops silently and Orbit
 offers a **Reconnect** toast — at most once a day, because an app that nags on

@@ -29,7 +29,23 @@
  */
 
 const CLIENT_ID = "4293730503-517jknqdk0kfkouikg9h20hsektkrcsf.apps.googleusercontent.com";
-const SCOPE = "https://www.googleapis.com/auth/calendar.events.readonly";
+/**
+ * Two read-only scopes, and both are needed.
+ *
+ * `calendar.events.readonly` reads events. It does NOT permit calendarList,
+ * which is a separate scope — an incorrect assumption that cost a day: without
+ * it `refreshAccountInfo()` 403s, so the connected address is never stored, so
+ * `requestAccessToken` has no `hint` to pass, so Google shows the account
+ * chooser on every reconnect. It also meant "change which calendar" in Settings
+ * could never work.
+ *
+ * `calendar.calendarlist.readonly` is the narrowest scope that fixes both. The
+ * broader `calendar.readonly` would also do it and is not worth asking for.
+ */
+const SCOPE = [
+  "https://www.googleapis.com/auth/calendar.events.readonly",
+  "https://www.googleapis.com/auth/calendar.calendarlist.readonly"
+].join(" ");
 const GIS_SRC = "https://accounts.google.com/gsi/client";
 
 /** How far back to look. Long enough to catch up after a week away. */
@@ -515,14 +531,24 @@ export async function fetchCalendarList() {
   }));
 }
 
-/** Remembers which account is connected, for Settings to show. */
+/**
+ * Remembers which account is connected.
+ *
+ * Not cosmetic: this address becomes the `hint` on the next reconnect, which is
+ * what stops Google asking which account to use. A failure here is why the
+ * chooser kept appearing, so it warns rather than shrugging — it used to
+ * swallow the error entirely and leave no trace of why the hint was missing.
+ */
 export async function refreshAccountInfo() {
   try {
     const calendars = await fetchCalendarList();
     const primary = calendars.find((c) => c.primary) || calendars[0];
     if (primary) localStorage.setItem(ACCOUNT_KEY, primary.id);
     return calendars;
-  } catch {
+  } catch (err) {
+    console.warn("[calendar] Could not read the calendar list, so the connected "
+      + "account is unknown and the next reconnect will ask which account to use. "
+      + String(err.message || err));
     return [];
   }
 }
