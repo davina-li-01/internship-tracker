@@ -2352,7 +2352,12 @@ async function initContactPage() {
     }
 
     $("#cpSaveDetailsBtn")?.addEventListener("click", async () => {
-      await save(applyDetails);
+      // Whatever is sitting in "Add a past company" counts as typed, the same
+      // as every other field. Passing applyDetails bare left extraPast at its
+      // default of "" — so a company you typed and then clicked Save on was
+      // silently dropped, and only the + button or Enter ever committed it.
+      // A form where one field needs a different gesture is a form with a bug.
+      await save((cur) => applyDetails(cur, $("#cpAddPast")?.value.trim() || ""));
       editing = false;
       await renderPage();
       showToast("Details saved.");

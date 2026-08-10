@@ -129,4 +129,19 @@ eq("the typed name was not saved", state.saves.length, 0);
 eq("the heading shows the stored name",
   root.querySelector("h1.profile-name")?.textContent, "Assaf Karmon");
 
+group("Typing a past company and clicking Save keeps it");
+// The bug: Save called applyDetails bare, so extraPast defaulted to "" and
+// whatever sat in the input was dropped. Only + or Enter ever committed it.
+root.querySelector("#cpEditBtn").click();
+await new Promise((r) => setTimeout(r, 20));
+root.querySelector("#cpAddPast").value = "Airtable";
+root.querySelector("#cpSaveDetailsBtn").click();
+await new Promise((r) => setTimeout(r, 20));
+eq("the typed company reached the database",
+  state.store.get("c1").companyHistory.includes("Airtable"), true);
+eq("and shows in the read-only view",
+  [...root.querySelectorAll(".token-past")].map((t) => t.textContent).includes("Airtable"), true);
+eq("nothing else was lost",
+  state.store.get("c1").role, "CEO");
+
 done();
