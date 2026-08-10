@@ -2,8 +2,16 @@
 <!--
   Orbit — LinkedIn banner source.
 
-  Open with ?w=1584&h=396 (personal profile) or ?w=1128&h=191 (company cover)
-  and export at exactly that window size.
+  Open with ?w=1584&h=396 (personal profile background) or ?w=1128&h=191
+  (company page cover) and export at exactly that window size.
+
+  The company cover is CENTRED rather than left-aligned, and that is not a
+  style choice. LinkedIn shows the same file at different aspect ratios in
+  different places — measured off a real page: ~8.75:1 in the Edit page form
+  (crops the top and bottom away) and ~3.59:1 in the sidebar card (crops the
+  left and right away). Intersecting the two leaves a safe box of 686x129 in
+  the middle of a 1128x191 image. Anything outside it is cropped off somewhere.
+  The 221px left inset also clears the logo LinkedIn hangs over the bottom left.
 
   The look is lifted from assets/og-image.png rather than invented: the same
   cream base, the same peach aura, the same left-aligned lockup → headline →
@@ -30,6 +38,10 @@
       linear-gradient(115deg,#FAF6EF 0%,#F8F2EA 46%,#F7EFE6 100%);
   }
   .inner{position:relative; top:calc(-1 * var(--rise)); padding-left:var(--pad); max-width:calc(var(--w) - var(--pad) - var(--pad)*.5)}
+  /* Company cover: everything inside the safe box, so no crop can eat it. */
+  .banner.cover{justify-content:center}
+  .cover .inner{padding-left:0; max-width:686px; text-align:center}
+  .cover .lockup{justify-content:center}
 
   .lockup{display:flex; align-items:center; gap:var(--lg)}
   .tile{
@@ -69,15 +81,17 @@
   var W = +p.get("w") || 1584, H = +p.get("h") || 396;
   var s = document.documentElement.style;
 
-  /* Two layouts, not one scaled one. Below ~300px tall the description cannot
-     be set large enough to read on a phone, and shrinking it to fit is how a
-     banner ends up with a line nobody can make out. It is dropped instead, and
-     the lockup and headline grow to use the room. */
+  /* Two layouts, not one scaled one. The wide banner is left-aligned like the
+     OG image; the company cover has to be centred and compact, because the
+     safe box left by LinkedIn's two crops is only 686x129 of a 1128x191 file
+     (see the note at the top). Scaling one layout to both would push the
+     content straight into the part that gets cropped. */
   var dense = H < 300;
   var k = dense ? H / 191 : H / 396;
+  if (dense) document.querySelector(".banner").classList.add("cover");
 
   var v = dense
-    ? { pad: 88, tile: 52, lg: 16, fsw: 37, fsh: 33, fsd: 0,  m1: 15, m2: 0,  rise: 6 }
+    ? { pad: 0, tile: 46, lg: 14, fsw: 30, fsh: 26, fsd: 14, m1: 9, m2: 5, rise: 0 }
     /* rise: LinkedIn hangs your profile photo over the bottom left of the
        banner — about the bottom third, and the left 2–16% of the width. Dead
        centre put the description line straight behind it. Lifting the block
@@ -88,7 +102,7 @@
   Object.keys(v).forEach(function (key) {
     s.setProperty("--" + key, Math.round(v[key] * k) + "px");
   });
-  document.getElementById("desc").hidden = dense;
+  document.getElementById("desc").hidden = false;
   document.body.style.width = W + "px";
   document.body.style.height = H + "px";
 </script>
