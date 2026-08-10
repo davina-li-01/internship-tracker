@@ -337,8 +337,13 @@ function loadGis() {
  *
  * With "" Google decides: it shows the consent screen when it genuinely needs
  * to (first grant, revoked access, a new scope) and reissues quietly otherwise.
- * The one case it cannot do quietly is when you are no longer signed in to
- * Google in this browser, and then a chooser is unavoidable.
+ *
+ * `hint` is the other half, and without it "" is not enough. prompt controls
+ * whether Google asks you to APPROVE the app; hint tells it WHICH ACCOUNT to
+ * use. With consent already granted but no hint, Google still has to ask who
+ * you are — so the account chooser appeared on every reconnect even though
+ * nothing needed approving. Passing the address that granted access in the
+ * first place removes the only remaining question.
  *
  * @param interactive  Whether a popup is acceptable. On the background path it
  *                     is not: a popup nobody clicked for is blocked anyway, and
@@ -346,12 +351,16 @@ function loadGis() {
  */
 export async function requestAccessToken({ interactive = true } = {}) {
   await loadGis();
+  const knownAccount = getConnectedAccount();
 
   return new Promise((resolve, reject) => {
     tokenClient = window.google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
       scope: SCOPE,
       prompt: "",
+      // Only on a reconnect. On a first connect there is nobody to hint at, and
+      // guessing would pre-select an account the user may not have meant.
+      ...(knownAccount ? { hint: knownAccount, select_account: false } : {}),
       callback: (response) => {
         if (response.error) {
           reject(new Error(response.error_description || response.error));
@@ -683,6 +692,9 @@ export async function connectCalendar(contacts, todayIso, { interactive = true }
   const events = await fetchEventWindow();
   rememberConnection();
   clearNeedsReauth();
+  // Captured here so the NEXT reconnect can hint at this account and skip the
+  // chooser. Without this the hint is never available on the path that matters.
+  refreshAccountInfo().catch(() => {});
   cacheUpcoming(findUpcoming(events, contacts));
   return findCandidates(events, contacts, todayIso);
 }
