@@ -1,77 +1,95 @@
 <!doctype html><html><head><meta charset="utf-8">
+<!--
+  Orbit — LinkedIn banner source.
+
+  Open with ?w=1584&h=396 (personal profile) or ?w=1128&h=191 (company cover)
+  and export at exactly that window size.
+
+  The look is lifted from assets/og-image.png rather than invented: the same
+  cream base, the same peach aura, the same left-aligned lockup → headline →
+  description stack. Colours below were sampled from that PNG, not eyeballed.
+  The feature pills are deliberately dropped — at 396px tall they would push
+  the text into the strip LinkedIn covers with your profile photo, and a banner
+  is a masthead, not a feature list.
+-->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   html,body{margin:0;padding:0;overflow:hidden;background:#fff}
   .banner{
     position:relative; width:var(--w); height:var(--h); overflow:hidden;
-    background:linear-gradient(120deg,#FFF9F3 0%,#FEEEDD 55%,#FCE2C9 100%);
-    font-family:Inter,system-ui,-apple-system,"SF Pro Display","Helvetica Neue",sans-serif;
-    display:flex; align-items:center; justify-content:center;
+    font-family:Inter,system-ui,-apple-system,"Helvetica Neue",sans-serif;
+    display:flex; align-items:center;
+    /* The aura. Sampled from og-image.png: base #F8F2EA, peach peaking around
+       #F7D4B9 top right, a warmer #F7E2CF wash at the bottom left. */
+    background:
+      radial-gradient(62% 105% at 82% 8%,  rgba(243,177,124,.55), rgba(243,177,124,0) 62%),
+      radial-gradient(48% 92%  at 97% 62%, rgba(246,199,158,.45), rgba(246,199,158,0) 66%),
+      radial-gradient(52% 120% at 16% 104%,rgba(244,201,167,.42), rgba(244,201,167,0) 64%),
+      radial-gradient(40% 80%  at 2% 4%,   rgba(255,252,248,.95), rgba(255,252,248,0) 60%),
+      linear-gradient(115deg,#FAF6EF 0%,#F8F2EA 46%,#F7EFE6 100%);
   }
-  /* Orbit rings bleeding off both edges — the product's own motif at scale,
-     kept faint so the wordmark stays the only thing you read first. */
-  .rings{position:absolute; inset:0; overflow:hidden}
-  .ring{position:absolute; border-radius:50%; border:var(--rb) solid rgba(234,88,12,.11)}
-  .dot{position:absolute; border-radius:50%; background:rgba(234,88,12,.13)}
+  .inner{position:relative; top:calc(-1 * var(--rise)); padding-left:var(--pad); max-width:calc(var(--w) - var(--pad) - var(--pad)*.5)}
 
-  .lockup{position:relative; display:flex; align-items:center; gap:var(--gap)}
+  .lockup{display:flex; align-items:center; gap:var(--lg)}
   .tile{
     width:var(--tile); height:var(--tile); border-radius:calc(var(--tile)*.2188);
     background:linear-gradient(135deg,#FB923C,#E4570B); flex:0 0 auto;
-    box-shadow:0 var(--sh1) var(--sh2) rgba(228,87,11,.22);
+    box-shadow:0 calc(var(--tile)*.09) calc(var(--tile)*.28) rgba(228,87,11,.22);
   }
   .tile svg{display:block;width:100%;height:100%}
-  .word{margin:0; font-size:var(--fs1); font-weight:800; letter-spacing:-.035em; color:#1C1917; line-height:1}
-  .tag{margin:var(--tm) 0 0; font-size:var(--fs2); font-weight:500; color:#7A6A5E; line-height:1.3; letter-spacing:-.01em}
+  .word{margin:0; font-size:var(--fsw); font-weight:800; letter-spacing:-.035em; color:#1C1917; line-height:1}
+
+  .head{margin:var(--m1) 0 0; font-size:var(--fsh); font-weight:800; letter-spacing:-.035em;
+        color:#1C1917; line-height:1.04}
+  .desc{margin:var(--m2) 0 0; font-size:var(--fsd); font-weight:400; color:#78716C;
+        line-height:1.45; letter-spacing:-.006em}
+  .desc[hidden]{display:none}
 </style></head><body>
-<div class="banner" id="b">
-  <div class="rings" id="rings"></div>
-  <div class="lockup">
-    <div class="tile">
-      <svg viewBox="0 0 64 64">
-        <defs><mask id="gap"><rect width="64" height="64" fill="#fff"/><circle cx="32" cy="14" r="10" fill="#000"/></mask></defs>
-        <circle cx="32" cy="32" r="18" fill="none" stroke="#fff" stroke-width="6" mask="url(#gap)"/>
-        <circle cx="32" cy="32" r="8" fill="#fff"/>
-        <circle cx="32" cy="14" r="6" fill="#fff"/>
-      </svg>
-    </div>
-    <div>
+<div class="banner">
+  <div class="inner">
+    <div class="lockup">
+      <div class="tile">
+        <svg viewBox="0 0 64 64">
+          <defs><mask id="gap"><rect width="64" height="64" fill="#fff"/><circle cx="32" cy="14" r="10" fill="#000"/></mask></defs>
+          <circle cx="32" cy="32" r="18" fill="none" stroke="#fff" stroke-width="6" mask="url(#gap)"/>
+          <circle cx="32" cy="32" r="8" fill="#fff"/>
+          <circle cx="32" cy="14" r="6" fill="#fff"/>
+        </svg>
+      </div>
       <p class="word">Orbit</p>
-      <p class="tag" id="tag">Keep your people in orbit.</p>
     </div>
+    <p class="head">Keep your people in orbit.</p>
+    <p class="desc" id="desc">Log who you meet, choose how often to reach out,
+      and see who you are drifting away from.</p>
   </div>
 </div>
 <script>
   var p = new URLSearchParams(location.search);
   var W = +p.get("w") || 1584, H = +p.get("h") || 396;
   var s = document.documentElement.style;
-  var k = H / 396;                       // one scale factor, so both sizes match
-  s.setProperty("--w", W + "px");  s.setProperty("--h", H + "px");
-  s.setProperty("--tile", Math.round(132*k) + "px");
-  s.setProperty("--gap",  Math.round(34*k) + "px");
-  s.setProperty("--fs1",  Math.round(84*k) + "px");
-  s.setProperty("--fs2",  Math.round(27*k) + "px");
-  s.setProperty("--tm",   Math.round(12*k) + "px");
-  s.setProperty("--sh1",  Math.round(10*k) + "px");
-  s.setProperty("--sh2",  Math.round(34*k) + "px");
-  document.body.style.width = W + "px"; document.body.style.height = H + "px";
 
-  // Rings placed relative to the canvas so both aspect ratios stay balanced.
-  var R = document.getElementById("rings");
-  [[-0.10,0.50,0.95,9],[0.06,0.50,0.55,7],[1.06,0.46,1.02,9],[0.92,0.48,0.58,7]]
-    .forEach(function(c){
-      var d = c[2]*H, el = document.createElement("div");
-      el.className = "ring";
-      el.style.cssText = "width:"+d+"px;height:"+d+"px;left:"+(c[0]*W-d/2)+"px;top:"+(c[1]*H-d/2)+"px;--rb:"+Math.round(c[3]*k)+"px";
-      R.appendChild(el);
-    });
-  [[0.06,0.50,0.19],[0.92,0.48,0.20]].forEach(function(c){
-    var d = c[2]*H, el = document.createElement("div");
-    el.className = "dot";
-    el.style.cssText = "width:"+d+"px;height:"+d+"px;left:"+(c[0]*W-d/2)+"px;top:"+(c[1]*H-d/2)+"px";
-    R.appendChild(el);
+  /* Two layouts, not one scaled one. Below ~300px tall the description cannot
+     be set large enough to read on a phone, and shrinking it to fit is how a
+     banner ends up with a line nobody can make out. It is dropped instead, and
+     the lockup and headline grow to use the room. */
+  var dense = H < 300;
+  var k = dense ? H / 191 : H / 396;
+
+  var v = dense
+    ? { pad: 88, tile: 52, lg: 16, fsw: 37, fsh: 33, fsd: 0,  m1: 15, m2: 0,  rise: 6 }
+    /* rise: LinkedIn hangs your profile photo over the bottom left of the
+       banner — about the bottom third, and the left 2–16% of the width. Dead
+       centre put the description line straight behind it. Lifting the block
+       clears it without giving up the OG image's left-aligned stack. */
+    : { pad: 112, tile: 64, lg: 19, fsw: 45, fsh: 53, fsd: 23, m1: 26, m2: 13, rise: 54 };
+
+  s.setProperty("--w", W + "px"); s.setProperty("--h", H + "px");
+  Object.keys(v).forEach(function (key) {
+    s.setProperty("--" + key, Math.round(v[key] * k) + "px");
   });
-  document.title = "ready";
+  document.getElementById("desc").hidden = dense;
+  document.body.style.width = W + "px";
+  document.body.style.height = H + "px";
 </script>
 </body></html>
