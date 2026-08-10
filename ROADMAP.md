@@ -422,9 +422,12 @@ than one that changes its rhythm.
 **Blocked on you:** `supabase/add-digest-streak.sql`, then redeploy the function.
 
 ### ORB-34 — Integrations entry point in main nav · ✅ done 2026-08-10
-**A discovery affordance, not a menu item.** The nav entry sits under Networking
-Log and appears *if and only if* at least one integration is `not_connected`,
-re-evaluated on load and after every state change.
+**A discovery affordance, not a menu item.** The nav entry is a **top-level
+item**, below Networking Log rather than inside its dropdown — nesting it there
+put a first-run discovery link behind a collapsed group, which is the one place
+someone who has not connected anything will not look. It appears *if and only
+if* at least one integration is `not_connected`, re-evaluated on load and after
+every state change.
 
 **The clause that shapes everything: it never returns on token expiry or sync
 failure.** `needs-reauth` is a working connection needing a nudge, not an
