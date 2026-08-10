@@ -1704,16 +1704,20 @@ async function initDashboard() {
       + '<div class="chart-body">' + body + '</div>'
       + '</section>';
 
-    const chartsHtml = scheduled
-      ? '<div class="chart-row">'
-        + chartCard("Network health", "Of those on a cadence, how many are current",
+    // Coming up sits in this row rather than below it, so the four columns line
+    // up with the four KPI tiles above: ring 1, breakdown 2, coming up 1 — the
+    // last of which lands exactly under the Overdue tile.
+    const chartsHtml = '<div class="chart-row">'
+      + (scheduled
+        ? chartCard("Network health", "Of those on a cadence, how many are current",
             ringHtml({ pct: healthPct,
                        band: healthPct >= 60 ? "good" : healthPct >= 25 ? "warning" : "critical",
                        caption: "In touch", sub: counts.good + " of " + scheduled }))
-        + chartCard("Breakdown", "Where your scheduled connections stand",
-            splitBarHtml(counts), "chart-card-wide")
-        + '</div>'
-      : "";
+          + chartCard("Breakdown", "Where your scheduled connections stand",
+              splitBarHtml(counts), "chart-card-wide")
+        : "")
+      + '<div id="upcomingMeetings" class="chart-card upcoming-slot"></div>'
+      + '</div>';
 
     const attentionHtml = '<section class="card dash-section">'
       + '<div class="dash-section-header">'
@@ -1727,9 +1731,7 @@ async function initDashboard() {
         : '<p class="empty">You are current with everyone on a schedule. Nice work.</p>')
       + '</section>';
 
-    root.innerHTML = kpiHtml + chartsHtml
-      + '<div id="upcomingMeetings"></div>'
-      + attentionHtml;
+    root.innerHTML = kpiHtml + chartsHtml + attentionHtml;
     wirePersonRows(root, contacts, render);
     // Renders from cache immediately; the background sync refreshes it.
     renderUpcomingMeetings();
@@ -3204,7 +3206,8 @@ function renderUpcomingMeetings() {
   // ORB-35: only in connected or needs-reauth. Hidden until a connection
   // exists, because a sync button for a calendar you never linked is noise.
   const connection = calendar.getConnectionState();
-  if (connection === calendar.DISCONNECTED) { slot.innerHTML = ""; return; }
+  if (connection === calendar.DISCONNECTED) { slot.innerHTML = ""; slot.hidden = true; return; }
+  slot.hidden = false;
 
   // ORB-35: a sync button is only trustworthy next to evidence it ran. The
   // timestamp says when, and the count says whether it did anything — a run
@@ -3232,13 +3235,10 @@ function renderUpcomingMeetings() {
 
   const items = calendar.readUpcoming().slice(0, 5);
   if (!items.length) {
-    slot.innerHTML = '<section class="card dash-section upcoming-card">'
-      + '<div class="dash-section-header"><h2>Coming up</h2>'
-      + '<p class="muted">Meetings with people in your network, next '
-      + calendar.UPCOMING_DAYS + ' days.</p></div>'
+    slot.innerHTML = '<h3 class="chart-title">Coming up</h3>'
+      + '<p class="chart-sub muted">Next ' + calendar.UPCOMING_DAYS + ' days</p>'
       + syncBar
-      + '<p class="empty">Nothing scheduled with anyone in your network.</p>'
-      + '</section>';
+      + '<p class="empty upcoming-empty">Nothing scheduled with anyone in your network.</p>';
     wireDashboardSync(slot);
     return;
   }
@@ -3267,12 +3267,10 @@ function renderUpcomingMeetings() {
       + '</li>';
   }).join("");
 
-  slot.innerHTML = '<section class="card dash-section upcoming-card">'
-    + '<div class="dash-section-header"><h2>Coming up</h2>'
-    + '<p class="muted">Meetings with people in your network, and what you wanted to raise.</p></div>'
+  slot.innerHTML = '<h3 class="chart-title">Coming up</h3>'
+    + '<p class="chart-sub muted">And what you wanted to raise</p>'
     + syncBar
-    + '<ul class="upcoming-list">' + rows + '</ul>'
-    + '</section>';
+    + '<ul class="upcoming-list">' + rows + '</ul>';
   wireDashboardSync(slot);
 }
 

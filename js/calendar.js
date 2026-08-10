@@ -329,8 +329,20 @@ function loadGis() {
 /**
  * Ask Google for an access token.
  *
- * @param interactive  false tries to renew silently for an already-granted
- *                     session; true always shows the account chooser.
+ * `prompt: ""` on BOTH paths, which is the point. Consent is granted once and
+ * Google remembers it — what expires is the hour-long access token, not your
+ * permission. Passing "consent" forced the full approval screen on every
+ * reconnect, making a renewal that Google was willing to do silently look like
+ * being asked to approve the app all over again.
+ *
+ * With "" Google decides: it shows the consent screen when it genuinely needs
+ * to (first grant, revoked access, a new scope) and reissues quietly otherwise.
+ * The one case it cannot do quietly is when you are no longer signed in to
+ * Google in this browser, and then a chooser is unavoidable.
+ *
+ * @param interactive  Whether a popup is acceptable. On the background path it
+ *                     is not: a popup nobody clicked for is blocked anyway, and
+ *                     the sync is simply skipped.
  */
 export async function requestAccessToken({ interactive = true } = {}) {
   await loadGis();
@@ -339,7 +351,7 @@ export async function requestAccessToken({ interactive = true } = {}) {
     tokenClient = window.google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
       scope: SCOPE,
-      prompt: interactive ? "consent" : "",
+      prompt: "",
       callback: (response) => {
         if (response.error) {
           reject(new Error(response.error_description || response.error));

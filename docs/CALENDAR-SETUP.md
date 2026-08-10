@@ -167,8 +167,17 @@ already wrote up by hand.
 | No meetings found | Nothing in the last 30 days matched, or it is all already logged |
 | Popup never appears | Browser blocked it. Allow popups for this site |
 
-**Expect to re-authorise roughly weekly.** Google expires tokens for apps in
-Testing mode. When that happens the background sync stops silently and Orbit
+**Re-authorising is usually silent.** Your consent is granted once and Google
+remembers it — what expires is the hour-long access token, not your permission.
+Orbit asks with `prompt: ""`, which lets Google reissue quietly whenever it can.
+The one case it cannot is when you are no longer signed in to Google in that
+browser, and then a chooser is unavoidable.
+
+(This used to pass `prompt: "consent"`, which forced the full approval screen on
+every single reconnect — making a renewal Google was happy to do silently look
+like being asked to approve the app all over again.)
+
+Tokens for apps in Testing mode still expire. When that happens the background sync stops silently and Orbit
 offers a **Reconnect** toast — at most once a day, because an app that nags on
 every page load about a background feature is worse than one that goes quiet.
 

@@ -3320,9 +3320,15 @@ body.dark .sc-icon { color: var(--accent); }
 /* The grace note spans the whole reach-out strip instead of taking a column */
 .reachout-strip .grace-note { grid-column: 1 / -1; margin-top: 0.25rem; }
 
-/* Dashboard is now three tiles + ring/breakdown, so both grids are 3-wide */
+/* Dashboard is three tiles + ring/breakdown, so both grids are 3-wide */
 .kpi-row, .chart-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+/* Breakdown fills the leftover column when there is nothing beside it.
+   With Coming up present it gives that column back, so the three cards sit one
+   per column and Coming up lands directly under the Overdue tile — same width,
+   and align-items:stretch makes it the same height. */
 .chart-card-wide { grid-column: span 2; }
+.chart-row:has(.upcoming-slot:not([hidden])) .chart-card-wide { grid-column: span 1; }
 
 .kpi-empty { text-align: center; padding: 1.6rem 1.4rem; }
 .kpi-empty-title { margin: 0 0 0.35rem; font-size: 1rem; font-weight: 700; }
@@ -3915,3 +3921,24 @@ body.dark .link-btn { color: var(--accent); }
 .btn.btn-secondary.int-danger { background: var(--input-bg); color: var(--danger); }
 
 .sync-bar-warn { border-bottom-color: rgba(202,138,4,0.4); }
+
+
+/* ── Coming up, as a chart card (ORB-28) ──────────────────────────────────────
+   It shares the chart row now, so it has to hold the row's height rather than
+   set it: a week of meetings must scroll inside the card instead of stretching
+   the ring and breakdown alongside it. */
+.upcoming-slot { min-width: 0; }
+.upcoming-slot .upcoming-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 -0.25rem;
+  padding: 0 0.25rem;
+}
+.upcoming-slot .upcoming-row { padding: 0.55rem 0; gap: 0.55rem; }
+.upcoming-slot .upcoming-when { flex-basis: 4.6rem; }
+.upcoming-slot .upcoming-day { font-size: 0.74rem; }
+.upcoming-slot .upcoming-title { font-size: 0.8rem; }
+.upcoming-slot .upcoming-points { font-size: 0.73rem; }
+.upcoming-slot .sync-bar { padding-top: 0; }
+.upcoming-empty { margin: auto 0; }
