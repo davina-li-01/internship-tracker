@@ -503,6 +503,12 @@ h3 { font-size: 0.9rem; font-weight: 700; letter-spacing: -0.01em; margin-bottom
 .empty     { color: var(--text-faint); font-size: 0.875rem; padding: 0.25rem 0; }
 .error     { color: var(--danger); font-size: 0.82rem; min-height: 1.2rem; margin: 0.2rem 0; }
 .success   { color: var(--success); font-size: 0.82rem; min-height: 1.2rem; margin: 0.2rem 0; }
+/* Collapse while empty. The reserved line prevents a jump when one message
+   appears, but forms stack an error AND a success placeholder, so two idle
+   slots were holding open half a centimetre of nothing above every button.
+   Deliberately NOT display:none — these are aria-live regions, and an element
+   removed from the accessibility tree may not announce when it comes back. */
+.error:empty, .success:empty { min-height: 0; margin: 0; }
 .required  { color: var(--danger); }
 
 /* ── Inputs ──────────────────────────────────────────────────── */
@@ -3785,17 +3791,14 @@ body.dark .pw-text-good   { color: #A3E635; }
 body.dark .pw-text-strong { color: #4ADE80; }
 
 .pw-advice {
-  margin: 0.6rem 0 0;
-  font-size: 0.76rem;
-  line-height: 1.5;
-  color: var(--text-muted);
-}
-.pw-advice strong { color: var(--text); }
-.pw-advice em { font-style: normal; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.pw-advice-list {
-  margin: 0.35rem 0 0;
-  padding-left: 1rem;
-  font-size: 0.74rem;
+  margin: 0.45rem 0 0;
+  font-size: 0.75rem;
   line-height: 1.55;
   color: var(--text-faint);
+}
+.pw-advice strong { color: var(--text-muted); font-weight: 600; }
+.pw-advice em {
+  font-style: normal;
+  color: var(--text-muted);
+  white-space: nowrap;
 }

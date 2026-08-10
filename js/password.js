@@ -85,18 +85,17 @@ export function scorePassword(password, email = "") {
   return { pct: 45, band: "fair", label: "Fair — short. Try a few words instead" };
 }
 
-/** The guidance shown beside the field. Kept here so both forms say the same thing. */
+/**
+ * The guidance shown beside the field. Kept here so both forms say the same
+ * thing, and kept to two lines: this is a sign-up form, and advice nobody
+ * finishes reading is advice nobody follows.
+ */
 export function passwordAdviceHtml() {
   return '<p class="pw-advice">'
-    + '<strong>Length beats complexity.</strong> Four unrelated words — '
-    + '<em>copper&nbsp;lantern&nbsp;dusty&nbsp;whale</em> — is far harder to crack than '
-    + '<em>P@ssw0rd!</em> and much easier to remember.'
-    + '</p>'
-    + '<ul class="pw-advice-list">'
-    + '<li>Don\'t reuse a password from another site</li>'
-    + '<li>Avoid your name, email or anything guessable about you</li>'
-    + '<li>Better still, let a password manager generate one</li>'
-    + '</ul>';
+    + '<strong>Length beats complexity.</strong> Four unrelated words like '
+    + '<em>copper lantern dusty whale</em> are harder to crack than '
+    + '<em>P@ssw0rd!</em> — and easier to remember. Don\'t reuse one from another site.'
+    + '</p>';
 }
 
 /**

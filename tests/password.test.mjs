@@ -80,7 +80,7 @@ group("The advice says the same thing in both forms");
   ok("it leads with length", html.includes("Length beats complexity"));
   ok("shows a passphrase example", html.includes("copper"));
   ok("warns against reuse", html.includes("reuse"));
-  ok("and points at a password manager", html.includes("password manager"));
+  ok("and names what not to do instead", html.includes("P@ssw0rd"));
 }
 
 done();
