@@ -71,7 +71,7 @@
           <input id="suEmail" type="email" autocomplete="email" required placeholder="you@example.com" />
         </div>
         <div class="field-group">
-          <label for="suPassword">Password <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">(min 6 characters)</span></label>
+          <label for="suPassword">Password <span class="muted" id="pwHint" style="font-weight:400;text-transform:none;letter-spacing:0"></span></label>
           <input id="suPassword" type="password" autocomplete="new-password" required placeholder="••••••••" />
         </div>
         <p id="suError" class="error" aria-live="polite"></p>
@@ -123,6 +123,14 @@
     const signUpForm   = document.getElementById("signUpForm");
     const resetPanel   = document.getElementById("resetPanel");
     const confirmPanel = document.getElementById("confirmPanel");
+
+    // Kept in one place because the label used to hardcode "min 6 characters"
+    // while the change-password form asked for 8 — and Supabase enforces its own
+    // minimum on top, which is what a 56-character requirement turned out to be.
+    // Supabase is the authority; this is only for fast feedback before the
+    // round trip, so it must never claim to be stricter than the server.
+    const MIN_PASSWORD = 8;
+    document.getElementById("pwHint").textContent = `(min ${MIN_PASSWORD} characters)`;
 
     let pendingConfirmEmail = "";
 
@@ -193,8 +201,8 @@
       const password  = document.getElementById("suPassword").value;
       errEl.textContent = ""; successEl.textContent = "";
 
-      if (password.length < 6) {
-        errEl.textContent = "Password must be at least 6 characters.";
+      if (password.length < MIN_PASSWORD) {
+        errEl.textContent = `Password must be at least ${MIN_PASSWORD} characters.`;
         return;
       }
 
@@ -207,8 +215,19 @@
 
       if (error) {
         const msg = error.message || "";
-        if (msg.toLowerCase().includes("already registered") || msg.toLowerCase().includes("already exists") || msg.toLowerCase().includes("user already")) {
+        const lower = msg.toLowerCase();
+        if (lower.includes("already registered") || lower.includes("already exists") || lower.includes("user already")) {
           errEl.textContent = "An account with this email already exists. Try signing in instead.";
+        } else if (lower.includes("password")) {
+          // Supabase enforces its own minimum length and character rules, set in
+          // the dashboard rather than here. Its wording is usable, so pass it
+          // through rather than replacing it with a guess that may be wrong.
+          errEl.textContent = msg;
+          console.warn(
+            "[auth] Supabase rejected the password. Its rules are stricter than this "
+            + "form's " + MIN_PASSWORD + "-character minimum. Dashboard → Authentication "
+            + "→ Sign In / Providers → Email → Minimum password length."
+          );
         } else {
           errEl.textContent = msg;
         }
