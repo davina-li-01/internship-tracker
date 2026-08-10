@@ -28,6 +28,8 @@ Aligned to Confluence 2026-08-08. Every ORB key below matches the epic.
 | — | ORB-26 | Edit a conversation's notes | Core | **High** | Low | ✅ Done |
 | — | ORB-27 | Photos as attachments | Core | **Could have** | Low | ⚠️ Shipped ahead of priority |
 | — | ORB-28 | "Coming up" on the dashboard | Core | Med | Med | ✅ Done |
+| Aug 9 | ORB-34 | Integrations tab | Integrations | Med | Med | ✅ Done |
+| Aug 9 | ORB-35 | Sync from the dashboard | Integrations | Med | Med | ✅ Done |
 
 Dates are current-constraint estimates and expected to move **up**, not back.
 
@@ -385,6 +387,35 @@ copy** of `js/main.js`, and that copy predated the reach-out rework, the toast,
 calendar sync and conversation attachments. 133 assertions had been passing
 against code that had not run in days. Suites now read `js/main.js` from disk at
 load time, so a passing suite is a suite that passed against what ships.
+
+---
+
+### ORB-34 — Integrations tab · ✅ done 2026-08-10
+One card per integration carrying its own state, absorbing the standalone
+benefits copy, both pop-ups and the loading screen.
+
+**Four states, because two could not describe reality.** The state that happens
+most is: connected weeks ago, Google has since expired the grant, nothing works
+until you click again. "Connected or not" reported that as healthy — which is
+exactly how Settings came to claim a working calendar it could not read.
+`getConnectionState()` returns disconnected / connecting / connected /
+needs-reauth, and a failed silent sync raises the flag rather than forgetting
+the connection, because the fix is one click and forgetting would hide that.
+
+The benefits copy lives in a `<details>`. It is a pitch: worth reading once,
+noise every time thereafter, and it used to sit between the user and the
+controls.
+
+The tab stays after connecting, so disconnect, re-authorise and sync status all
+have a home.
+
+### ORB-35 — Sync from the dashboard · ✅ done 2026-08-10
+A button, a timestamp, and what the last run actually did.
+
+**`found` and `logged` are different numbers**, and only the second answers "did
+that button do anything". A run that surfaced four meetings and logged none did
+nothing; reporting the four would flatter it. So the count comes from the review
+modal after confirmation, not from the sync.
 
 ---
 

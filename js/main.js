@@ -2742,6 +2742,144 @@ async function openProfileModal() {
   modal.querySelector("#epName").focus();
 }
 
+// ── Integrations tab (ORB-34) ─────────────────────────────────────────────────
+
+/** Relative time that stays readable without a library. */
+function timeAgo(ms) {
+  if (!ms) return "never";
+  const mins = Math.round((Date.now() - ms) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return mins + (mins === 1 ? " minute ago" : " minutes ago");
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return hours + (hours === 1 ? " hour ago" : " hours ago");
+  const days = Math.round(hours / 24);
+  return days + (days === 1 ? " day ago" : " days ago");
+}
+
+/**
+ * Four states, not two.
+ *
+ * "Connected or not" could not describe the one that happens most: you
+ * connected weeks ago, the grant expired, and nothing works until you click
+ * again. Calling that connected is how this screen previously reported a
+ * healthy calendar it could not read.
+ */
+function calendarCardHtml({ connecting = false } = {}) {
+  const state = connecting ? "connecting" : calendar.getConnectionState();
+  const run = calendar.lastRun();
+  const synced = calendar.lastSyncedAt();
+
+  const meta = {
+    disconnected: { pill: "Not connected", tone: "idle" },
+    connecting:   { pill: "Connecting…",   tone: "busy" },
+    connected:    { pill: "Connected",     tone: "ok" },
+    "needs-reauth": { pill: "Needs re-authorising", tone: "warn" }
+  }[state];
+
+  const status = state === "connected"
+    ? 'Checked ' + escapeHtml(timeAgo(synced)) + '. Orbit looks again every few hours.'
+    : state === "needs-reauth"
+      ? 'Google expired the permission, which it does about weekly for apps in testing. '
+        + 'One click puts it back.'
+      : state === "connecting"
+        ? 'Waiting for Google…'
+        : 'Find the meetings you already had with people in your network.';
+
+  const actions = state === "connected"
+    ? '<button class="btn btn-sm" id="calSyncBtn" type="button">Sync now</button>'
+      + '<button class="btn btn-secondary btn-sm" id="calDisconnectBtn" type="button">Disconnect</button>'
+    : state === "needs-reauth"
+      ? '<button class="btn btn-sm" id="calSyncBtn" type="button">Reconnect</button>'
+        + '<button class="btn btn-secondary btn-sm" id="calDisconnectBtn" type="button">Remove</button>'
+      : '<button class="btn btn-sm" id="calSyncBtn" type="button"'
+        + (connecting ? ' disabled' : '') + '>'
+        + (connecting ? 'Connecting…' : 'Connect') + '</button>';
+
+  return '<article class="int-card int-' + meta.tone + '">'
+    + '<div class="int-head">'
+    + '<span class="int-icon" aria-hidden="true">📅</span>'
+    + '<div class="int-title">'
+    + '<p class="int-name">Google Calendar</p>'
+    + '<p class="int-status">' + status + '</p>'
+    + '</div>'
+    + '<span class="int-pill int-pill-' + meta.tone + '">' + escapeHtml(meta.pill) + '</span>'
+    + '</div>'
+    + (run && state === "connected"
+      ? '<p class="int-lastrun">Last run: '
+        + (run.logged
+          ? run.logged + (run.logged === 1 ? ' conversation logged' : ' conversations logged')
+          : 'nothing new to log')
+        + '</p>'
+      : '')
+    + '<p id="calMsg" class="success" aria-live="polite"></p>'
+    + '<p id="calErr" class="error" aria-live="polite"></p>'
+    + '<div class="int-actions">' + actions + '</div>'
+    + '<details class="int-details">'
+    + '<summary>How it works, and what it can see</summary>'
+    + '<ul class="settings-list">'
+    + '<li><strong>Read-only.</strong> Orbit cannot create, change or delete anything '
+    + 'on your calendar. Google enforces that, not us.</li>'
+    + '<li><strong>No token is ever stored.</strong> It lives in this tab and is gone '
+    + 'when you close it. Meeting titles for "Coming up" are cached on this device; '
+    + 'disconnecting clears them.</li>'
+    + '<li><strong>You confirm every entry.</strong> A meeting on a calendar is not '
+    + 'proof you spoke, and logging one moves that person&#39;s next reach-out date.</li>'
+    + '<li><strong>Matched by email</strong>, so only connections whose email you have '
+    + 'saved can be found.</li>'
+    + '</ul>'
+    + '</details>'
+    + '</article>';
+}
+
+/**
+ * Renders the cards and wires them, in one place so every state change can
+ * simply re-render rather than trying to patch the DOM it came from.
+ */
+function renderIntegrationCards(root, { connecting = false } = {}) {
+  if (!root) return;
+  root.innerHTML = calendarCardHtml({ connecting });
+
+  const msg = root.querySelector("#calMsg");
+  const err = root.querySelector("#calErr");
+
+  root.querySelector("#calSyncBtn")?.addEventListener("click", async () => {
+    msg.textContent = ""; err.textContent = "";
+    renderIntegrationCards(root, { connecting: true });
+    try {
+      const contacts = (await db.getContacts()) || [];
+      if (!contacts.some((c) => (c.email || "").trim())) {
+        renderIntegrationCards(root);
+        root.querySelector("#calErr").textContent =
+          "None of your connections have an email saved, so there is nothing to match "
+          + "against. Add emails first.";
+        return;
+      }
+
+      const candidates = await calendar.connectCalendar(contacts, todayDateString());
+      calendar.markSynced(Date.now());
+
+      if (!candidates.length) {
+        calendar.recordRun({ found: 0, logged: 0 });
+        renderIntegrationCards(root);
+        root.querySelector("#calMsg").textContent =
+          "Nothing new in the last " + calendar.LOOKBACK_DAYS + " days.";
+        return;
+      }
+      document.getElementById("settingsModal")?.remove();
+      openCalendarReviewModal(candidates, contacts);
+    } catch (error) {
+      renderIntegrationCards(root);
+      root.querySelector("#calErr").textContent = String(error.message || error);
+    }
+  });
+
+  root.querySelector("#calDisconnectBtn")?.addEventListener("click", () => {
+    calendar.disconnectCalendar();
+    renderIntegrationCards(root);
+    showToast("Google Calendar disconnected. No token was stored, so there is nothing else to clear.");
+  });
+}
+
 // ── Calendar auto-sync on load (ORB-15) ───────────────────────────────────────
 
 /**
@@ -2833,14 +2971,35 @@ function renderUpcomingMeetings() {
 
   if (!calendar.isRemembered()) { slot.innerHTML = ""; return; }
 
+  // ORB-35: a sync button is only trustworthy next to evidence it ran. The
+  // timestamp says when, and the count says whether it did anything — a run
+  // that found four meetings and logged none did nothing, and reporting "4"
+  // would flatter it.
+  const state = calendar.getConnectionState();
+  const run = calendar.lastRun();
+  const syncBar = '<div class="sync-bar">'
+    + '<span class="sync-status">'
+    + (state === "needs-reauth"
+      ? '<span class="sync-warn">Calendar needs re-authorising</span>'
+      : 'Synced ' + escapeHtml(timeAgo(calendar.lastSyncedAt()))
+        + (run && run.logged
+          ? ' · ' + run.logged + (run.logged === 1 ? ' conversation logged' : ' conversations logged')
+          : ''))
+    + '</span>'
+    + '<button class="btn btn-secondary btn-sm" id="dashSyncBtn" type="button">'
+    + (state === "needs-reauth" ? "Reconnect" : "Sync now") + '</button>'
+    + '</div>';
+
   const items = calendar.readUpcoming().slice(0, 5);
   if (!items.length) {
     slot.innerHTML = '<section class="card dash-section upcoming-card">'
       + '<div class="dash-section-header"><h2>Coming up</h2>'
       + '<p class="muted">Meetings with people in your network, next '
       + calendar.UPCOMING_DAYS + ' days.</p></div>'
+      + syncBar
       + '<p class="empty">Nothing scheduled with anyone in your network.</p>'
       + '</section>';
+    wireDashboardSync(slot);
     return;
   }
 
@@ -2871,8 +3030,42 @@ function renderUpcomingMeetings() {
   slot.innerHTML = '<section class="card dash-section upcoming-card">'
     + '<div class="dash-section-header"><h2>Coming up</h2>'
     + '<p class="muted">Meetings with people in your network, and what you wanted to raise.</p></div>'
+    + syncBar
     + '<ul class="upcoming-list">' + rows + '</ul>'
     + '</section>';
+  wireDashboardSync(slot);
+}
+
+/** The Sync now button (ORB-35). Same path as Settings, fewer clicks away. */
+function wireDashboardSync(slot) {
+  const btn = slot.querySelector("#dashSyncBtn");
+  if (!btn) return;
+
+  btn.addEventListener("click", async () => {
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Syncing…";
+    try {
+      const contacts = (await db.getContacts()) || [];
+      const candidates = await calendar.connectCalendar(contacts, todayDateString());
+      calendar.markSynced(Date.now());
+
+      if (!candidates.length) {
+        calendar.recordRun({ found: 0, logged: 0 });
+        renderUpcomingMeetings();
+        showToast("Calendar checked — nothing new in the last "
+          + calendar.LOOKBACK_DAYS + " days.");
+        return;
+      }
+      openCalendarReviewModal(candidates, contacts);
+    } catch (error) {
+      showToast(String(error.message || error));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = original;
+      renderUpcomingMeetings();
+    }
+  });
 }
 
 // ── Calendar review (ORB-15) ──────────────────────────────────────────────────
@@ -2995,6 +3188,7 @@ function openCalendarReviewModal(candidates, contacts) {
       showToast("Could not log those — nothing was changed.");
       return;
     }
+    calendar.recordRun({ found: candidates.length, logged });
     showToast(logged + (logged === 1 ? " conversation logged." : " conversations logged.")
       + (failed ? " " + failed + " could not be saved." : ""), {
       actionLabel: "View in log",
@@ -3100,7 +3294,6 @@ async function openSettingsModal(section = "general") {
   const emailMode = ["daily", "weekly"].includes(prefs.email_reminders)
     ? prefs.email_reminders : "off";
   const reminderTarget = (prefs.your_email || "").trim() || authEmail || "no address saved";
-  const calendarLinked = calendar.isRemembered();
 
   const modal = document.createElement("div");
   modal.id = "settingsModal";
@@ -3181,44 +3374,16 @@ async function openSettingsModal(section = "general") {
     + '<button class="btn btn-secondary btn-sm" id="saveEmailReminders" type="button">Save email setting</button>'
     + '</section>'
 
-    // ── Integrations ─────────────────────────────────────────────────────
+    // ── Integrations (ORB-34) ────────────────────────────────────────────
+    // One card per integration, carrying its own state. The benefits copy that
+    // used to fill this pane unconditionally now lives inside the card and only
+    // unfolds when asked — it is a sales pitch, and a sales pitch shown to
+    // someone who already bought is just noise between them and the controls.
     + '<section class="settings-pane" data-pane="integrations">'
     + '<h3 class="settings-h3">Integrations</h3>'
-    + '<h4 class="settings-h4">Google Calendar</h4>'
-    + '<p class="settings-note">Orbit only works if you remember to log the people you '
-    + 'spoke to — which is the habit that fails. Connect your calendar and it finds '
-    + 'those meetings for you.</p>'
-    + '<ul class="settings-list">'
-    + '<li><strong>Read-only.</strong> Orbit cannot create, change or delete anything '
-    + 'on your calendar. Google enforces that, not us.</li>'
-    + '<li><strong>No token is ever stored.</strong> It lives in this tab and is gone '
-    + 'when you close it — no refresh token, nothing in the database. Meeting titles '
-    + 'for the "Coming up" list are cached on this device so the dashboard does not '
-    + 'have to wait on Google; Disconnect clears them.</li>'
-    + '<li><strong>You confirm every entry.</strong> A meeting on a calendar is not '
-    + 'proof you spoke, and logging one moves that person\'s next reach-out date.</li>'
-    + '<li><strong>Matched by email</strong>, so only connections whose email you have '
-    + 'saved can be found.</li>'
-    + '</ul>'
-    + settingsRow("Status", '<span class="settings-static">'
-        + (calendarLinked
-          ? 'Connected — checked automatically every few hours'
-          : 'Not connected')
-        + '</span>')
-    + '<p class="field-hint">' + (calendarLinked
-        ? 'When it finds something, Orbit tells you on whichever page you are on. '
-          + 'You still confirm each one before it is logged.'
-        : 'Once connected, Orbit checks in the background and only speaks up when '
-          + 'it has found something.') + '</p>'
-    + '<p id="calMsg" class="success" aria-live="polite"></p>'
-    + '<p id="calErr" class="error" aria-live="polite"></p>'
-    + '<div class="modal-actions">'
-    + '<button class="btn" id="calSyncBtn" type="button">'
-    + (calendarLinked ? 'Check now' : 'Connect Google Calendar') + '</button>'
-    + (calendarLinked
-      ? '<button class="btn btn-secondary" id="calDisconnectBtn" type="button">Disconnect</button>'
-      : '')
-    + '</div>'
+    + '<p class="settings-note">Bring outside data into Orbit so staying current '
+    + 'stops depending on you remembering.</p>'
+    + '<div id="integrationCards"></div>'
     + '</section>'
 
     // ── Security ─────────────────────────────────────────────────────────
@@ -3346,43 +3511,7 @@ async function openSettingsModal(section = "general") {
     setTimeout(() => { msg.textContent = ""; }, 3000);
   });
 
-  modal.querySelector("#calSyncBtn").addEventListener("click", async (e) => {
-    const btn = e.currentTarget;
-    const msg = modal.querySelector("#calMsg");
-    const err = modal.querySelector("#calErr");
-    msg.textContent = ""; err.textContent = "";
-    btn.disabled = true;
-    btn.textContent = "Checking your calendar…";
-    try {
-      const contacts = (await db.getContacts()) || [];
-      const withEmail = contacts.filter((c) => (c.email || "").trim());
-      if (!withEmail.length) {
-        err.textContent = "None of your connections have an email saved, so there is "
-          + "nothing to match against. Add emails first.";
-        return;
-      }
-      const candidates = await calendar.connectCalendar(contacts, todayDateString());
-      calendar.markSynced(Date.now());
-      if (!candidates.length) {
-        msg.textContent = "No new meetings found in the last "
-          + calendar.LOOKBACK_DAYS + " days. Orbit will keep checking on its own.";
-        return;
-      }
-      modal.remove();
-      openCalendarReviewModal(candidates, contacts);
-    } catch (error) {
-      err.textContent = String(error.message || error);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = calendarLinked ? "Check now" : "Connect Google Calendar";
-    }
-  });
-
-  modal.querySelector("#calDisconnectBtn")?.addEventListener("click", () => {
-    calendar.disconnectCalendar();
-    modal.remove();
-    showToast("Google Calendar disconnected. Nothing was stored, so nothing to clean up.");
-  });
+  renderIntegrationCards(modal.querySelector("#integrationCards"));
 
   modal.querySelector("#savePw").addEventListener("click", async () => {
     const msg = modal.querySelector("#pwMsg");

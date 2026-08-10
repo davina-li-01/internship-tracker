@@ -372,6 +372,8 @@ export function isConnected() {
 const CONNECTED_KEY = "orbit_calendar_connected";
 const LAST_SYNC_KEY = "orbit_calendar_last_sync";
 const LAST_NUDGE_KEY = "orbit_calendar_last_nudge";
+const REAUTH_KEY = "orbit_calendar_needs_reauth";
+const LAST_RESULT_KEY = "orbit_calendar_last_result";
 
 /** Every page load is a fresh load in a multi-page app — do not sync on each. */
 export const AUTO_SYNC_HOURS = 4;
@@ -407,6 +409,56 @@ export function forgetConnection() {
   localStorage.removeItem(CONNECTED_KEY);
   localStorage.removeItem(LAST_SYNC_KEY);
   localStorage.removeItem(LAST_NUDGE_KEY);
+  localStorage.removeItem(REAUTH_KEY);
+  localStorage.removeItem(LAST_RESULT_KEY);
+}
+
+// ── Connection state (ORB-34) ─────────────────────────────────────────────────
+//
+// Four states, because "connected or not" could not describe the one that
+// actually happens most: you connected weeks ago, the grant has since expired,
+// and nothing works until you click again. Calling that "connected" is how the
+// settings screen ended up lying about a calendar it could not read.
+
+export const DISCONNECTED = "disconnected";
+export const CONNECTED = "connected";
+export const NEEDS_REAUTH = "needs-reauth";
+
+export function markNeedsReauth() { localStorage.setItem(REAUTH_KEY, "1"); }
+export function clearNeedsReauth() { localStorage.removeItem(REAUTH_KEY); }
+
+export function getConnectionState() {
+  if (!isRemembered()) return DISCONNECTED;
+  return localStorage.getItem(REAUTH_KEY) === "1" ? NEEDS_REAUTH : CONNECTED;
+}
+
+/**
+ * What the last run actually did (ORB-35).
+ *
+ * `found` is what the calendar offered; `logged` is what the user confirmed.
+ * They are different numbers and only the second one answers "did that button
+ * do anything" — a sync that found four meetings and logged none is a sync that
+ * did nothing, and saying "4" would be a lie of omission.
+ */
+export function recordRun({ found = 0, logged = 0 }, now = Date.now()) {
+  try {
+    localStorage.setItem(LAST_RESULT_KEY, JSON.stringify({ at: now, found, logged }));
+  } catch { /* private mode — the timestamp is a nicety, not a requirement */ }
+}
+
+export function lastRun() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LAST_RESULT_KEY) || "null");
+    if (!raw || typeof raw.at !== "number") return null;
+    return { at: raw.at, found: raw.found || 0, logged: raw.logged || 0 };
+  } catch {
+    return null;
+  }
+}
+
+export function lastSyncedAt() {
+  const value = Number(localStorage.getItem(LAST_SYNC_KEY) || 0);
+  return value || null;
 }
 
 export function autoSyncDue(now = Date.now()) {
@@ -447,8 +499,13 @@ export async function silentSync(contacts, todayIso) {
     const events = await withTimeout(fetchEventWindow(), SILENT_TIMEOUT_MS);
     const upcoming = findUpcoming(events, contacts);
     cacheUpcoming(upcoming);
+    clearNeedsReauth();
     return { candidates: findCandidates(events, contacts, todayIso), upcoming };
   } catch {
+    // The connection is remembered but no longer usable. That is its own state,
+    // not a disconnection — the fix is one click, and forgetting the connection
+    // would hide that.
+    markNeedsReauth();
     return null;
   }
 }
@@ -538,6 +595,7 @@ export async function connectCalendar(contacts, todayIso, { interactive = true }
   // Orbit can see your calendar. Connected has to mean the round trip worked.
   const events = await fetchEventWindow();
   rememberConnection();
+  clearNeedsReauth();
   cacheUpcoming(findUpcoming(events, contacts));
   return findCandidates(events, contacts, todayIso);
 }

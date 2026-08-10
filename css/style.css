@@ -3802,3 +3802,68 @@ body.dark .pw-text-strong { color: #4ADE80; }
   color: var(--text-muted);
   white-space: nowrap;
 }
+
+/* ── Integration cards (ORB-34) ───────────────────────────────────────────────
+   One card per integration carrying its own state. The benefits copy is inside
+   a <details> because it is a pitch — worth reading once, noise thereafter. */
+.int-card {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  padding: 0.95rem 1rem;
+  background: var(--row-bg);
+}
+.int-head { display: flex; align-items: flex-start; gap: 0.7rem; }
+.int-icon { font-size: 1.35rem; line-height: 1.2; flex-shrink: 0; }
+.int-title { flex: 1; min-width: 0; }
+.int-name { margin: 0; font-size: 0.92rem; font-weight: 700; color: var(--text); }
+.int-status { margin: 0.15rem 0 0; font-size: 0.78rem; line-height: 1.45; color: var(--text-muted); }
+
+/* State never rides on colour alone — the pill always carries words. */
+.int-pill {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+.int-pill-idle { background: rgba(120,113,108,0.14); color: var(--text-muted); }
+.int-pill-busy { background: rgba(249,115,22,0.14); color: var(--primary-deep); }
+.int-pill-ok   { background: rgba(22,163,74,0.14);  color: #15803D; }
+.int-pill-warn { background: rgba(202,138,4,0.16);  color: #A16207; }
+body.dark .int-pill-ok   { color: #4ADE80; }
+body.dark .int-pill-warn { color: #FCD34D; }
+body.dark .int-pill-busy { color: var(--accent); }
+
+.int-lastrun { margin: 0.6rem 0 0; font-size: 0.76rem; color: var(--text-faint); }
+.int-actions { display: flex; gap: 0.45rem; margin-top: 0.7rem; flex-wrap: wrap; }
+.int-details { margin-top: 0.8rem; }
+.int-details > summary {
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--primary-deep);
+  list-style: none;
+}
+.int-details > summary::-webkit-details-marker { display: none; }
+.int-details > summary::before { content: "▸ "; font-size: 0.65rem; }
+.int-details[open] > summary::before { content: "▾ "; }
+.int-details > summary:hover { text-decoration: underline; }
+body.dark .int-details > summary { color: var(--accent); }
+.int-details .settings-list { margin-top: 0.5rem; }
+
+/* ── Sync bar (ORB-35) ────────────────────────────────────────────────────────
+   A sync button is only trustworthy beside evidence it ran. */
+.sync-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 0 0.7rem;
+  margin-bottom: 0.35rem;
+  border-bottom: 1px solid var(--hairline);
+}
+.sync-status { font-size: 0.76rem; color: var(--text-faint); }
+.sync-warn { color: #A16207; font-weight: 600; }
+body.dark .sync-warn { color: #FCD34D; }

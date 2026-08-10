@@ -120,7 +120,9 @@ const EXPORTS = [
   "markReachedOut", "showToast",
   "conversationWidgetHtml", "wireConversationWidget",
   // attachments
-  "isAllowedAttachment", "isImageFile", "ATTACH_ACCEPT"
+  "isAllowedAttachment", "isImageFile", "ATTACH_ACCEPT",
+  // integrations
+  "calendarCardHtml", "timeAgo"
 ];
 
 let cached = null;
