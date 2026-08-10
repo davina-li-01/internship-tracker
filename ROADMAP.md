@@ -28,7 +28,8 @@ Aligned to Confluence 2026-08-08. Every ORB key below matches the epic.
 | — | ORB-26 | Edit a conversation's notes | Core | **High** | Low | ✅ Done |
 | — | ORB-27 | Photos as attachments | Core | **Could have** | Low | ⚠️ Shipped ahead of priority |
 | — | ORB-28 | "Coming up" on the dashboard | Core | Med | Med | ✅ Done |
-| Aug 9 | ORB-34 | Integrations tab | Integrations | Med | Med | ✅ Done |
+| Aug 9 | ORB-34 | Integrations entry point in main nav | Integrations | Med | Med | ✅ Done |
+| Aug 9 | ORB-36 | Integrations pane in Settings | Integrations | Med | Med | ✅ Done |
 | Aug 9 | ORB-35 | Sync from the dashboard | Integrations | Med | Med | ✅ Done |
 | Aug 9 | ORB-27 | Revisit email reminder logic | Integrations | Med | Med | 🔶 Built — needs SQL |
 
@@ -420,11 +421,45 @@ than one that changes its rhythm.
 
 **Blocked on you:** `supabase/add-digest-streak.sql`, then redeploy the function.
 
-### ORB-34 — Integrations tab · ✅ done 2026-08-10
-**Its own page under Networking Log**, not a settings pane — moved 2026-08-10
-because an integration you connect once still needs a home you can find when it
-breaks. One card per integration carrying its own state, absorbing the
-standalone benefits copy, both pop-ups and the loading screen.
+### ORB-34 — Integrations entry point in main nav · ✅ done 2026-08-10
+**A discovery affordance, not a menu item.** The nav entry sits under Networking
+Log and appears *if and only if* at least one integration is `not_connected`,
+re-evaluated on load and after every state change.
+
+**The clause that shapes everything: it never returns on token expiry or sync
+failure.** `needs-reauth` is a working connection needing a nudge, not an
+undiscovered feature — resurfacing the nav item on every expiry would turn
+discovery into a recurring error badge. The only path back is an explicit
+disconnect (ORB-36). A broken connection announces itself on the dashboard card
+instead (ORB-35).
+
+**The rule counts unconnected integrations rather than naming Google Calendar**,
+so a second integration needs an entry in `integrationStates()` and no change to
+the rule.
+
+One card per integration; benefits copy in the card's expanded state; no
+separate benefits page and no pop-ups. `connecting` is an inline button state,
+not a full-screen loader. The nav item is `hidden` in markup and revealed by the
+rule, so it never flashes on for a connected user before JS has evaluated.
+
+### ORB-36 — Integrations pane in Settings · ✅ done 2026-08-10
+**Always present, in every state**, independent of the ORB-34 rule — that is the
+whole point of the split. Discovery goes away once you have connected;
+management must not, because it has to be findable exactly when something has
+broken.
+
+Carries status, the connected account, last-synced, which calendar is being read
+(changeable), re-authorise and disconnect. The connected account comes from
+`calendarList` rather than a profile scope: a calendar's id *is* the address that
+owns it, so showing it costs no extra permission.
+
+**Disconnect asks whether to keep or remove auto-logged conversations, and
+defaults to keep.** Those meetings happened — the record is real history, and
+deleting it as a side effect of unlinking a calendar is not recoverable. Removal
+is offered because someone who connected the wrong account wants the mess gone,
+and it names the count before the choice is made. Removing also moves
+`lastContacted` back, or health would keep counting from touchpoints that no
+longer exist.
 
 **Four states, because two could not describe reality.** The state that happens
 most is: connected weeks ago, Google has since expired the grant, nothing works
@@ -448,6 +483,14 @@ A button, a timestamp, and what the last run actually did.
 that button do anything". A run that surfaced four meetings and logged none did
 nothing; reporting the four would flatter it. So the count comes from the review
 modal after confirmation, not from the sync.
+
+**Only renders in `connected` or `needs-reauth`** — hidden until a connection
+exists, because a sync button for a calendar you never linked is noise.
+
+**In `needs-reauth` this card is the only place the problem surfaces**, since the
+nav entry point is gone by then and deliberately does not come back for an
+expired token. So it carries the error and deep-links to Settings →
+Integrations, where the fix actually lives.
 
 ---
 

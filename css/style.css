@@ -3870,3 +3870,48 @@ body.dark .sync-warn { color: #FCD34D; }
 
 /* Integrations is its own page now, so the cards get room to breathe. */
 .integration-grid { display: grid; gap: 0.9rem; }
+
+/* ── Integrations in Settings (ORB-36) ────────────────────────────────────────
+   Management, always present. The nav entry point (ORB-34) is discovery and
+   disappears once connected — if this were conditional too there would be
+   moments with nowhere at all to go. */
+.int-settings { display: grid; gap: 0.15rem; }
+.int-meta {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.8rem 0 0;
+  font-size: 0.8rem;
+}
+.int-meta > div { display: flex; align-items: center; gap: 0.6rem; }
+.int-meta dt {
+  flex: 0 0 6.5rem;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.int-meta dd { margin: 0; flex: 1; min-width: 0; color: var(--text); }
+.int-meta select { font-size: 0.8rem; padding: 0.4rem 0.6rem; }
+
+.link-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--primary-deep);
+  cursor: pointer;
+  text-align: left;
+}
+.link-btn:hover { text-decoration: underline; }
+body.dark .link-btn { color: var(--accent); }
+
+/* Disconnect deletes history if asked, so it never looks like a neutral action. */
+.int-danger { color: var(--danger); }
+.int-danger:hover { border-color: var(--danger); }
+.btn.int-danger { background: var(--danger); color: #fff; }
+.btn.int-danger:hover { background: #B91C1C; }
+.btn.btn-secondary.int-danger { background: var(--input-bg); color: var(--danger); }
+
+.sync-bar-warn { border-bottom-color: rgba(202,138,4,0.4); }

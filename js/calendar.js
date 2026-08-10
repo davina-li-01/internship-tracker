@@ -411,6 +411,8 @@ export function forgetConnection() {
   localStorage.removeItem(LAST_NUDGE_KEY);
   localStorage.removeItem(REAUTH_KEY);
   localStorage.removeItem(LAST_RESULT_KEY);
+  localStorage.removeItem("orbit_calendar_account");
+  localStorage.removeItem("orbit_calendar_id");
 }
 
 // ── Connection state (ORB-34) ─────────────────────────────────────────────────
@@ -430,6 +432,78 @@ export function clearNeedsReauth() { localStorage.removeItem(REAUTH_KEY); }
 export function getConnectionState() {
   if (!isRemembered()) return DISCONNECTED;
   return localStorage.getItem(REAUTH_KEY) === "1" ? NEEDS_REAUTH : CONNECTED;
+}
+
+/**
+ * Every integration Orbit offers (ORB-34).
+ *
+ * A list of one, deliberately. The nav show-rule is written against the COUNT
+ * of unconnected integrations rather than "is Google Calendar connected", so
+ * adding a second one needs no change to the rule — only an entry here.
+ */
+export function integrationStates() {
+  return [
+    { id: "google-calendar", name: "Google Calendar", state: getConnectionState() }
+  ];
+}
+
+/**
+ * How many integrations have never been connected.
+ *
+ * NEEDS_REAUTH deliberately does not count. An expired token is a connection
+ * that needs a nudge, not an undiscovered feature — resurfacing the nav item
+ * every time Google expires a grant would turn a discovery affordance into a
+ * recurring error badge. The only way back to zero-connected is an explicit
+ * disconnect.
+ */
+export function countNotConnected() {
+  return integrationStates().filter((i) => i.state === DISCONNECTED).length;
+}
+
+// ── Which calendar, and whose (ORB-36) ────────────────────────────────────────
+
+const ACCOUNT_KEY = "orbit_calendar_account";
+const CALENDAR_KEY = "orbit_calendar_id";
+
+export function getConnectedAccount() { return localStorage.getItem(ACCOUNT_KEY) || ""; }
+export function getSelectedCalendarId() { return localStorage.getItem(CALENDAR_KEY) || "primary"; }
+export function setSelectedCalendarId(id) {
+  localStorage.setItem(CALENDAR_KEY, id || "primary");
+}
+
+/**
+ * The calendars this account can read.
+ *
+ * `calendarList` comes with the scope already granted, so showing which account
+ * is connected costs no extra permission: a calendar's id IS the address that
+ * owns it. Asking for a profile scope just to display an email would be a
+ * larger ask for a smaller reason.
+ */
+export async function fetchCalendarList() {
+  if (!accessToken) throw new Error("Not connected to Google Calendar.");
+  const res = await fetch(
+    "https://www.googleapis.com/calendar/v3/users/me/calendarList?minAccessRole=reader",
+    { headers: { Authorization: "Bearer " + accessToken } }
+  );
+  if (!res.ok) throw new Error("Could not read your calendar list (" + res.status + ").");
+  const data = await res.json();
+  return (data.items || []).map((c) => ({
+    id: c.id,
+    name: c.summaryOverride || c.summary || c.id,
+    primary: Boolean(c.primary)
+  }));
+}
+
+/** Remembers which account is connected, for Settings to show. */
+export async function refreshAccountInfo() {
+  try {
+    const calendars = await fetchCalendarList();
+    const primary = calendars.find((c) => c.primary) || calendars[0];
+    if (primary) localStorage.setItem(ACCOUNT_KEY, primary.id);
+    return calendars;
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -532,7 +606,8 @@ export async function fetchEventWindow(backDays = LOOKBACK_DAYS, forwardDays = U
 
   const timeMin = new Date(Date.now() - backDays * 86400000).toISOString();
   const timeMax = new Date(Date.now() + forwardDays * 86400000).toISOString();
-  const url = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
+  const url = "https://www.googleapis.com/calendar/v3/calendars/"
+    + encodeURIComponent(getSelectedCalendarId()) + "/events"
     + "?timeMin=" + encodeURIComponent(timeMin)
     + "&timeMax=" + encodeURIComponent(timeMax)
     + "&singleEvents=true&orderBy=startTime&maxResults=250";

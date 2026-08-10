@@ -2838,6 +2838,8 @@ function calendarCardHtml({ connecting = false } = {}) {
 function renderIntegrationCards(root, { connecting = false } = {}) {
   if (!root) return;
   root.innerHTML = calendarCardHtml({ connecting });
+  // "Evaluate on app load and after every integration state change."
+  evaluateIntegrationsNav();
 
   const msg = root.querySelector("#calMsg");
   const err = root.querySelector("#calErr");
@@ -2879,7 +2881,230 @@ function renderIntegrationCards(root, { connecting = false } = {}) {
   });
 }
 
-/** The Integrations page (ORB-34). Its own tab now, not a settings pane. */
+// ── Integrations in Settings (ORB-36) ─────────────────────────────────────────
+
+/**
+ * Management, as opposed to ORB-34's discovery.
+ *
+ * Present in every state, on purpose. The nav entry point disappears once
+ * everything is connected, so if this were conditional too there would be
+ * moments — a broken token, a wrong calendar — with nowhere at all to go.
+ */
+function renderSettingsIntegrations(root, calendars = null) {
+  if (!root) return;
+
+  const state = calendar.getConnectionState();
+  const account = calendar.getConnectedAccount();
+  const synced = calendar.lastSyncedAt();
+  const selected = calendar.getSelectedCalendarId();
+
+  const label = {
+    disconnected: "Not connected",
+    connected: "Connected",
+    "needs-reauth": "Needs re-authorising"
+  }[state];
+
+  root.innerHTML = '<div class="int-settings">'
+    + '<div class="int-head">'
+    + '<span class="int-icon" aria-hidden="true">📅</span>'
+    + '<div class="int-title">'
+    + '<p class="int-name">Google Calendar</p>'
+    + '<p class="int-status">' + escapeHtml(label)
+    + (account ? ' · ' + escapeHtml(account) : '')
+    + '</p>'
+    + '</div>'
+    + '</div>'
+    + (state === "disconnected"
+      ? '<p class="field-hint">Connect it from <strong>Networking Log → Integrations</strong> '
+        + 'in the sidebar.</p>'
+      : '<dl class="int-meta">'
+        + '<div><dt>Last synced</dt><dd>' + escapeHtml(timeAgo(synced)) + '</dd></div>'
+        + '<div><dt>Reading</dt><dd>'
+        + (calendars && calendars.length
+          ? '<select id="intCalendarPick">'
+            + calendars.map((c) => '<option value="' + escapeHtml(c.id) + '"'
+              + (c.id === selected ? ' selected' : '') + '>'
+              + escapeHtml(c.name) + (c.primary ? ' (main)' : '') + '</option>').join("")
+            + '</select>'
+          : '<button class="link-btn" id="intLoadCalendars" type="button">'
+            + escapeHtml(selected === "primary" ? "Main calendar" : selected)
+            + ' — change</button>')
+        + '</dd></div>'
+        + '</dl>')
+    + '<p id="intSettingsMsg" class="success" aria-live="polite"></p>'
+    + '<p id="intSettingsErr" class="error" aria-live="polite"></p>'
+    + (state === "disconnected" ? '' : '<div class="int-actions">'
+      + '<button class="btn btn-secondary btn-sm" id="intReauth" type="button">'
+      + (state === "needs-reauth" ? "Re-authorise" : "Re-authorise") + '</button>'
+      + '<button class="btn btn-secondary btn-sm int-danger" id="intDisconnect" type="button">'
+      + 'Disconnect</button>'
+      + '</div>')
+    + '</div>';
+
+  const msg = root.querySelector("#intSettingsMsg");
+  const err = root.querySelector("#intSettingsErr");
+
+  root.querySelector("#intLoadCalendars")?.addEventListener("click", async () => {
+    err.textContent = "";
+    try {
+      const list = await calendar.refreshAccountInfo();
+      if (!list.length) throw new Error("Could not read your calendar list.");
+      renderSettingsIntegrations(root, list);
+    } catch (e) {
+      err.textContent = String(e.message || e) + " Try Re-authorise first.";
+    }
+  });
+
+  root.querySelector("#intCalendarPick")?.addEventListener("change", (e) => {
+    calendar.setSelectedCalendarId(e.target.value);
+    msg.textContent = "Saved. The next sync reads that calendar.";
+  });
+
+  root.querySelector("#intReauth")?.addEventListener("click", async () => {
+    msg.textContent = ""; err.textContent = "";
+    try {
+      const contacts = (await db.getContacts()) || [];
+      const candidates = await calendar.connectCalendar(contacts, todayDateString());
+      await calendar.refreshAccountInfo();
+      calendar.markSynced(Date.now());
+      renderSettingsIntegrations(root);
+      if (candidates.length) {
+        document.getElementById("settingsModal")?.remove();
+        openCalendarReviewModal(candidates, contacts);
+      } else {
+        root.querySelector("#intSettingsMsg").textContent = "Re-authorised. Nothing new to log.";
+      }
+    } catch (e) {
+      err.textContent = String(e.message || e);
+    }
+  });
+
+  root.querySelector("#intDisconnect")?.addEventListener("click", () => {
+    openDisconnectModal(root);
+  });
+}
+
+/**
+ * Disconnecting asks what to do with what the calendar logged.
+ *
+ * Defaulting to keep, because those conversations are real history — you had
+ * those meetings — and deleting them as a side effect of unlinking a calendar
+ * is not recoverable. Removing them is offered because someone who connected
+ * the wrong account wants the mess gone, and hunting them down by hand is
+ * worse.
+ */
+function openDisconnectModal(settingsRoot) {
+  document.getElementById("disconnectModal")?.remove();
+
+  const modal = document.createElement("div");
+  modal.id = "disconnectModal";
+  modal.className = "modal-overlay";
+  modal.innerHTML = '<div class="modal-card">'
+    + '<div class="quick-add-header"><h3>Disconnect Google Calendar</h3>'
+    + '<button class="icon-btn" id="dcClose" type="button" aria-label="Close">✕</button></div>'
+    + '<p class="muted">Orbit will stop reading your calendar. '
+    + 'What should happen to the conversations it logged?</p>'
+    + '<div class="cal-clash-choices" role="radiogroup" aria-label="Logged conversations">'
+    + '<label><input type="radio" name="dcKeep" value="keep" checked /> '
+    + '<span><strong>Keep them.</strong> Those meetings happened — the record stays.</span></label>'
+    + '<label><input type="radio" name="dcKeep" value="remove" /> '
+    + '<span><strong>Remove them.</strong> Deletes every conversation the calendar '
+    + 'created, along with any notes you added to them. This cannot be undone.</span></label>'
+    + '</div>'
+    + '<p id="dcCount" class="tiny muted"></p>'
+    + '<div class="modal-actions">'
+    + '<button class="btn int-danger" id="dcConfirm" type="button">Disconnect</button>'
+    + '<button class="btn btn-secondary" id="dcCancel" type="button">Cancel</button>'
+    + '</div>'
+    + '</div>';
+  document.body.appendChild(modal);
+
+  const close = () => modal.remove();
+  modal.querySelector("#dcClose").addEventListener("click", close);
+  modal.querySelector("#dcCancel").addEventListener("click", close);
+  modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+
+  // Name the cost before it is chosen, not after.
+  db.getContacts().then((contacts) => {
+    const n = (contacts || []).reduce((total, c) =>
+      total + (c.interactions || []).filter((i) => i.sourceEventId).length, 0);
+    const el = modal.querySelector("#dcCount");
+    if (el) {
+      el.textContent = n
+        ? n + (n === 1 ? " conversation was" : " conversations were") + " logged from your calendar."
+        : "Nothing has been logged from your calendar yet.";
+    }
+  });
+
+  modal.querySelector("#dcConfirm").addEventListener("click", async (e) => {
+    const remove = modal.querySelector('input[name="dcKeep"]:checked')?.value === "remove";
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = "Disconnecting…";
+
+    let removed = 0;
+    if (remove) {
+      const contacts = (await db.getContacts()) || [];
+      for (const c of contacts) {
+        const kept = (c.interactions || []).filter((i) => !i.sourceEventId);
+        if (kept.length === (c.interactions || []).length) continue;
+        removed += (c.interactions || []).length - kept.length;
+        const newest = [...kept].sort((a, b) => b.date.localeCompare(a.date))[0];
+        await db.saveContact(normalizeContact({
+          ...c,
+          interactions: kept,
+          // Health has to stop counting from a touchpoint that no longer exists.
+          lastContacted: newest ? newest.date : (c.dateMet || ""),
+          nextReminder: !c.reminderEnabled || c.followUpFrequency === "none"
+            ? c.nextReminder
+            : calculateNextReminder(newest ? newest.date : (c.dateMet || todayDateString()),
+                                    c.followUpFrequency)
+        }));
+      }
+    }
+
+    calendar.disconnectCalendar();
+    close();
+    // Disconnecting is the ONE path that brings the nav entry point back.
+    evaluateIntegrationsNav();
+    renderSettingsIntegrations(settingsRoot);
+    showToast(remove
+      ? "Disconnected. " + removed + (removed === 1 ? " conversation removed." : " conversations removed.")
+      : "Disconnected. Your logged conversations were kept.");
+  });
+}
+
+/**
+ * The nav entry point (ORB-34).
+ *
+ * A discovery affordance, not a menu item. It appears only while something is
+ * still unconnected and disappears once everything is — because once you have
+ * connected a calendar, a permanent link to "connect a calendar" is clutter.
+ *
+ * It deliberately does NOT come back when a token expires or a sync fails.
+ * Those are a working connection needing a nudge, and resurfacing this every
+ * time Google expires a grant would turn discovery into a recurring error
+ * badge. A broken connection announces itself on the dashboard card (ORB-35);
+ * the only route back here is an explicit disconnect (ORB-36).
+ *
+ * The rule reads the COUNT of unconnected integrations rather than asking about
+ * Google Calendar by name, so a second integration needs no change here.
+ */
+function evaluateIntegrationsNav() {
+  const show = calendar.countNotConnected() > 0;
+  document.querySelectorAll("[data-integrations-nav]").forEach((link) => {
+    link.hidden = !show;
+  });
+
+  // Someone sitting on the page when the last integration connects should not
+  // be stranded on a route that is no longer in the nav.
+  if (!show && document.body.dataset.page === "integrations") {
+    const note = document.getElementById("integrationsAllDone");
+    if (note) note.hidden = false;
+  }
+}
+
+/** The Integrations page (ORB-34). Discovery only — management lives in Settings. */
 async function initIntegrationsPage() {
   const root = document.getElementById("integrationCards");
   if (!root) return;
@@ -2976,25 +3201,33 @@ function renderUpcomingMeetings() {
   const slot = document.getElementById("upcomingMeetings");
   if (!slot) return;
 
-  if (!calendar.isRemembered()) { slot.innerHTML = ""; return; }
+  // ORB-35: only in connected or needs-reauth. Hidden until a connection
+  // exists, because a sync button for a calendar you never linked is noise.
+  const connection = calendar.getConnectionState();
+  if (connection === calendar.DISCONNECTED) { slot.innerHTML = ""; return; }
 
   // ORB-35: a sync button is only trustworthy next to evidence it ran. The
   // timestamp says when, and the count says whether it did anything — a run
   // that found four meetings and logged none did nothing, and reporting "4"
   // would flatter it.
-  const state = calendar.getConnectionState();
+  const state = connection;
   const run = calendar.lastRun();
-  const syncBar = '<div class="sync-bar">'
+
+  // In needs-reauth this card is the ONLY place the problem surfaces: the nav
+  // entry point is gone by then, and it deliberately does not come back for an
+  // expired token. So it has to carry the error and point at where the fix is.
+  const syncBar = '<div class="sync-bar' + (state === "needs-reauth" ? ' sync-bar-warn' : '') + '">'
     + '<span class="sync-status">'
     + (state === "needs-reauth"
-      ? '<span class="sync-warn">Calendar needs re-authorising</span>'
+      ? '<span class="sync-warn">Calendar access expired — nothing is syncing.</span>'
       : 'Synced ' + escapeHtml(timeAgo(calendar.lastSyncedAt()))
         + (run && run.logged
           ? ' · ' + run.logged + (run.logged === 1 ? ' conversation logged' : ' conversations logged')
           : ''))
     + '</span>'
-    + '<button class="btn btn-secondary btn-sm" id="dashSyncBtn" type="button">'
-    + (state === "needs-reauth" ? "Reconnect" : "Sync now") + '</button>'
+    + (state === "needs-reauth"
+      ? '<button class="btn btn-sm" id="dashFixBtn" type="button">Fix in Settings</button>'
+      : '<button class="btn btn-secondary btn-sm" id="dashSyncBtn" type="button">Sync now</button>')
     + '</div>';
 
   const items = calendar.readUpcoming().slice(0, 5);
@@ -3045,6 +3278,11 @@ function renderUpcomingMeetings() {
 
 /** The Sync now button (ORB-35). Same path as Settings, fewer clicks away. */
 function wireDashboardSync(slot) {
+  // The deep link into ORB-36, which is where re-authorising actually lives.
+  slot.querySelector("#dashFixBtn")?.addEventListener("click", () => {
+    openSettingsModal("integrations");
+  });
+
   const btn = slot.querySelector("#dashSyncBtn");
   if (!btn) return;
 
@@ -3279,6 +3517,7 @@ const SETTINGS_SECTIONS = [
   { key: "general",       label: "General",          icon: "⚙" },
   { key: "profile",       label: "Profile",          icon: "◍" },
   { key: "notifications", label: "Notifications",    icon: "◔" },
+  { key: "integrations",  label: "Integrations",     icon: "⧉" },
   { key: "security",      label: "Security & login", icon: "⛨" },
   { key: "data",          label: "Data controls",    icon: "⬓" }
 ];
@@ -3383,6 +3622,16 @@ async function openSettingsModal(section = "general") {
     + '<button class="btn btn-secondary btn-sm" id="saveEmailReminders" type="button">Save email setting</button>'
     + '</section>'
 
+    // ── Integrations (ORB-36) ────────────────────────────────────────────
+    // Always here, in every state, independent of whether the nav entry point
+    // is showing. The nav item is discovery and goes away once you have
+    // connected; this is management, and management has to be findable exactly
+    // when something has broken.
+    + '<section class="settings-pane" data-pane="integrations">'
+    + '<h3 class="settings-h3">Integrations</h3>'
+    + '<div id="settingsIntegrations"></div>'
+    + '</section>'
+
     // ── Security ─────────────────────────────────────────────────────────
     + '<section class="settings-pane" data-pane="security">'
     + '<h3 class="settings-h3">Security &amp; login</h3>'
@@ -3481,6 +3730,8 @@ async function openSettingsModal(section = "general") {
     modal.querySelector("#setPwMeter"),
     () => authEmail
   );
+
+  renderSettingsIntegrations(modal.querySelector("#settingsIntegrations"));
 
   modal.querySelector("#saveEmailReminders").addEventListener("click", async () => {
     const msg = modal.querySelector("#emailRemMsg");
@@ -3623,6 +3874,7 @@ async function checkRemindersOnLoad() {
   initNavDropdown();
   applyTheme();
   initProfileMenu();
+  evaluateIntegrationsNav();
   await initDashboard();
   await initMyNetwork();
   await initNetworkingLog();
