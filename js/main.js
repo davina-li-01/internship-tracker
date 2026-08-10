@@ -364,6 +364,11 @@ function emailRowHtml(entry, index) {
     + '</select>'
     + '<input type="email" class="email-address" value="' + escapeHtml(entry.address) + '"'
     + ' placeholder="name@example.com" aria-label="Email address" />'
+    // Keeps click-to-email now that the mailto list above is gone.
+    + (entry.address
+      ? '<a class="icon-btn email-open" href="mailto:' + escapeHtml(entry.address) + '"'
+        + ' aria-label="Email ' + escapeHtml(entry.address) + '" title="Send an email">✉</a>'
+      : '<span class="icon-btn email-open is-empty" aria-hidden="true">✉</span>')
     + '<button class="icon-btn email-remove" type="button" aria-label="Remove this address">✕</button>'
     + '</div>';
 }
@@ -2079,34 +2084,16 @@ async function initContactPage() {
       + '<div class="profile-avatar" aria-hidden="true">' + escapeHtml(initialsFor(c.name)) + '</div>'
       + '<div class="profile-id-text">'
       + '<input type="text" id="cpNameInput" class="profile-name-input" value="' + escapeHtml(c.name) + '" aria-label="Name" />'
-      + '<p class="profile-role">' + escapeHtml(c.role || "Role not set") + '</p>'
-
-      + '<div class="company-block">'
-      + '<span class="company-label">Current company</span>'
-      + (c.company
-        ? '<span class="company-current">' + escapeHtml(c.company) + '</span>'
-        : '<span class="company-current company-empty">Not set</span>')
-      + '</div>'
-
-      + (c.industry
-        ? '<span class="token token-industry">' + escapeHtml(c.industry) + '</span>'
-        : '')
-
-      + (pastCompanies.length
-        ? '<div class="company-past"><span class="company-label">Previously</span>'
-          + pastCompanies.map((co) =>
-              '<span class="token token-past">' + escapeHtml(co)
-              + '<button class="token-x" type="button" data-remove-company="' + escapeHtml(co) + '" aria-label="Remove ' + escapeHtml(co) + '">✕</button></span>').join("")
-          + '</div>'
-        : '')
-
-      + (c.emails.length
-        ? '<span class="profile-emails">'
-          + c.emails.map((e) => '<a href="mailto:' + escapeHtml(e.address) + '" class="profile-email">'
-            + '<span class="email-label">' + escapeHtml(e.label) + '</span>'
-            + escapeHtml(e.address) + '</a>').join("")
-          + '</span>'
-        : '')
+      // One line, derived, read-only. Every one of these facts used to appear
+      // twice — as a labelled block here AND as an input directly below — which
+      // is what made this card long and lopsided. A field that is editable in
+      // place does not also need displaying above it; the input IS the display.
+      // What is worth keeping at a glance is who this person is, in a sentence.
+      + '<p class="profile-role">'
+      + (c.role || c.company
+        ? escapeHtml([c.role, c.company].filter(Boolean).join(" at "))
+        : '<span class="profile-role-empty">Add their role and company below</span>')
+      + '</p>'
 
       // Always visible. This was behind a "+ Add role, company or industry"
       // toggle, which read as a way to ADD things and gave no hint that what
@@ -2130,7 +2117,7 @@ async function initContactPage() {
       // Repeatable fields carry a + on the label rather than a sentence
       // underneath — it sits with the thing it adds to, and stays out of the
       // way once there are several rows.
-      + '<div class="field-group field-multi">'
+      + '<div class="field-group field-multi field-email">'
       + '<div class="field-head"><label>Email</label>'
       + '<button class="field-add" id="cpAddEmail" type="button"'
       + ' aria-label="Add another email address" title="Add another address">+</button></div>'
@@ -2140,13 +2127,20 @@ async function initContactPage() {
         : emailRowHtml(normalizeEmail({ label: "personal" }), 0))
       + '</div></div>'
 
-      + '<div class="field-group field-multi">'
+      + '<div class="field-group field-multi field-past">'
       + '<div class="field-head"><label for="cpAddPast">Past companies</label>'
       + '<button class="field-add" id="cpAddPastBtn" type="button"'
       + ' aria-label="Add a past company" title="Add a past company">+</button></div>'
-      + '<input type="text" id="cpAddPast" list="cpCompanies" placeholder="Where else have they worked?" />'
-      + '<p class="field-hint">Shown above once added. Changing the current company '
-      + 'moves the old one here automatically.</p>'
+      // The tokens live with the field that manages them, rather than in a
+      // separate block further up the card.
+      + (pastCompanies.length
+        ? '<div class="past-tokens">' + pastCompanies.map((co) =>
+            '<span class="token token-past">' + escapeHtml(co)
+            + '<button class="token-x" type="button" data-remove-company="' + escapeHtml(co)
+            + '" aria-label="Remove ' + escapeHtml(co) + '">✕</button></span>').join("")
+          + '</div>'
+        : '')
+      + '<input type="text" id="cpAddPast" list="cpCompanies" placeholder="Add a past company" />'
       + '</div>'
 
       + '</div>'
