@@ -131,6 +131,7 @@ export async function getContacts() {
 // fails with PGRST204 and we permanently fall back to saving without it, so a
 // missing migration costs you the industry tag rather than the whole save.
 let industrySupported = true;
+let emailsSupported = true;
 
 /**
  * True when `error` says this specific column is missing.
@@ -157,8 +158,19 @@ export async function saveContact(contact) {
 
   const row = contactToRow(contact, userId);
   if (!industrySupported) delete row.industry;
+  if (!emailsSupported) delete row.emails;
 
   let { data, error } = await upsert(row);
+
+  if (error && emailsSupported && isMissingColumn(error, "emails")) {
+    console.warn(
+      "[DB] contacts.emails is missing — saving only the primary address. " +
+      "To store several per person run supabase/add-contact-emails.sql"
+    );
+    emailsSupported = false;
+    delete row.emails;
+    ({ data, error } = await upsert(row));
+  }
 
   if (error && industrySupported && isMissingColumn(error, "industry")) {
     console.warn(
@@ -200,6 +212,7 @@ function rowToContact(row) {
     interests: row.interests || "",
     reminderEnabled: row.reminder_enabled || false,
     nextReminder: row.next_reminder || "",
+    emails: Array.isArray(row.emails) ? row.emails : [],
     interactions: Array.isArray(row.interactions) ? row.interactions : [],
     companyHistory: Array.isArray(row.company_history) ? row.company_history : [],
     followUps: Array.isArray(row.follow_ups) ? row.follow_ups : []
@@ -212,6 +225,10 @@ function contactToRow(contact, userId) {
     user_id: userId,
     name: contact.name || "",
     email: contact.email || "",
+    // The full labelled list. `email` stays as the primary so anything reading
+    // a single address keeps working, and so the column is still useful if
+    // this one is missing.
+    emails: contact.emails || [],
     company: contact.company || "",
     role: contact.role || "",
     industry: contact.industry || "",

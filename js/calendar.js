@@ -63,6 +63,18 @@ export const MAX_ATTENDEES = 12;
 
 const norm = (s) => String(s || "").trim().toLowerCase();
 
+/** Every address a contact can be reached at, lower-cased, primary included. */
+export function contactAddresses(contact) {
+  const out = new Set();
+  const primary = norm(contact?.email);
+  if (primary) out.add(primary);
+  for (const entry of contact?.emails || []) {
+    const address = norm(entry?.address);
+    if (address) out.add(address);
+  }
+  return [...out];
+}
+
 /** Calendar returns all-day events as `date` and timed ones as `dateTime`. */
 export function eventDate(event) {
   const raw = event?.end?.dateTime || event?.end?.date
@@ -99,12 +111,20 @@ export function eventHappened(event, todayIso) {
  * contact with no email saved can never match — that is the known cost of this
  * approach, and it is why the epic lists it as blocked on real contacts having
  * emails.
+ *
+ * EVERY address, not just the primary. People invite you from whichever
+ * account is relevant — work for a work meeting, personal for coffee — so
+ * matching one stored address missed every invite sent to any of the others,
+ * and a missed match is indistinguishable from "no meetings found".
  */
 export function attendeesInNetwork(event, contacts) {
   const byEmail = new Map();
   for (const c of contacts) {
-    const email = norm(c.email);
-    if (email) byEmail.set(email, c);
+    for (const address of contactAddresses(c)) {
+      // First contact wins if two share an address; a later one silently
+      // stealing the match would be worse than an arbitrary but stable choice.
+      if (!byEmail.has(address)) byEmail.set(address, c);
+    }
   }
 
   const found = [];

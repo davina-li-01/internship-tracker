@@ -354,6 +354,66 @@ function normalizeInteraction(item = {}) {
   };
 }
 
+/** One editable address row: label, address, and a way to remove it. */
+function emailRowHtml(entry, index) {
+  return '<div class="email-row" data-email-index="' + index + '">'
+    + '<select class="email-kind" aria-label="Type of address">'
+    + EMAIL_LABELS.map((l) => '<option value="' + l + '"'
+      + (l === entry.label ? ' selected' : '') + '>'
+      + l.charAt(0).toUpperCase() + l.slice(1) + '</option>').join("")
+    + '</select>'
+    + '<input type="email" class="email-address" value="' + escapeHtml(entry.address) + '"'
+    + ' placeholder="name@example.com" aria-label="Email address" />'
+    + '<button class="icon-btn email-remove" type="button" aria-label="Remove this address">✕</button>'
+    + '</div>';
+}
+
+/**
+ * Addresses a person can be reached at.
+ *
+ * One field was never enough: people have a work address, a personal one, one
+ * from school, one for a side project — and the calendar sends invites to
+ * whichever is relevant. Matching on a single stored address silently missed
+ * every meeting sent to any of the others, which looks identical to "no
+ * meetings found".
+ */
+const EMAIL_LABELS = ["personal", "work", "school", "other"];
+
+function normalizeEmail(item = {}) {
+  const label = EMAIL_LABELS.includes(item.label) ? item.label : "personal";
+  return {
+    id: item.id || makeId(),
+    label,
+    address: String(item.address || "").trim()
+  };
+}
+
+/**
+ * The whole list, de-duplicated, with the primary first.
+ *
+ * `contact.email` is kept as the first address rather than removed, so every
+ * existing read — mailto links, the capture form, search — keeps working
+ * against one string while matching gets the full set.
+ */
+function normalizeEmails(contact = {}) {
+  const raw = Array.isArray(contact.emails) ? contact.emails : [];
+  const list = raw.map(normalizeEmail).filter((e) => e.address);
+
+  // A contact saved before this existed has only the single column.
+  const legacy = String(contact.email || "").trim();
+  if (legacy && !list.some((e) => e.address.toLowerCase() === legacy.toLowerCase())) {
+    list.unshift(normalizeEmail({ label: "personal", address: legacy }));
+  }
+
+  const seen = new Set();
+  return list.filter((e) => {
+    const key = e.address.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function normalizeFollowUpItem(item = {}) {
   return {
     id: item.id || makeId(),
@@ -366,6 +426,7 @@ function normalizeFollowUpItem(item = {}) {
 
 function normalizeContact(contact = {}) {
   const frequency = contact.followUpFrequency || "none";
+  const emails = normalizeEmails(contact);
   const interactions = Array.isArray(contact.interactions)
     ? contact.interactions.map(normalizeInteraction)
     : [];
@@ -381,7 +442,8 @@ function normalizeContact(contact = {}) {
   return {
     id: contact.id || makeId(),
     name: (contact.name || "").trim(),
-    email: (contact.email || "").trim(),
+    email: emails[0]?.address || "",
+    emails,
     company: (contact.company || "").trim(),
     role: (contact.role || "").trim(),
     industry: (contact.industry || "").trim(),
@@ -578,20 +640,39 @@ function initSidebarToggle() {
   });
 }
 
+/**
+ * The sub-menu caret.
+ *
+ * Whether it starts open is decided by the inline script before first paint —
+ * doing it here meant the menu rendered closed and then expanded, and since
+ * every page is a full page load, Files blinked on every navigation.
+ *
+ * This only wires the toggle and keeps aria in step. `open` and `closed` are
+ * both explicit so a choice made this session beats the remembered default in
+ * either direction.
+ */
 function initNavDropdown() {
+  const remembered = document.body.classList.contains("nav-open");
+
   document.querySelectorAll(".s-group").forEach((group) => {
     const caret = group.querySelector(".s-caret");
     if (!caret) return;
-    const startOpen = group.querySelector(".s-sublink.active")
-      || localStorage.getItem("orbit_nav_open") === "true";
-    group.classList.toggle("open", Boolean(startOpen));
-    caret.setAttribute("aria-expanded", String(Boolean(startOpen)));
+
+    // A sub-page being current still forces it open, whatever was remembered.
+    if (group.querySelector(".s-sublink.active")) group.classList.add("open");
+
+    const isOpen = () => group.classList.contains("open")
+      || (remembered && !group.classList.contains("closed"));
+
+    caret.setAttribute("aria-expanded", String(isOpen()));
+
     caret.addEventListener("click", (e) => {
       e.preventDefault();
-      const open = !group.classList.contains("open");
-      group.classList.toggle("open", open);
-      caret.setAttribute("aria-expanded", String(open));
-      localStorage.setItem("orbit_nav_open", String(open));
+      const next = !isOpen();
+      group.classList.toggle("open", next);
+      group.classList.toggle("closed", !next);
+      caret.setAttribute("aria-expanded", String(next));
+      localStorage.setItem("orbit_nav_open", String(next));
     });
   });
 }
@@ -1790,7 +1871,8 @@ async function initMyNetwork() {
       if (industry && c.industry !== industry) return false;
       if (!matchesConnectionFilters(c, values)) return false;
       if (!q) return true;
-      return [c.name, c.role, c.company, c.industry, c.notes]
+      return [c.name, c.role, c.company, c.industry, c.notes,
+              ...(c.emails || []).map((e) => e.address)]
         .some((f) => f && f.toLowerCase().includes(q));
     });
 
@@ -1875,7 +1957,8 @@ async function initNetworkingLog() {
       if (industry && c.industry !== industry) return false;
       if (!matchesConnectionFilters(c, values)) return false;
       if (!filterText) return true;
-      return [c.name, c.role, c.company, c.industry, c.notes]
+      return [c.name, c.role, c.company, c.industry, c.notes,
+              ...(c.emails || []).map((e) => e.address)]
         .some((f) => f && f.toLowerCase().includes(filterText));
     });
 
@@ -2017,7 +2100,13 @@ async function initContactPage() {
           + '</div>'
         : '')
 
-      + (c.email ? '<a href="mailto:' + escapeHtml(c.email) + '" class="profile-email">✉ ' + escapeHtml(c.email) + '</a>' : '')
+      + (c.emails.length
+        ? '<span class="profile-emails">'
+          + c.emails.map((e) => '<a href="mailto:' + escapeHtml(e.address) + '" class="profile-email">'
+            + '<span class="email-label">' + escapeHtml(e.label) + '</span>'
+            + escapeHtml(e.address) + '</a>').join("")
+          + '</span>'
+        : '')
 
       + '<button class="btn btn-secondary btn-sm add-detail-btn" id="cpToggleEdit" type="button">+ Add role, company or industry</button>'
 
@@ -2033,7 +2122,11 @@ async function initContactPage() {
       + '<div class="field-group"><label>Industry</label>'
       + '<input type="text" id="cpIndustry" list="cpIndustries" value="' + escapeHtml(c.industry) + '" placeholder="Technology" /></div>'
       + '<div class="field-group"><label>Email</label>'
-      + '<input type="email" id="cpEmail" value="' + escapeHtml(c.email) + '" placeholder="email@example.com" /></div>'
+      + '<div id="cpEmailList" class="email-list">'
+      + c.emails.map((e, i) => emailRowHtml(e, i)).join("")
+      + '</div>'
+      + '<button class="link-btn email-add" id="cpAddEmail" type="button">+ Add another address</button>'
+      + '</div>'
       + '</div>'
       + '<div class="inline-edit-actions">'
       + '<input type="text" id="cpAddPast" list="cpCompanies" placeholder="Add a past company…" />'
@@ -2171,7 +2264,9 @@ async function initContactPage() {
           role: $("#cpRole").value.trim(),
           company,
           industry: $("#cpIndustry").value.trim(),
-          email: $("#cpEmail").value.trim(),
+          // normalizeContact keeps `email` in sync as the primary, so it is not
+          // set here — doing both would let them disagree.
+          emails: readEmailRows(),
           companyHistory: history
         };
       });
@@ -2180,6 +2275,41 @@ async function initContactPage() {
       setTimeout(() => { msg.textContent = ""; }, 2000);
       await renderPage();
     });
+
+    /** Reads the rows as typed, so an unsaved edit is never lost on add/remove. */
+    function readEmailRows() {
+      return [...root.querySelectorAll(".email-row")].map((row) => ({
+        label: row.querySelector(".email-kind").value,
+        address: row.querySelector(".email-address").value.trim()
+      })).filter((e) => e.address);
+    }
+
+    function attachEmailListeners() {
+      const list = root.querySelector("#cpEmailList");
+      if (!list) return;
+
+      root.querySelector("#cpAddEmail")?.addEventListener("click", () => {
+        // Rendered from what is on screen rather than from saved state, or
+        // adding a row would discard anything typed but not yet saved.
+        const current = readEmailRows();
+        current.push({ label: "work", address: "" });
+        list.innerHTML = current.map((e, i) => emailRowHtml(normalizeEmail(e), i)).join("");
+        attachEmailListeners();
+        list.querySelector(".email-row:last-child .email-address")?.focus();
+      });
+
+      list.querySelectorAll(".email-remove").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          btn.closest(".email-row").remove();
+          // An empty list still needs somewhere to type.
+          if (!list.querySelector(".email-row")) {
+            list.innerHTML = emailRowHtml(normalizeEmail({ label: "personal" }), 0);
+            attachEmailListeners();
+          }
+        });
+      });
+    }
+    attachEmailListeners();
 
     const addPast = async () => {
       const value = $("#cpAddPast").value.trim();
@@ -3108,9 +3238,10 @@ function openDisconnectModal(settingsRoot) {
  */
 function evaluateIntegrationsNav() {
   const show = calendar.countNotConnected() > 0;
-  document.querySelectorAll("[data-integrations-nav]").forEach((link) => {
-    link.hidden = !show;
-  });
+  // A body class rather than the hidden attribute, so the inline script can set
+  // the same thing before first paint and this only ever confirms it. Setting
+  // `hidden` here meant the item flashed on or off after every page load.
+  document.body.classList.toggle("nav-integrations", show);
 
   // Someone sitting on the page when the last integration connects should not
   // be stranded on a route that is no longer in the nav.

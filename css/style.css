@@ -2218,7 +2218,15 @@ input[type="date"] { padding-right: 0.6rem; }
   margin: 0.1rem 0 0.2rem 0.75rem; padding-left: 0.6rem;
   border-left: 2px solid var(--hairline);
 }
-.s-group.open .s-sub { display: flex; }
+/* Two ways in: the body class is set before first paint from the remembered
+   state, the group class by the caret at runtime. Without the first, the
+   sub-menu collapsed and reopened on every navigation. */
+.s-group.open .s-sub,
+body.nav-open .s-group .s-sub { display: flex; }
+body.nav-open .s-group .s-caret { transform: rotate(180deg); }
+/* A group explicitly closed this session beats the remembered default. */
+body.nav-open .s-group.closed .s-sub { display: none; }
+body.nav-open .s-group.closed .s-caret { transform: none; }
 .s-sublink {
   text-decoration: none; color: var(--text-muted);
   font-size: 0.82rem; font-weight: 500;
@@ -3320,6 +3328,10 @@ body.dark .sc-icon { color: var(--accent); }
 /* The grace note spans the whole reach-out strip instead of taking a column */
 .reachout-strip .grace-note { grid-column: 1 / -1; margin-top: 0.25rem; }
 
+/* The nav entry point is decided before paint too, so it cannot flash in. */
+[data-integrations-nav] { display: none; }
+body.nav-integrations [data-integrations-nav] { display: flex; }
+
 /* Dashboard is three tiles + ring/breakdown, so both grids are 3-wide */
 .kpi-row, .chart-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 
@@ -3965,3 +3977,37 @@ body.dark .link-btn { color: var(--accent); }
    left to the image so a different export cannot change the layout. */
 .gcal-mark { object-fit: contain; display: block; }
 img.int-icon { width: 26px; height: 26px; }
+
+/* ── Several addresses per person ─────────────────────────────────────────────
+   People have a work address, a personal one, one from school. A calendar
+   invite arrives at whichever is relevant, so one field was never enough. */
+.email-list { display: grid; gap: 0.4rem; }
+.email-row { display: grid; grid-template-columns: 7rem 1fr auto; gap: 0.4rem; align-items: center; }
+.email-kind { font-size: 0.8rem; padding: 0.5rem 0.55rem; }
+.email-address { font-size: 0.85rem; }
+.email-remove { flex-shrink: 0; padding: 0.35rem 0.45rem; }
+.email-add { margin-top: 0.45rem; font-size: 0.78rem; font-weight: 600; }
+
+.profile-emails { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.profile-email {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+/* The label rides with the address, so which one is which is never a guess. */
+.email-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.08rem 0.3rem;
+  border-radius: 4px;
+  background: rgba(249, 115, 22, 0.12);
+  color: var(--primary-deep);
+}
+body.dark .email-label { background: rgba(253, 186, 116, 0.16); color: var(--accent); }
+
+@media (max-width: 520px) {
+  .email-row { grid-template-columns: 1fr auto; }
+  .email-kind { grid-column: 1 / -1; }
+}

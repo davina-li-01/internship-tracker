@@ -534,6 +534,25 @@ marker.
 
 ---
 
+## Several addresses per person — 2026-08-10
+
+People have a work address, a personal one, one from school, one for a side
+project, and a calendar invite arrives at whichever is relevant. Matching one
+stored address missed every invite sent to any of the others — and a missed
+match is indistinguishable from "no meetings found", so it would never have been
+reported as a bug.
+
+`contacts.emails` is jsonb, for the same reason conversations and follow-ups
+are: no further migration as the shape grows. `contacts.email` is **not**
+dropped — it stays as the primary, so everything reading a single string
+(mailto, the capture form, search) keeps working, and `js/db.js` degrades to
+single-address behaviour if the column is missing rather than failing every save
+the way an unknown `starred` column once would have.
+
+`supabase/add-contact-emails.sql` back-fills from the address already stored.
+
+---
+
 ## Housekeeping (not in Confluence)
 
 - Orphan `internship_id` columns on `contacts` and `storage_files`, left from the
