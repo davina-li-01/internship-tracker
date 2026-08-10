@@ -4122,3 +4122,47 @@ body.dark .email-label { background: rgba(253, 186, 116, 0.16); color: var(--acc
 }
 .inline-edit-save .btn { margin-top: 0; }
 .inline-edit-save .success { margin: 0; }
+
+/* ── Contact profile: view first, edit on request ─────────────────────────────
+   Reading a record is the common act; editing it is the rare one. Everything
+   used to be an input all the time, which made a record you mostly read look
+   like a form you were expected to fill in. */
+.profile-hero { position: relative; }
+.profile-edit { position: absolute; top: 1.1rem; right: 1.2rem; z-index: 1; }
+
+.profile-name {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text);
+  /* Matches .profile-name-input's box so the heading does not shift when the
+     input replaces it. */
+  padding: 0.1rem 0.4rem;
+  margin-left: -0.4rem;
+}
+
+.view-field label { margin-bottom: 0.25rem; }
+.view-value {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.view-empty { color: var(--text-faint); }
+
+.view-emails { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.3rem; }
+.view-emails li { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
+.view-emails a {
+  font-size: 0.9rem;
+  color: var(--text);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.view-emails a:hover { color: var(--primary-deep); text-decoration: underline; }
+body.dark .view-emails a:hover { color: var(--accent); }
+
+@media (max-width: 560px) {
+  .profile-edit { position: static; align-self: flex-start; margin-bottom: 0.6rem; }
+}

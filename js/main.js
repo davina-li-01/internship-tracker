@@ -354,6 +354,49 @@ function normalizeInteraction(item = {}) {
   };
 }
 
+/**
+ * The details, read-only.
+ *
+ * Default state, because reading a record is the common act and editing it is
+ * the rare one. A screen of inputs reads as a form you are expected to fill in;
+ * this reads as what you know about someone.
+ *
+ * Deliberately the same grid as the editor, so switching modes moves nothing.
+ */
+function detailsViewHtml(c, pastCompanies) {
+  const field = (label, value, extraClass = "") =>
+    '<div class="field-group view-field ' + extraClass + '">'
+    + '<label>' + label + '</label>'
+    + '<p class="view-value' + (value ? '' : ' view-empty') + '">'
+    + (value ? escapeHtml(value) : "Not set") + '</p>'
+    + '</div>';
+
+  return '<div class="inline-edit-grid">'
+    + field("Role / Title", c.role)
+    + field("Current company", c.company)
+    + field("Industry", c.industry)
+
+    + '<div class="field-group view-field field-email">'
+    + '<label>Email</label>'
+    + (c.emails.length
+      ? '<ul class="view-emails">' + c.emails.map((e) =>
+          '<li><span class="email-label">' + escapeHtml(e.label) + '</span>'
+          + '<a href="mailto:' + escapeHtml(e.address) + '">' + escapeHtml(e.address) + '</a></li>').join("")
+        + '</ul>'
+      : '<p class="view-value view-empty">Not set</p>')
+    + '</div>'
+
+    + '<div class="field-group view-field field-past">'
+    + '<label>Past companies</label>'
+    + (pastCompanies.length
+      ? '<div class="past-tokens">' + pastCompanies.map((co) =>
+          '<span class="token token-past">' + escapeHtml(co) + '</span>').join("")
+        + '</div>'
+      : '<p class="view-value view-empty">None</p>')
+    + '</div>'
+    + '</div>';
+}
+
 /** One editable address row: label, address, and a way to remove it. */
 function emailRowHtml(entry, index) {
   return '<div class="email-row" data-email-index="' + index + '">'
@@ -2057,6 +2100,8 @@ async function initContactPage() {
     await db.saveContact(normalizeContact(updateFn(c)));
   }
 
+  let editing = false;
+
   async function renderPage() {
     const c = await freshContact();
     if (!c) {
@@ -2080,10 +2125,16 @@ async function initContactPage() {
 
       // ── Hero: identity on the left, reach-out panel on the right ──────────
       + '<div class="card profile-hero">'
+      + (editing
+        ? ''
+        : '<button class="btn btn-secondary btn-sm profile-edit" id="cpEditBtn" type="button">Edit</button>')
       + '<div class="profile-identity">'
       + '<div class="profile-avatar" aria-hidden="true">' + escapeHtml(initialsFor(c.name)) + '</div>'
       + '<div class="profile-id-text">'
-      + '<input type="text" id="cpNameInput" class="profile-name-input" value="' + escapeHtml(c.name) + '" aria-label="Name" />'
+      + (editing
+        ? '<input type="text" id="cpNameInput" class="profile-name-input" value="'
+          + escapeHtml(c.name) + '" aria-label="Name" />'
+        : '<h1 class="profile-name">' + escapeHtml(c.name || "Unnamed") + '</h1>')
       // One line, derived, read-only. Every one of these facts used to appear
       // twice — as a labelled block here AND as an input directly below — which
       // is what made this card long and lopsided. A field that is editable in
@@ -2095,61 +2146,56 @@ async function initContactPage() {
         : '<span class="profile-role-empty">Add their role and company below</span>')
       + '</p>'
 
-      // Always visible. This was behind a "+ Add role, company or industry"
-      // toggle, which read as a way to ADD things and gave no hint that what
-      // you had already entered was in there — so the only way to check a
-      // saved value was to open an editor you had no reason to open.
+      // View by default, edit on request. Everything used to be an input all
+      // the time, which made a record you mostly read look like a form you were
+      // expected to fill in — and made an accidental keystroke an edit.
       + '<div class="inline-edit" id="cpInlineEdit">'
-      + companyDatalist(allContacts, "cpCompanies")
-      + industryDatalist(allContacts, "cpIndustries")
-      + '<div class="inline-edit-grid">'
+      + (editing
+        ? companyDatalist(allContacts, "cpCompanies")
+          + industryDatalist(allContacts, "cpIndustries")
+          + '<div class="inline-edit-grid">'
 
-      + '<div class="field-group"><label for="cpRole">Role / Title</label>'
-      + '<input type="text" id="cpRole" value="' + escapeHtml(c.role) + '" placeholder="Product Manager" /></div>'
+          + '<div class="field-group"><label for="cpRole">Role / Title</label>'
+          + '<input type="text" id="cpRole" value="' + escapeHtml(c.role) + '" placeholder="Product Manager" /></div>'
 
-      + '<div class="field-group"><label for="cpCompany">Current company</label>'
-      + '<input type="text" id="cpCompany" list="cpCompanies" value="' + escapeHtml(c.company) + '" placeholder="Where they work now" /></div>'
+          + '<div class="field-group"><label for="cpCompany">Current company</label>'
+          + '<input type="text" id="cpCompany" list="cpCompanies" value="' + escapeHtml(c.company) + '" placeholder="Where they work now" /></div>'
 
-      + '<div class="field-group"><label for="cpIndustry">Industry '
-      + '<span class="opt-label">(optional)</span></label>'
-      + '<input type="text" id="cpIndustry" list="cpIndustries" value="' + escapeHtml(c.industry) + '" placeholder="Technology" /></div>'
+          + '<div class="field-group"><label for="cpIndustry">Industry '
+          + '<span class="opt-label">(optional)</span></label>'
+          + '<input type="text" id="cpIndustry" list="cpIndustries" value="' + escapeHtml(c.industry) + '" placeholder="Technology" /></div>'
 
-      // Repeatable fields carry a + on the label rather than a sentence
-      // underneath — it sits with the thing it adds to, and stays out of the
-      // way once there are several rows.
-      + '<div class="field-group field-multi field-email">'
-      + '<div class="field-head"><label>Email</label>'
-      + '<button class="field-add" id="cpAddEmail" type="button"'
-      + ' aria-label="Add another email address" title="Add another address">+</button></div>'
-      + '<div id="cpEmailList" class="email-list">'
-      + (c.emails.length
-        ? c.emails.map((e, i) => emailRowHtml(e, i)).join("")
-        : emailRowHtml(normalizeEmail({ label: "personal" }), 0))
-      + '</div></div>'
+          + '<div class="field-group field-multi field-email">'
+          + '<div class="field-head"><label>Email</label>'
+          + '<button class="field-add" id="cpAddEmail" type="button"'
+          + ' aria-label="Add another email address" title="Add another address">+</button></div>'
+          + '<div id="cpEmailList" class="email-list">'
+          + (c.emails.length
+            ? c.emails.map((e, i) => emailRowHtml(e, i)).join("")
+            : emailRowHtml(normalizeEmail({ label: "personal" }), 0))
+          + '</div></div>'
 
-      + '<div class="field-group field-multi field-past">'
-      + '<div class="field-head"><label for="cpAddPast">Past companies</label>'
-      + '<button class="field-add" id="cpAddPastBtn" type="button"'
-      + ' aria-label="Add a past company" title="Add a past company">+</button></div>'
-      // The tokens live with the field that manages them, rather than in a
-      // separate block further up the card.
-      + (pastCompanies.length
-        ? '<div class="past-tokens">' + pastCompanies.map((co) =>
-            '<span class="token token-past">' + escapeHtml(co)
-            + '<button class="token-x" type="button" data-remove-company="' + escapeHtml(co)
-            + '" aria-label="Remove ' + escapeHtml(co) + '">✕</button></span>').join("")
+          + '<div class="field-group field-multi field-past">'
+          + '<div class="field-head"><label for="cpAddPast">Past companies</label>'
+          + '<button class="field-add" id="cpAddPastBtn" type="button"'
+          + ' aria-label="Add a past company" title="Add a past company">+</button></div>'
+          + (pastCompanies.length
+            ? '<div class="past-tokens">' + pastCompanies.map((co) =>
+                '<span class="token token-past">' + escapeHtml(co)
+                + '<button class="token-x" type="button" data-remove-company="' + escapeHtml(co)
+                + '" aria-label="Remove ' + escapeHtml(co) + '">✕</button></span>').join("")
+              + '</div>'
+            : '')
+          + '<input type="text" id="cpAddPast" list="cpCompanies" placeholder="Add a past company" />'
           + '</div>'
-        : '')
-      + '<input type="text" id="cpAddPast" list="cpCompanies" placeholder="Add a past company" />'
-      + '</div>'
 
-      + '</div>'
-      + '<div class="inline-edit-save">'
-      + '<button class="btn" id="cpSaveDetailsBtn" type="button">Save details</button>'
-      + '<p id="cpSaveDetailsMsg" class="success" aria-live="polite"></p>'
-      + '</div>'
-      + '</div>'
-
+          + '</div>'
+          + '<div class="inline-edit-save">'
+          + '<button class="btn" id="cpSaveDetailsBtn" type="button">Save</button>'
+          + '<button class="btn btn-secondary" id="cpCancelEdit" type="button">Cancel</button>'
+          + '<p id="cpSaveDetailsMsg" class="success" aria-live="polite"></p>'
+          + '</div>'
+        : detailsViewHtml(c, pastCompanies))
       + '</div>'
       + '</div>'
 
@@ -2251,10 +2297,23 @@ async function initContactPage() {
   function wireProfile(c) {
     const $ = (sel) => root.querySelector(sel);
 
-    $("#cpNameInput").addEventListener("blur", async (e) => {
+    $("#cpNameInput")?.addEventListener("blur", async (e) => {
       const newName = e.target.value.trim();
       if (!newName) { e.target.value = (await freshContact())?.name || ""; return; }
       await save((cur) => ({ ...cur, name: newName }));
+    });
+
+    $("#cpEditBtn")?.addEventListener("click", async () => {
+      editing = true;
+      await renderPage();
+      $("#cpRole")?.focus();
+    });
+
+    $("#cpCancelEdit")?.addEventListener("click", async () => {
+      // Re-renders from saved state, so cancelling discards rather than keeping
+      // whatever was half-typed.
+      editing = false;
+      await renderPage();
     });
 
     /** Everything currently typed into the details form. */
@@ -2288,12 +2347,11 @@ async function initContactPage() {
       };
     }
 
-    $("#cpSaveDetailsBtn").addEventListener("click", async () => {
+    $("#cpSaveDetailsBtn")?.addEventListener("click", async () => {
       await save(applyDetails);
-      const msg = $("#cpSaveDetailsMsg");
-      msg.textContent = "Saved!";
-      setTimeout(() => { msg.textContent = ""; }, 2000);
+      editing = false;
       await renderPage();
+      showToast("Details saved.");
     });
 
     /** Reads the rows as typed, so an unsaved edit is never lost on add/remove. */
@@ -2341,8 +2399,8 @@ async function initContactPage() {
       await save((cur) => applyDetails(cur, value));
       await renderPage();
     };
-    $("#cpAddPastBtn").addEventListener("click", addPast);
-    $("#cpAddPast").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addPast(); } });
+    $("#cpAddPastBtn")?.addEventListener("click", addPast);
+    $("#cpAddPast")?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addPast(); } });
 
     root.querySelectorAll("[data-remove-company]").forEach((btn) => {
       btn.addEventListener("click", async (e) => {
