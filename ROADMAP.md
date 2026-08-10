@@ -388,6 +388,43 @@ load time, so a passing suite is a suite that passed against what ships.
 
 ---
 
+## Found by using it — 2026-08-09/10
+
+**The Google popup on every refresh.** `markSynced` was only stamped on success,
+so a failing sync never backed off: `autoSyncDue` stayed true, every page load
+retried, and every retry asked Google for a token. A backoff that only applies
+when things are working is not a backoff. Now stamped on the attempt.
+
+**"Connected" meant a token, not a calendar.** `connectCalendar` remembered the
+connection immediately after the grant and before the first fetch, so Settings
+read *Connected — checked automatically every few hours* while every read
+returned 403. The fetch has to succeed first.
+
+**401 and 403 were the same error.** Both produced "Google access expired.
+Connect again", which sends you round the reconnect loop when the real cause is
+usually that the Calendar API was never enabled for the project. Google explains
+itself in the response body and it was being discarded.
+
+**A conversation you already wrote up got offered again.** `alreadyLogged`
+compares event ids, then falls back to date plus title — which cannot recognise
+your own wording as the same meeting. The review modal now detects a same-day
+entry, unticks it, quotes what is already there, and offers *skip* / *merge into
+what I wrote* / *log separately*. Only the user knows which.
+
+**Conversations could not be deleted.** So a wrong sync could not be undone
+except by editing notes to nothing. Delete confirms rather than offering undo:
+unlike a reach-out, notes cannot be reconstructed, and an eight-second toast is
+a poor guardian of the only copy. Removing the newest conversation moves
+`lastContacted` back to whatever is now newest, or the health bar keeps counting
+from a touchpoint that no longer exists.
+
+**Every conversation opened expanded.** The newest auto-opened and pushed the
+rest down the page. All collapsed now, with the first line of the notes on the
+closed row — for calendar-logged entries that is the meeting title, plus a 📅
+marker.
+
+---
+
 ## Housekeeping (not in Confluence)
 
 - Orphan `internship_id` columns on `contacts` and `storage_files`, left from the

@@ -813,16 +813,26 @@ function renderInteractionTimeline(interactions, files = []) {
   return interactions.map((item, i) => {
     const attached = (item.fileIds || []).map((id) => byId.get(id)).filter(Boolean);
 
+    // The first line, shown on the closed row. For anything the calendar logged
+    // that is the meeting title, which is the thing worth seeing without having
+    // to open every entry to find the one you meant.
+    const headline = (item.notes || "").split("\n")[0].trim();
+
     const summary = '<summary class="convo-summary">'
       + '<span class="convo-caret" aria-hidden="true">▸</span>'
       + '<span class="convo-date">' + formatDate(item.date) + '</span>'
       + '<span class="tag">' + escapeHtml(item.type) + '</span>'
+      + (headline
+        ? '<span class="convo-headline">' + escapeHtml(headline) + '</span>'
+        : '<span class="tiny muted">no notes</span>')
       // Flagged on the summary too, because a collapsed conversation would
       // otherwise hide the fact that anything is attached to it.
       + (attached.length
         ? '<span class="convo-clip" title="' + attached.length + ' attached">📎 ' + attached.length + '</span>'
         : '')
-      + (item.notes ? '' : '<span class="tiny muted">no notes</span>')
+      + (item.sourceEventId
+        ? '<span class="convo-source" title="Logged from your calendar">📅</span>'
+        : '')
       + '</summary>';
 
     // Every conversation is editable. Before this, a saved conversation was
@@ -832,8 +842,12 @@ function renderInteractionTimeline(interactions, files = []) {
       + (item.notes
         ? '<p class="convo-note">' + escapeHtml(item.notes) + '</p>'
         : '<p class="convo-note muted">No notes yet — what did you talk about?</p>')
+      + '<div class="convo-actions">'
       + '<button class="convo-edit" type="button" data-edit-convo="' + escapeHtml(item.id) + '">'
       + (item.notes ? 'Edit notes' : 'Add notes') + '</button>'
+      + '<button class="convo-delete" type="button" data-delete-convo="' + escapeHtml(item.id) + '">'
+      + 'Delete</button>'
+      + '</div>'
       + '</div>';
 
     const attachments = attached.length
@@ -845,9 +859,9 @@ function renderInteractionTimeline(interactions, files = []) {
         + '</ul>'
       : '';
 
-    // Newest conversation starts open; the rest stay collapsed.
-    return '<details class="convo"' + (i === 0 ? " open" : "") + '>'
-      + summary + body + attachments + '</details>';
+    // All collapsed. The headline carries enough to find the one you want, so
+    // opening the newest by default just pushed everything else down the page.
+    return '<details class="convo">' + summary + body + attachments + '</details>';
   }).join("\n");
 }
 
@@ -2348,6 +2362,45 @@ async function initContactPage() {
    * the text actually changed, so opening an editor by accident costs nothing.
    */
   function attachConversationEditors() {
+    // Deleting is confirmed rather than undoable: unlike a reach-out, a
+    // conversation carries notes you cannot reconstruct, and an undo toast that
+    // vanishes after eight seconds is a poor guardian of the only copy.
+    root.querySelectorAll("[data-delete-convo]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.deleteConvo;
+        const current = await freshContact();
+        const item = (current?.interactions || []).find((i) => i.id === id);
+        if (!item) return;
+
+        const headline = (item.notes || "").split("\n")[0].trim();
+        const label = headline ? `"${headline.slice(0, 60)}"` : "this conversation";
+        if (!window.confirm(
+          `Delete ${label} from ${formatDate(item.date)}?\n\nThis cannot be undone.`
+        )) return;
+
+        btn.disabled = true;
+        await save((cur) => {
+          const kept = (cur.interactions || []).filter((i) => i.id !== id);
+          const newest = [...kept].sort((a, b) => b.date.localeCompare(a.date))[0];
+          return {
+            ...cur,
+            interactions: kept,
+            // Removing the most recent conversation has to move the relationship
+            // back to whatever is now newest, or the health bar keeps counting
+            // from a touchpoint that no longer exists.
+            lastContacted: newest ? newest.date : (cur.dateMet || ""),
+            nextReminder: !cur.reminderEnabled || cur.followUpFrequency === "none"
+              ? cur.nextReminder
+              : calculateNextReminder(
+                  newest ? newest.date : (cur.dateMet || todayDateString()),
+                  cur.followUpFrequency)
+          };
+        });
+        await renderPage();
+        showToast("Conversation deleted.");
+      });
+    });
+
     root.querySelectorAll("[data-edit-convo]").forEach((btn) => {
       btn.addEventListener("click", () => {
         const wrap = btn.closest(".convo-body");
@@ -2715,6 +2768,13 @@ async function initCalendarAutoSync() {
   if (!contacts.some((c) => (c.email || "").trim())) return;
 
   const result = await calendar.silentSync(contacts, todayDateString());
+  // Stamped on the ATTEMPT, not on success. Only stamping successes meant a
+  // failing sync never backed off: autoSyncDue stayed true, so every page load
+  // retried, and every retry asked Google for a token — which is a popup on
+  // every single refresh. A backoff that only applies when things are working
+  // is not a backoff.
+  calendar.markSynced(now);
+
   const candidates = result?.candidates ?? null;
   if (result) renderUpcomingMeetings();
 
@@ -2832,22 +2892,51 @@ function openCalendarReviewModal(candidates, contacts) {
   // moment you actually remember the meeting. A synced conversation whose notes
   // are just the event title is a record that it happened, not what was said —
   // and the substance is the part Orbit exists to keep.
-  const rows = candidates.map((c, i) => '<li class="cal-row">'
-    + '<label class="cal-check">'
-    + '<input type="checkbox" class="cal-pick" data-index="' + i + '" checked />'
-    + '<span class="cal-row-main">'
-    + '<span class="cal-row-title">' + escapeHtml(c.title) + '</span>'
-    + '<span class="tiny muted">' + escapeHtml(c.contactName) + ' · '
-    + formatDate(c.date) + ' · ' + escapeHtml(c.type) + '</span>'
-    + '</span>'
-    + '</label>'
-    + '<div class="cal-notes-wrap">'
-    + '<button class="cal-notes-toggle" type="button" data-notes-for="' + i + '">'
-    + '+ Add notes</button>'
-    + '<textarea class="cal-notes" data-notes-index="' + i + '" rows="3" hidden'
-    + ' placeholder="What did you talk about? What should you bring up next time?"></textarea>'
-    + '</div>'
-    + '</li>').join("");
+  const rows = candidates.map((c, i) => {
+    const clash = c.existing;
+    // A candidate landing on a day you already wrote about is not a duplicate
+    // Orbit can resolve on its own — only you know whether they were the same
+    // conversation. So it is unticked, flagged, and offers the three answers
+    // that actually exist.
+    const clashHtml = clash
+      ? '<div class="cal-clash">'
+        + '<p class="cal-clash-head">You already logged something with '
+        + escapeHtml(c.contactName) + ' on ' + formatDate(c.date) + ':</p>'
+        + '<p class="cal-clash-quote">'
+        + escapeHtml((clash.notes || "(no notes)").split("\n")[0].slice(0, 140))
+        + '</p>'
+        + '<div class="cal-clash-choices" role="radiogroup"'
+        + ' aria-label="What to do with ' + escapeHtml(c.title) + '">'
+        + '<label><input type="radio" name="clash' + i + '" value="skip" checked />'
+        + ' Same conversation — skip it</label>'
+        + '<label><input type="radio" name="clash' + i + '" value="merge" />'
+        + ' Same conversation — add the meeting title to what I wrote</label>'
+        + '<label><input type="radio" name="clash' + i + '" value="add" />'
+        + ' Different conversation — log it separately</label>'
+        + '</div>'
+        + '</div>'
+      : '';
+
+    return '<li class="cal-row' + (clash ? ' cal-row-clash' : '') + '">'
+      + '<label class="cal-check">'
+      + '<input type="checkbox" class="cal-pick" data-index="' + i + '"'
+      + (clash ? '' : ' checked') + ' />'
+      + '<span class="cal-row-main">'
+      + '<span class="cal-row-title">' + escapeHtml(c.title) + '</span>'
+      + '<span class="tiny muted">' + escapeHtml(c.contactName) + ' · '
+      + formatDate(c.date) + ' · ' + escapeHtml(c.type)
+      + (clash ? ' · <strong>already logged that day</strong>' : '') + '</span>'
+      + '</span>'
+      + '</label>'
+      + clashHtml
+      + '<div class="cal-notes-wrap">'
+      + '<button class="cal-notes-toggle" type="button" data-notes-for="' + i + '">'
+      + '+ Add notes</button>'
+      + '<textarea class="cal-notes" data-notes-index="' + i + '" rows="3" hidden'
+      + ' placeholder="What did you talk about? What should you bring up next time?"></textarea>'
+      + '</div>'
+      + '</li>';
+  }).join("");
 
   const modal = document.createElement("div");
   modal.id = "calReviewModal";
@@ -2890,8 +2979,10 @@ function openCalendarReviewModal(candidates, contacts) {
       .map((el) => {
         const index = Number(el.dataset.index);
         const typed = modal.querySelector('[data-notes-index="' + index + '"]')?.value.trim() || "";
-        return { ...candidates[index], notes: typed };
-      });
+        const choice = modal.querySelector('input[name="clash' + index + '"]:checked')?.value || "add";
+        return { ...candidates[index], notes: typed, resolution: choice };
+      })
+      .filter((c) => c.resolution !== "skip");
     if (!picked.length) { close(); return; }
 
     btn.disabled = true;
@@ -2933,7 +3024,24 @@ async function applyCalendarCandidates(picked, contacts) {
     const contact = contacts.find((c) => c.id === contactId);
     if (!contact) { failed += items.length; continue; }
 
-    const added = items.map((item) => normalizeInteraction({
+    // "merge" folds the meeting into the conversation already there instead of
+    // creating a second one. It keeps what you wrote and adds the title and the
+    // event id, so a later sync recognises it and never offers it again.
+    const toMerge = items.filter((i) => i.resolution === "merge" && i.existing);
+    const toAdd = items.filter((i) => i.resolution !== "merge" || !i.existing);
+
+    let interactions = (contact.interactions || []).map((existing) => {
+      const match = toMerge.find((m) => m.existing.id === existing.id);
+      if (!match) return existing;
+      const parts = [match.title, existing.notes, match.notes].filter(Boolean);
+      return normalizeInteraction({
+        ...existing,
+        notes: parts.join("\n\n"),
+        sourceEventId: match.eventId
+      });
+    });
+
+    const added = toAdd.map((item) => normalizeInteraction({
       date: item.date,
       type: item.type,
       // Anything typed goes under the meeting name rather than replacing it —
@@ -2942,7 +3050,7 @@ async function applyCalendarCandidates(picked, contacts) {
       sourceEventId: item.eventId
     }));
 
-    const merged = [...added, ...(contact.interactions || [])]
+    const merged = [...added, ...interactions]
       .sort((a, b) => b.date.localeCompare(a.date));
 
     const saved = await db.saveContact(normalizeContact({

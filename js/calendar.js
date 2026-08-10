@@ -275,13 +275,26 @@ export function findCandidates(events, contacts, todayIso) {
 
     for (const contact of attendeesInNetwork(event, contacts)) {
       if (alreadyLogged(contact, event)) continue;
+
+      // Not the same as alreadyLogged. That answers "is this exact meeting
+      // already in the history"; this answers "did you already write something
+      // about this person on this day", which is the far more common case —
+      // you logged the coffee yourself, in your own words, and the calendar has
+      // no way to recognise your wording as the same event. Adding it blindly
+      // gives you the conversation twice.
+      const date = eventDate(event);
+      const sameDay = (contact.interactions || []).find((i) => i.date === date);
+
       candidates.push({
         contactId: contact.id,
         contactName: contact.name,
         eventId: event.id,
         title: (event.summary || "Untitled meeting").trim(),
-        date: eventDate(event),
-        type: interactionTypeFor(event)
+        date,
+        type: interactionTypeFor(event),
+        existing: sameDay
+          ? { id: sameDay.id, notes: sameDay.notes || "", type: sameDay.type }
+          : null
       });
     }
   }

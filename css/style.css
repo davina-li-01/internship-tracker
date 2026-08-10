@@ -3682,3 +3682,68 @@ body.dark .upcoming-link { color: var(--accent); }
   .upcoming-row { flex-direction: column; gap: 0.25rem; }
   .upcoming-when { flex-direction: row; gap: 0.4rem; align-items: baseline; }
 }
+
+/* ── Conversation summary line ────────────────────────────────────────────────
+   Every conversation is collapsed now, so the closed row has to carry enough to
+   find the one you want — for calendar-logged entries that is the meeting name. */
+.convo-headline {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.convo-source { flex-shrink: 0; font-size: 0.75rem; opacity: 0.75; }
+.convo-actions { display: flex; gap: 0.75rem; align-items: center; margin-top: 0.35rem; }
+.convo-delete {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.convo-delete:hover { color: var(--danger); text-decoration: underline; }
+.convo-delete:focus-visible { outline: 2px solid var(--danger); outline-offset: 2px; }
+
+/* ── Same-day collision in the calendar review ────────────────────────────────
+   Only the user knows whether two entries on one day were the same
+   conversation, so this asks instead of guessing. */
+.cal-row-clash { background: rgba(249, 115, 22, 0.05); }
+body.dark .cal-row-clash { background: rgba(249, 115, 22, 0.08); }
+.cal-clash {
+  margin: 0 0.85rem 0.5rem 2.05rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid rgba(249, 115, 22, 0.3);
+  border-radius: 10px;
+}
+.cal-clash-head { margin: 0 0 0.3rem; font-size: 0.76rem; font-weight: 600; color: var(--text); }
+.cal-clash-quote {
+  margin: 0 0 0.5rem;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--hairline);
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.cal-clash-choices { display: flex; flex-direction: column; gap: 0.3rem; }
+.cal-clash-choices label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  font-size: 0.76rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text);
+  cursor: pointer;
+}
+.cal-clash-choices input[type="radio"] {
+  width: 13px; height: 13px; min-width: 13px;
+  padding: 0; margin-top: 0.15rem;
+  flex-shrink: 0; accent-color: var(--primary);
+}
