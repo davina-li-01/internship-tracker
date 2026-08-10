@@ -3990,13 +3990,43 @@ body.dark .link-btn { color: var(--accent); }
    set it: a week of meetings must scroll inside the card instead of stretching
    the ring and breakdown alongside it. */
 .upcoming-slot { min-width: 0; }
+/* The cap is what makes overflow-y do anything.
+   `flex: 1; min-height: 0` only lets the list shrink inside a card that is
+   ALREADY bounded, and nothing bounded this one: .chart-row stretches to its
+   tallest child, so five meetings made this card 735px and dragged the ring
+   and the breakdown to 735px with it — two cards of empty space to pay for a
+   list that still never scrolled. A max-height means the card holds the row's
+   height instead of setting it. */
 .upcoming-slot .upcoming-list {
   flex: 1;
   min-height: 0;
+  max-height: 11.5rem;
   overflow-y: auto;
+  overscroll-behavior: contain;
   margin: 0 -0.25rem;
   padding: 0 0.25rem;
 }
+/* Softens the cut so a row clipped mid-height reads as "there is more below"
+   rather than as a rendering fault. Removed once you reach the end, or it
+   would keep implying content that is not there. */
+.upcoming-slot .upcoming-list.is-scrollable:not(.at-end) {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.75rem), transparent);
+          mask-image: linear-gradient(to bottom, #000 calc(100% - 1.75rem), transparent);
+}
+/* A count, so the card says how much is hidden rather than leaving you to
+   discover it by scrolling. */
+.chart-count {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.42rem;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--primary) 13%, transparent);
+  color: var(--primary-deep);
+  font-size: 0.68rem;
+  font-weight: 800;
+  vertical-align: 0.12em;
+}
+body.dark .chart-count { color: var(--accent); }
 .upcoming-slot .upcoming-row { padding: 0.55rem 0; gap: 0.55rem; }
 .upcoming-slot .upcoming-when { flex-basis: 4.6rem; }
 .upcoming-slot .upcoming-day { font-size: 0.74rem; }

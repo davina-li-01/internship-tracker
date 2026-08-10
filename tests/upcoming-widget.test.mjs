@@ -60,6 +60,38 @@ eq("the Zoom row links out",
 eq("the in-person row does not invent one",
   rows[0].querySelector(".upcoming-link"), null);
 
+group("The card holds its height instead of setting it");
+// The bug: .chart-row stretches to its tallest child, and nothing bounded this
+// card — five meetings made it 735px and dragged the ring and the breakdown to
+// 735px with it, while the list still never scrolled. The height cap lives in
+// CSS (verified by rendering), so what is checked here is everything the card
+// has to get right for that cap to mean anything.
+cal.cacheUpcoming(Array.from({ length: 9 }, (_, i) => ({
+  eventId: "m" + i, title: "Meeting " + i, date: today, time: "10:00 AM",
+  iso: at(i + 2), endIso: at(i + 3), medium: { label: "Zoom", url: "https://zoom.us/j/" + i },
+  people: person
+})), NOW);
+main.renderUpcomingMeetings();
+
+eq("every meeting is rendered — the list scrolls, so none are dropped",
+  slot.querySelectorAll(".upcoming-row").length, 9);
+eq("the count says how many there are",
+  slot.querySelector(".chart-count")?.textContent, "9");
+ok("the list is one scroll container, not one per row",
+  slot.querySelectorAll(".upcoming-list").length === 1);
+
+group("The fade only claims there is more when there is");
+// jsdom reports zero for both heights, which is the not-scrollable case.
+const list = slot.querySelector(".upcoming-list");
+ok("nothing to scroll: no fade", !list.classList.contains("is-scrollable"));
+ok("and marked as ended, so no gradient is applied", list.classList.contains("at-end"));
+
+group("One meeting needs no count");
+cal.cacheUpcoming([{ eventId: "solo", title: "Just the one", date: today, time: "9:00 AM",
+  iso: at(2), endIso: at(3), medium: { label: "Zoom", url: "" }, people: person }], NOW);
+main.renderUpcomingMeetings();
+eq("a count of 1 is noise, not information", slot.querySelector(".chart-count"), null);
+
 group("Nothing cached at all");
 cal.clearUpcoming();
 main.renderUpcomingMeetings();

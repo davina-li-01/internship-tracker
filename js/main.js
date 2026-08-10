@@ -3554,7 +3554,10 @@ function renderUpcomingMeetings() {
       : '<button class="btn btn-secondary btn-sm" id="dashSyncBtn" type="button">Sync now</button>')
     + '</div>';
 
-  const items = calendar.readUpcoming().slice(0, 5);
+  // No slice. The old cap of 5 existed only because the card grew with the
+  // list and a long week wrecked the dashboard row; the list scrolls within a
+  // fixed height now, so dropping meetings on the floor buys nothing.
+  const items = calendar.readUpcoming();
   if (!items.length) {
     slot.innerHTML = '<h3 class="chart-title">Coming up</h3>'
       + '<p class="chart-sub muted">Next ' + calendar.UPCOMING_DAYS + ' days</p>'
@@ -3597,11 +3600,36 @@ function renderUpcomingMeetings() {
       + '</li>';
   }).join("");
 
-  slot.innerHTML = '<h3 class="chart-title">Coming up</h3>'
+  slot.innerHTML = '<h3 class="chart-title">Coming up'
+    + (items.length > 1 ? '<span class="chart-count">' + items.length + '</span>' : '')
+    + '</h3>'
     + '<p class="chart-sub muted">And what you wanted to raise</p>'
     + syncBar
     + '<ul class="upcoming-list">' + rows + '</ul>';
+  wireUpcomingScroll(slot.querySelector(".upcoming-list"));
   wireDashboardSync(slot);
+}
+
+/**
+ * The fade at the bottom of the list, on only while there is more to see.
+ *
+ * Applied from JS rather than always-on in CSS because a permanent fade over a
+ * list that fits is just a washed-out last row, and a fade that stays at the
+ * bottom of the scroll keeps promising content that has run out.
+ */
+function wireUpcomingScroll(list) {
+  if (!list) return;
+  const update = () => {
+    const scrollable = list.scrollHeight > list.clientHeight + 1;
+    list.classList.toggle("is-scrollable", scrollable);
+    list.classList.toggle("at-end",
+      !scrollable || list.scrollTop + list.clientHeight >= list.scrollHeight - 2);
+  };
+  list.addEventListener("scroll", update, { passive: true });
+  update();
+  // Layout is not settled on the first pass — the card is still being sized by
+  // its row — so the initial measurement can be taken against the wrong height.
+  requestAnimationFrame(update);
 }
 
 /** The Sync now button (ORB-35). Same path as Settings, fewer clicks away. */
