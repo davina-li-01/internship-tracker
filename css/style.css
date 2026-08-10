@@ -2407,9 +2407,13 @@ body.dark .token-industry { color: var(--accent); }
 /* ── Contact profile ─────────────────────────────────────────── */
 .back-btn { align-self: flex-start; }
 
+/* One column. This reserved a 260px second column for a reach-out panel that
+   moved into its own full-width strip below, so the card had a permanently
+   empty right third — the top half stopping short while the bottom half ran
+   the full width is what read as uneven. */
 .profile-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-lg);
   align-items: start;
 }
@@ -2420,7 +2424,21 @@ body.dark .token-industry { color: var(--accent); }
   font-size: 1.35rem; font-weight: 800; color: #fff;
   background: linear-gradient(135deg, var(--primary), var(--primary-deep));
 }
-.profile-id-text { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; }
+/* flex:1 so the text column fills the card beside the avatar. Without it this
+   sized to its content, so the detail grid stopped two-thirds across while the
+   reach-out strip below ran the full width — the mismatch that read as uneven.
+   align-items must be stretch for the same reason: flex-start shrink-wrapped
+   every child, including the grid. */
+.profile-id-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.3rem;
+}
+/* These two are the reason align-items was flex-start — they should not stretch. */
+.profile-id-text > .profile-role { align-self: flex-start; }
 .profile-name-input {
   font-size: 1.5rem; font-weight: 800; letter-spacing: -0.03em;
   border: 1px solid transparent; background: transparent;
@@ -2471,19 +2489,6 @@ body.dark .profile-email { color: var(--accent); }
 .inline-edit-actions input { flex: 1 1 160px; }
 
 /* Right side of the hero — the core mechanic, not empty space */
-.profile-reachout {
-  background: var(--row-bg); border: 1px solid var(--hairline);
-  border-radius: 16px; padding: 1.1rem;
-  display: flex; flex-direction: column; gap: 0.7rem;
-}
-.reachout-title { margin: 0; font-size: 0.95rem; font-weight: 700; text-align: center; }
-.profile-reachout .ring { width: 108px; height: 108px; }
-.reachout-meta { margin: 0; display: flex; flex-direction: column; gap: 0.4rem; }
-.reachout-meta > div { display: flex; justify-content: space-between; gap: 0.5rem; align-items: baseline; }
-.reachout-meta dt { font-size: 0.7rem; color: var(--text-muted); }
-.reachout-meta dd { margin: 0; font-size: 0.78rem; font-weight: 700; color: var(--text); text-align: right; }
-.profile-reachout .field-group { margin: 0; }
-.profile-reachout .btn { width: 100%; }
 
 .profile-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-sm); }
 .profile-timeline { grid-column: 1 / -1; }
@@ -2671,6 +2676,11 @@ body.dark .filter-icon-btn.filter-active { color: var(--accent); }
 .profile-hero {
   display: flex;
   flex-direction: column;
+  /* Explicit, because the earlier rule for this element sets align-items:start
+     for a grid it no longer is. In a column flex that aligns children on the
+     horizontal axis, so the identity block shrink-wrapped to its content and
+     the detail grid stopped two-thirds across the card. */
+  align-items: stretch;
   gap: 1.25rem;
 }
 .profile-identity { gap: 1.15rem; align-items: flex-start; }
@@ -4092,3 +4102,23 @@ body.dark .email-label { background: rgba(253, 186, 116, 0.16); color: var(--acc
 .email-open.is-empty { opacity: 0.25; pointer-events: none; }
 
 .past-tokens { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.4rem; }
+
+
+/* ── Contact details: rhythm ──────────────────────────────────────────────────
+   Save sat directly under the email input with the same left edge, reading as
+   part of that field rather than as the action for the whole form. It gets its
+   own line, a rule above it, and the full width of the grid. */
+.inline-edit .btn {
+  margin-top: 1rem;
+  padding-top: 0;
+}
+.inline-edit-save {
+  margin-top: 1.1rem;
+  padding-top: 0.9rem;
+  border-top: 1px dashed var(--hairline);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.inline-edit-save .btn { margin-top: 0; }
+.inline-edit-save .success { margin: 0; }

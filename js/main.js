@@ -2144,8 +2144,10 @@ async function initContactPage() {
       + '</div>'
 
       + '</div>'
+      + '<div class="inline-edit-save">'
       + '<button class="btn" id="cpSaveDetailsBtn" type="button">Save details</button>'
       + '<p id="cpSaveDetailsMsg" class="success" aria-live="polite"></p>'
+      + '</div>'
       + '</div>'
 
       + '</div>'
