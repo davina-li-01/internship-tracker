@@ -42,12 +42,25 @@ billing account.
 
 ### 3 · Configure the consent screen
 
-**APIs & Services → OAuth consent screen** → **External** → app name and your
-email → on the **Test users** step, add your own Google address.
+**APIs & Services → OAuth consent screen** → **External**, then app name and
+your email.
+
+The console was redesigned recently; this may appear as **Google Auth Platform →
+Audience** instead. You are looking for a **Test users** section either way.
+
+**Add your own Google address to Test users.** Owning the project does not grant
+you access — for an External app in Testing mode Google blocks every account
+that is not explicitly listed, including the developer's. Skipping this gives:
+
+```
+Error 403: access_denied
+Orbit has not completed the Google verification process.
+```
 
 Staying in **Testing** mode is what avoids Google's verification review, which
 for a sensitive scope like Calendar wants a privacy policy and a demo video.
-Fine while you are the only user.
+Fine while you are the only user — and there is room for 100 of them. Do not
+press **Publish app**.
 
 ### 4 · Create the client ID
 
@@ -147,7 +160,7 @@ already wrote up by hand.
 | `Error 400: origin_mismatch` | The address in your bar is not in the list from step 4. Check it exactly — `127.0.0.1` and `localhost` are different origins to Google, and Live Server moves off 5500 when it is taken. After fixing, wait a minute and hard-reload |
 | `redirect_uri_mismatch` | Same cause as above |
 | "Google hasn't verified this app" | Expected in Testing mode. *Advanced* → *Go to Orbit (unsafe)* |
-| `access_denied` | Your Google account is not on the **Test users** list from step 3 |
+| `Error 403: access_denied` | Your account is not on the **Test users** list from step 3. Being the project owner is not enough |
 | "Google sign-in was closed" | The popup was dismissed. Try again |
 | "Google access expired. Connect again." | Normal. Testing-mode tokens are short-lived — click the button again |
 | "None of your connections have an email saved" | Matching is by email. Add some |
