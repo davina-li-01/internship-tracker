@@ -34,7 +34,7 @@ Aligned to Confluence 2026-08-08. Every ORB key below matches the epic.
 | Aug 9 | ORB-27 | Revisit email reminder logic | Integrations | Med | Med | 🔶 Built — needs SQL |
 | — | ORB-37 | Match calendar events by name, not just email | Integrations | Med | High | 📋 Backlog — spec below, not started |
 | Aug 10 | ORB-38 | Digest fires at 9am in the reader's timezone | Integrations | Med | Low | ✅ Done 2026-08-10 — needs SQL |
-| Aug 10 | ORB-39 | Calendar connection follows the account, not the device | Integrations | Med | Med | Next |
+| Aug 10 | ORB-39 | Calendar connection follows the account, not the device | Integrations | Med | Med | ✅ Done 2026-08-10 — needs SQL |
 
 Dates are current-constraint estimates and expected to move **up**, not back.
 
@@ -401,15 +401,39 @@ date fix alone fails two of its assertions.
 
 **Needs from you:** run `supabase/add-timezone.sql`, then redeploy the function.
 
-### ORB-39 — the calendar connection follows the account · next
-Everything about the Google connection lives in `localStorage`: whether you
-connected, which account, which calendar, when it last synced. So a new browser means
-reconnecting, and "synced 2 hours ago" silently means *on this device*.
+### ORB-39 — the calendar connection follows the account · ✅ done 2026-08-10
+Everything about the Google connection lived in `localStorage`, so it was a property
+of the BROWSER: open Orbit somewhere new and it claimed you had never connected
+Google, while "synced 2 hours ago" quietly meant *on this device* — the worse kind of
+wrong, because it looks right.
 
-Shape: `preferences` becomes the durable copy and localStorage stays the fast one.
-It has to stay: the pre-paint script reads `orbit_calendar_connected` synchronously
-to decide the nav, and an async read there would reintroduce the flash it was written
+`preferences.integrations` is the durable copy. **localStorage stays, and is not a
+fallback — it is the synchronous one.** The pre-paint script on every page reads
+`orbit_calendar_connected` to decide the Integrations nav item before first paint,
+and an async read there would reintroduce exactly the flash that script was written
 to remove.
+
+**What is shared and what is not**
+
+| | Where | Why |
+|---|---|---|
+| connected, account, calendar id, last sync, last result | account | Facts about the account. A sync writes contacts, so it is genuinely true everywhere that the data is fresh |
+| needs-reauth, reconnect nudge | device | The token is memory-only and never stored, so every page load asks Google again. One browser failing that says nothing about another — sharing it would make a working device announce a problem it does not have |
+
+**Disconnect stores `connected: false` rather than removing the key.** No record
+means nobody ever connected; false means somebody deliberately disconnected.
+Collapsing the two would let a device with stale localStorage push the connection
+back up — the same resurrection shape as the deleted email address that reappeared.
+`tests/calendar-account.test.mjs` pins it, along with the merge rule that stops a
+week-old record telling a device that synced ten minutes ago to sync again.
+
+Writes happen on deliberate acts only — connect, disconnect, change of calendar —
+never on a timer, so the stored record always reflects a decision somebody made
+rather than whichever tab loaded last.
+
+**Needs from you:** run `supabase/add-integrations.sql`. Until then the connection
+still works, just per-device: `savePreferences` reports the column as skipped and
+the console says so, rather than the save failing.
 
 ### ORB-25 — Company logos · won't have
 Needs an external logo API on every render — a runtime dependency for decoration.

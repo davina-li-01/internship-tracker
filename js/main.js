@@ -3169,6 +3169,7 @@ function renderIntegrationCards(root, { connecting = false } = {}) {
       }
 
       const candidates = await calendar.connectCalendar(contacts, todayDateString());
+      await persistCalendarConnection();
       calendar.markSynced(Date.now());
 
       if (!candidates.length) {
@@ -3187,6 +3188,7 @@ function renderIntegrationCards(root, { connecting = false } = {}) {
 
   root.querySelector("#calDisconnectBtn")?.addEventListener("click", () => {
     calendar.disconnectCalendar();
+    persistCalendarConnection();
     renderIntegrationCards(root);
     showToast("Google Calendar disconnected. No token was stored, so there is nothing else to clear.");
   });
@@ -3282,6 +3284,7 @@ function renderSettingsIntegrations(root, calendars = null) {
 
   root.querySelector("#intCalendarPick")?.addEventListener("change", (e) => {
     calendar.setSelectedCalendarId(e.target.value);
+    persistCalendarConnection();
     msg.textContent = "Saved. The next sync reads that calendar.";
   });
 
@@ -3290,6 +3293,7 @@ function renderSettingsIntegrations(root, calendars = null) {
     try {
       const contacts = (await db.getContacts()) || [];
       const candidates = await calendar.connectCalendar(contacts, todayDateString());
+      await persistCalendarConnection();
       await calendar.refreshAccountInfo();
       calendar.markSynced(Date.now());
       renderSettingsIntegrations(root);
@@ -3389,6 +3393,7 @@ function openDisconnectModal(settingsRoot) {
     }
 
     calendar.disconnectCalendar();
+    persistCalendarConnection();
     close();
     // Disconnecting is the ONE path that brings the nav entry point back.
     evaluateIntegrationsNav();
@@ -3415,6 +3420,73 @@ function openDisconnectModal(settingsRoot) {
  * The rule reads the COUNT of unconnected integrations rather than asking about
  * Google Calendar by name, so a second integration needs no change here.
  */
+// ── The calendar connection follows the account (ORB-39) ──────────────────────
+
+const CALENDAR_INTEGRATION = "google-calendar";
+
+/**
+ * Write this device's connection state up to `preferences`.
+ *
+ * Called after every deliberate connect, disconnect or calendar change — not on
+ * a timer — so the stored record always reflects a decision somebody made
+ * rather than whichever tab happened to load last.
+ *
+ * A disconnect stores `connected: false` instead of removing the entry. The
+ * difference matters: "no record" means nobody has ever connected, while
+ * "connected: false" means someone deliberately disconnected. Deleting the key
+ * would collapse the two, and the next device to load with a stale localStorage
+ * would helpfully push the connection back up — the same resurrection bug that
+ * made a deleted email address reappear.
+ */
+async function persistCalendarConnection() {
+  const snapshot = calendar.connectionSnapshot() || { connected: false };
+  try {
+    const prefs = (await db.getPreferences()) || {};
+    const integrations = { ...(prefs.integrations || {}) };
+    integrations[CALENDAR_INTEGRATION] = snapshot;
+    const result = await db.savePreferences({ integrations });
+    if (result.skipped?.includes("integrations")) {
+      console.warn("[calendar] preferences.integrations is missing, so this "
+        + "connection stays on this device only. Run supabase/add-integrations.sql");
+    }
+  } catch (err) {
+    // Never fatal. Failing to record the connection costs you a reconnect on
+    // your next device; throwing here would cost you the connection itself.
+    console.warn("[calendar] Could not save the connection to your account.", err);
+  }
+}
+
+/**
+ * Reconcile this browser against the account, once, at boot.
+ *
+ * The stored record wins on the question of whether you are connected, because
+ * that is an account-level fact. Everything else is merged rather than
+ * overwritten — see connectionSnapshot() in calendar.js for what is shared and
+ * what is deliberately kept per-device.
+ */
+async function adoptCalendarConnection() {
+  let prefs;
+  try { prefs = await db.getPreferences(); } catch { return; }
+  const stored = prefs?.integrations?.[CALENDAR_INTEGRATION] || null;
+  const local = calendar.connectionSnapshot();
+
+  if (stored?.connected) {
+    if (calendar.adoptConnection(stored)) evaluateIntegrationsNav();
+    return;
+  }
+  // An explicit disconnect elsewhere ends the connection here too.
+  if (stored && stored.connected === false && local) {
+    // No write back. The record already says disconnected — echoing it would
+    // be a device reporting news it just received.
+    calendar.disconnectCalendar();
+    evaluateIntegrationsNav();
+    return;
+  }
+  // No record at all: this device connected before the account started keeping
+  // one. Carry it up so the next device inherits it.
+  if (!stored && local) await persistCalendarConnection();
+}
+
 function evaluateIntegrationsNav() {
   const show = calendar.countNotConnected() > 0;
   // A body class rather than the hidden attribute, so the inline script can set
@@ -3487,6 +3559,7 @@ async function initCalendarAutoSync() {
         onAction: async () => {
           try {
             const found = await calendar.connectCalendar(contacts, todayDateString());
+            await persistCalendarConnection();
             calendar.markSynced(Date.now());
             if (found.length) openCalendarReviewModal(found, contacts);
             else showToast("No new meetings in the last " + calendar.LOOKBACK_DAYS + " days.");
@@ -3664,6 +3737,7 @@ function wireDashboardSync(slot) {
     try {
       const contacts = (await db.getContacts()) || [];
       const candidates = await calendar.connectCalendar(contacts, todayDateString());
+      await persistCalendarConnection();
       calendar.markSynced(Date.now());
 
       if (!candidates.length) {
@@ -4284,5 +4358,6 @@ async function checkRemindersOnLoad() {
   await checkRemindersOnLoad();
   // Last, and deliberately not awaited into anything that renders: it talks to
   // Google over the network and must never hold up the page.
+  await adoptCalendarConnection();
   initCalendarAutoSync().catch(() => {});
 })();

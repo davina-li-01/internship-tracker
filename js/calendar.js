@@ -530,6 +530,74 @@ export function forgetConnection() {
   localStorage.removeItem("orbit_calendar_id");
 }
 
+// ── Following the account rather than the device (ORB-39) ─────────────────────
+//
+// All of the above lives in localStorage, which meant the connection was a
+// property of the BROWSER: open Orbit somewhere new and it claimed you had
+// never connected Google, and "synced 2 hours ago" quietly meant *on this
+// device*. The durable copy now lives in `preferences`.
+//
+// localStorage stays, and is not a fallback — it is the synchronous one. The
+// pre-paint script in every page reads `orbit_calendar_connected` to decide the
+// Integrations nav item before first paint, and an async read there would
+// reintroduce exactly the flash that script was written to remove.
+//
+// WHAT IS SHARED AND WHAT IS NOT
+//
+//   shared   connected, account, calendar id, last sync, last result
+//            — all facts about the ACCOUNT. A sync writes contacts, so it is
+//              genuinely true on every device that the data is fresh.
+//
+//   local    needs-reauth, reconnect nudge
+//            — facts about THIS BROWSER. The access token is memory-only and
+//              never stored, so every page load asks Google again; one browser
+//              failing that says nothing about another, and syncing the flag
+//              would make a working device announce a problem it does not have.
+
+/** Everything worth carrying to another device. */
+export function connectionSnapshot() {
+  if (!isRemembered()) return null;
+  return {
+    connected: true,
+    account: getConnectedAccount(),
+    calendarId: getSelectedCalendarId(),
+    lastSyncAt: Number(localStorage.getItem(LAST_SYNC_KEY) || 0) || null,
+    lastResult: (() => {
+      try { return JSON.parse(localStorage.getItem(LAST_RESULT_KEY) || "null"); }
+      catch { return null; }
+    })()
+  };
+}
+
+/**
+ * Adopt a connection recorded on another device.
+ *
+ * Returns true when this browser learned something it did not already know, so
+ * the caller can re-render the nav rather than re-rendering unconditionally.
+ * Deliberately does NOT set needs-reauth either way: whether Google will grant
+ * a token here is a question only this browser can answer, and it will, on the
+ * next silent sync.
+ */
+export function adoptConnection(snapshot) {
+  if (!snapshot || !snapshot.connected) return false;
+  const wasKnown = isRemembered();
+
+  rememberConnection();
+  if (snapshot.account) localStorage.setItem(ACCOUNT_KEY, snapshot.account);
+  if (snapshot.calendarId) setSelectedCalendarId(snapshot.calendarId);
+  // Keep whichever sync is more recent. A device that synced ten minutes ago
+  // must not be pushed back into syncing again by a stale record from one that
+  // last ran a week ago.
+  if (snapshot.lastSyncAt && snapshot.lastSyncAt > readTime(LAST_SYNC_KEY)) {
+    stampTime(LAST_SYNC_KEY, snapshot.lastSyncAt);
+    if (snapshot.lastResult) {
+      try { localStorage.setItem(LAST_RESULT_KEY, JSON.stringify(snapshot.lastResult)); }
+      catch { /* private mode — the timestamp is a nicety */ }
+    }
+  }
+  return !wasKnown;
+}
+
 // ── Connection state (ORB-34) ─────────────────────────────────────────────────
 //
 // Four states, because "connected or not" could not describe the one that
