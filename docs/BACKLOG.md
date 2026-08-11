@@ -15,13 +15,18 @@ Keys start at **ORB-43** because the Backlog page already runs to ORB-42.
 
 Five. Everything else I built maps onto a ticket you already have — see §3.
 
-| Requirement | User Story | Importance | Jira Issue | Notes |
+The fifth column is **Dependencies**, not Notes: what this item needed to exist
+first, so the shape of the project is readable from the table alone. What each one
+actually does, and why, lives in `ROADMAP.md` — that split is deliberate, so the
+backlog stays a plan rather than a changelog.
+
+| Requirement | User Story | Importance | Jira Issue | Dependencies |
 |---|---|---|---|---|
-| Reminder digest in the reader's timezone | As a user, I want the reminder email to arrive in my morning, so it lands when I can actually act on it rather than overnight | Should have | ORB-43 | pg_cron runs in UTC only, so a single daily fire suited exactly one timezone. Cron now runs hourly and the Edge Function picks whose turn it is from `preferences.timezone`, detected from the browser rather than asked for. Hourly is not hourly email — 23 of those runs find nobody at 9am. Also fixes a quieter fault: "who is overdue" is a date comparison that was taken from UTC, so east of Greenwich a contact due today was never found. Depends on ORB-16 |
-| Calendar connection follows the account | As a user, I want my calendar connection to work on any device I sign in on, so I do not reconnect every time I switch browsers | Should have | ORB-44 | Connection state lived entirely in `localStorage`, so it was a property of the browser: a new device claimed you had never connected, and "synced 2 hours ago" silently meant *on this device*. `preferences.integrations` jsonb is now the durable copy, keyed by integration id so a second integration needs a key and no schema change. localStorage stays as the synchronous copy the pre-paint nav rule in ORB-34 depends on. Re-auth state is deliberately per-device. Disconnect stores `connected: false` rather than deleting the key, so a stale device cannot resurrect a connection you ended elsewhere. Depends on ORB-15 |
-| Ask about a conversation only once it has ended | As a user, I want to be asked how a meeting went after it happens, not while it is still ahead of me | Must have | ORB-45 | "Happened" was decided on the date, so a 4pm coffee looked loggable from breakfast — Orbit asked how it went while the same meeting sat under "Coming up". The boundary is the clock now: upcoming until the event's end time, loggable after. A meeting that ended within 24h opens the log dialog directly with the notes box open; anything older gets a dismissible toast, because a modal over a month of backlog is an ambush. Depends on ORB-15 |
-| "Coming up" holds its height | As a user, I want a busy week of meetings to scroll inside its card rather than stretching the whole dashboard row | Should have | ORB-46 | Five meetings made the card 735px tall and dragged the health ring and breakdown to 735px with it — two cards of empty space to pay for a list that still never scrolled. Capped height with a count beside the title and a fade at the edge, so a fixed-height list does not hide things silently. Follows ORB-35 |
-| Match calendar events by name | As a user, I want an in-person coffee logged even when there was no calendar invite to match on | Should have | ORB-47 | **Not built — specced only.** Matching is email-only, so *"Coffee — Assaf"* with no attendees is invisible, which reads as "no meetings found". Cannot auto-log: a name is not unique, and a wrong match rolls that person's cadence forward, making a drifting relationship look healthy — the exact failure Orbit exists to prevent. Needs an alias field per contact, a confidence level on interactions, and sticky "not this person" answers per event. ORB-39 removed a good share of the misses on its own. Depends on ORB-15 |
+| Reminder digest in the reader's timezone | As a user, I want the reminder email to arrive in my morning, so it lands when I can actually act on it rather than overnight | Should have | ORB-43 | **ORB-16** for the Edge Function, pg_cron and email provider. New column `preferences.timezone`. Requires the cron schedule to move from daily to hourly — the function, not the scheduler, decides whose hour it is. Soft dependency on **ORB-37**: better timing does not help mail that lands in spam |
+| Calendar connection follows the account | As a user, I want my calendar connection to work on any device I sign in on, so I do not reconnect every time I switch browsers | Should have | ORB-44 | **ORB-15** for the connection itself. **ORB-34** constrains the design: its nav rule is read from localStorage before first paint, so localStorage has to remain the synchronous copy and the database can only be the durable one. **ORB-36** surfaces the connected account this stores. New column `preferences.integrations` |
+| Ask about a conversation only once it has ended | As a user, I want to be asked how a meeting went after it happens, not while it is still ahead of me | Must have | ORB-45 | **ORB-15** for the calendar feed. Shares that feed with the "Coming up" dashboard widget, so the two must partition the same events — a meeting belongs to exactly one of "upcoming" and "loggable", never both. No schema change |
+| "Coming up" holds its height | As a user, I want a busy week of meetings to scroll inside its card rather than stretching the whole dashboard row | Should have | ORB-46 | **ORB-15** for the meetings, **ORB-35** for the card it lives in. Constrained by the dashboard chart row, which sizes every card to the tallest — so this is a layout dependency, not a data one. No schema change |
+| Match calendar events by name | As a user, I want an in-person coffee logged even when there was no calendar invite to match on | Should have | ORB-47 | **Not built.** Needs **ORB-15**. Blocked on three things that do not exist yet: an alias field per contact to remember disambiguation answers, a confidence level on an interaction to distinguish a confirmed name match from an accepted invite, and sticky per-event rejections. **ORB-23** will need the confidence field too, so build it once. **ORB-39** reduced the need by matching every stored address |
 
 ## 2. New rows for the **Detailed Quarterly Roadmap**
 
@@ -39,8 +44,13 @@ Five. Everything else I built maps onto a ticket you already have — see §3.
 
 ## 3. Corrections — tickets marked DONE that do not describe what shipped
 
-This is the part worth your time. Six notes now disagree with the code, and four
-of them would send whoever reads them next looking for something that is not there.
+This is the part worth your time. Six existing rows now disagree with the code, and
+four of them would send whoever reads them next looking for something that is not
+there.
+
+Written against the old **Notes** column, since that is what those rows still have.
+If you want, I can convert all forty-two existing rows to **Dependencies** in one
+pass and move the descriptive text into `ROADMAP.md` — say the word and I will.
 
 ### ORB-39 · Multiple email addresses per contact — note is wrong
 Says *"New `contact_emails` table … unique on (contact_id, address) … migrate the
