@@ -4,11 +4,11 @@
 --
 -- WHAT THIS REMOVES
 --
--- `contacts.internship_id` and `storage_files.internship_id` were foreign keys
--- into `public.internships`, which 003_drop_legacy_tables.sql deleted on
--- 2026-08-06. The columns outlived the table they pointed at: they hold values
--- that reference nothing, and no code has read or written them since Orbit
--- stopped being an internship tracker.
+-- `storage_files.internship_id` was a foreign key into `public.internships`,
+-- which 003_drop_legacy_tables.sql deleted on 2026-08-06. The column outlived
+-- the table it pointed at, and no code has read or written it since Orbit
+-- stopped being an internship tracker. See the dated note below for what was
+-- actually still present when this was run.
 --
 -- Verified before writing this: neither name appears anywhere under js/.
 --
@@ -20,26 +20,40 @@
 --   004_settings_columns.sql, which ran on 2026-08-10. The ORB-49 ticket lists
 --   them as surviving; they do not.
 
--- ─── Preflight ────────────────────────────────────────────────────────────────
--- Run this block on its own FIRST. It changes nothing and tells you exactly
--- what is about to disappear, including whether any row still carries a value.
+-- ─── Already satisfied on the live database, 2026-08-11 ───────────────────────
+-- Checked before running: neither column exists. This file was a no-op against
+-- the project as it stands, and is kept because it is not a no-op against a
+-- project rebuilt from 001 — `001_schema.sql` still declares
+-- `storage_files.internship_id`, so a fresh restore creates it and this removes
+-- it again. Same shape as 001-creates/004-drops, noted in the README.
 --
---   select 'contacts.internship_id' as column_name,
---          count(*)                  as rows_total,
---          count(internship_id)      as rows_with_a_value
---     from public.contacts
---   union all
---   select 'storage_files.internship_id',
---          count(*),
---          count(internship_id)
---     from public.storage_files;
+-- `contacts.internship_id` is not declared in 001 at all. The commented drop in
+-- 003 assumed it and this file inherited the assumption instead of checking the
+-- database. The guarded drop stays below — it costs nothing, and the column did
+-- exist in some earlier state — but the header above overstated what survived.
+
+-- ─── Preflight ────────────────────────────────────────────────────────────────
+-- Run this FIRST. It changes nothing, and unlike `count(internship_id)` it
+-- cannot error on a column that is already gone. That matters: the first version
+-- of this preflight was one `union all` across both tables, so a column that was
+-- already dropped took down the check for the one that was not. A safety query
+-- that fails when things are safe is worse than no safety query.
+--
+--   select table_name, column_name
+--     from information_schema.columns
+--    where table_schema = 'public'
+--      and column_name  = 'internship_id'
+--    order by table_name;
+--
+-- Zero rows means there is nothing to do — stop, do not run the drops. For any
+-- table it does list, this shows whether rows still carry a value:
+--
+--   select count(*) as rows_total, count(internship_id) as rows_with_a_value
+--     from public.<that table>;
 --
 -- `rows_with_a_value` above zero is expected and is not a reason to stop — the
 -- values point at a table that no longer exists. It is only there so the number
 -- is a decision you made rather than one you discovered afterwards.
---
--- If either column is already gone the query errors with "column does not
--- exist". That is the all-clear, not a problem: the drops below are guarded.
 
 -- ─── The drops ────────────────────────────────────────────────────────────────
 

@@ -25,6 +25,46 @@ with no access to this repo.
 
 ---
 
+## ORB-37 — custom SMTP, shipped Aug 11
+
+Auth email now leaves through Resend on an owned domain. `orbit-networking.com`,
+bought at Namecheap for $11.28/yr, verified in Resend, and wired into
+**Supabase → Authentication → SMTP Settings** as `smtp.resend.com:465`, username
+`resend`, sender `noreply@orbit-networking.com`, sender name `Orbit`.
+
+Three problems closed at once, which is why this was worth doing before anything
+cosmetic: the sender is no longer `noreply@mail.app.supabase.io`, the *powered by
+Supabase* footer is gone with the built-in service, and the built-in rate limit —
+which drops overflow **silently**, so a signup looks identical to the localhost
+bug from the user's side — no longer applies.
+
+**Four DNS records at Namecheap**, verified live against the authoritative
+nameserver rather than trusted from the UI:
+
+| Type | Host | Purpose |
+|---|---|---|
+| TXT | `resend._domainkey` | DKIM — proves ownership; without it nothing verifies |
+| MX | `send` | SES return path, priority 10 |
+| TXT | `send` | SPF |
+| TXT | `_dmarc` | `p=none`, optional but helps placement |
+
+**Two things cost time and are worth writing down.** Namecheap hides MX behind
+**MAIL SETTINGS → Custom MX** — it is not in the Type dropdown under HOST
+RECORDS, so it reads as missing. And each row needs its own teal **✓** committed
+before **SAVE ALL CHANGES** picks it up; the DKIM row was silently discarded the
+first time, which surfaced as a domain stuck on Pending with no error anywhere.
+
+A separate 535 `Authentication credentials invalid` in the Auth logs was the API
+key, not the domain — different failure, different fix. Worth reading the log
+line rather than guessing: 535 means the key, 550 means the domain.
+
+**Not done:** `davina@orbit-networking.com` receives nothing. Sending and
+receiving are separate, and no mailbox exists. Cloudflare Email Routing or a
+mailbox provider covers it when wanted, and will not collide, because Resend's MX
+sits on `send.` while inbound uses the root.
+
+---
+
 ## ORB-52 — the four decisions, made Aug 11
 
 | Question | Decision |
@@ -85,12 +125,24 @@ order recorded nowhere. Now:
   `002_rls_policies.sql`, which creates the same four policies and also clears
   the older `rs3hur_*` ones.
 
-**The ticket was wrong about what survives.** It lists `manager_name`,
-`next_steps` and the orphan `internship_id` columns. The first two were already
-dropped by `004_settings_columns.sql`, whose drop statements are live, not
-commented — that ran on Aug 10. What actually survives is
-`contacts.internship_id` and `storage_files.internship_id`, whose drops were left
-commented in `003_drop_legacy_tables.sql`. `011` does those two, and says so.
+**The ticket was wrong about what survives, and so was this row.** The ticket
+lists `manager_name`, `next_steps` and the orphan `internship_id` columns. The
+first two were dropped by `004_settings_columns.sql` on Aug 10. This row then
+claimed the two `internship_id` columns survived — but that was read off the
+commented drops in `003_drop_legacy_tables.sql`, not off the database. Queried
+on Aug 11: **neither exists.** `contacts.internship_id` is not declared in `001`
+at all, so it may never have existed here.
+
+`011` therefore did nothing when run, and is kept anyway: `001` still declares
+`storage_files.internship_id`, so a project rebuilt from the migrations creates
+the column and `011` is what removes it again. The lesson is the cheap one —
+schema claims get verified against `information_schema`, not inferred from what
+an earlier migration commented out.
+
+Its preflight was also rewritten. The original was a single `union all` across
+both tables, so an already-dropped column raised `42703` and took down the check
+for the other one — a safety query that fails precisely when things are safe.
+It now reads `information_schema`, which cannot error on an absent column.
 
 **Six runtime error strings named these paths to the user** — "Run
 supabase/add-settings-columns.sql to enable it" and similar, in `js/db.js` and

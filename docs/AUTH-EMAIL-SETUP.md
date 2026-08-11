@@ -83,7 +83,28 @@ user".
 
 ---
 
-## 2. The sender — needs a domain (ORB-37)
+## 2. The sender — done 2026-08-11 (ORB-37)
+
+**This is live.** `orbit-networking.com` is verified in Resend and Supabase Auth
+sends through it. The rest of this section is the record of how, and what to
+repeat if the domain ever changes.
+
+Two traps, both of which cost time here. Namecheap keeps MX under **MAIL
+SETTINGS → Custom MX**, not in the HOST RECORDS type dropdown, so it looks like
+MX is unsupported. And every row needs its own teal **✓** before **SAVE ALL
+CHANGES** — a row left uncommitted is discarded without a warning, which
+presents as a domain stuck on Pending.
+
+Verify from outside the UI rather than trusting it:
+
+```
+dig +short TXT resend._domainkey.orbit-networking.com @dns1.registrar-servers.com
+```
+
+Querying the registrar's own nameserver separates "not saved" from "not
+propagated" — they look identical through Google DNS and have different fixes.
+
+
 
 Template edits cannot change who it is from. `noreply@mail.app.supabase.io`
 stays until Supabase Auth is pointed at your own SMTP, and the *powered by
@@ -99,38 +120,40 @@ Resend already sends the reminder digest, so it can send these too:
 | Port | `465` |
 | Username | `resend` |
 | Password | a Resend API key |
-| Sender email | `noreply@yourdomain.com` |
+| Sender email | `noreply@orbit-networking.com` |
 | Sender name | `Orbit` |
 
-**This is blocked on owning a domain, and not by choice.** Resend's
-`onboarding@resend.dev` only delivers to the address that owns the Resend
-account — fine for testing the digest against yourself, useless for real users,
-because their confirmation email would never arrive. So: buy the domain, verify
-it in Resend, then fill this in. That is ORB-37, and this is a second reason to
-do it beyond spam placement.
+**A domain was required, and not by choice.** Resend's `onboarding@resend.dev`
+only delivers to the address that owns the Resend account — fine for testing the
+digest against yourself, useless for real users, because their confirmation
+email would never arrive.
 
-### "Should I just set up custom SMTP now?"
+### Enable it only once Resend says Verified
 
-Yes — but the button cannot be finished today without a domain, so the order is
-domain first, SMTP second. A domain is roughly £10 a year and it unblocks the
-sender, the footer and the rate limit in one move.
+While custom SMTP is on and failing, **every** signup returns a 500 — not just
+your test. That is strictly worse than the built-in sender. If the domain is
+still Pending, leave SMTP off.
 
-There is one no-domain option, and it is worth knowing about mainly so you can
-reject it deliberately: **Gmail SMTP with an app password**. It works, it lifts
-the rate limit to Gmail's much higher daily cap, and it costs nothing. What it
-does is make every confirmation email arrive from your personal address. For
-someone who knows you that reads as more trustworthy, not less. For a stranger
-who signed up from a link it reads as a personal account asking them to click
-something, which is the exact shape of the thing they have been told to
+The Auth log names the cause and the two causes have different fixes.
+**Supabase → Logs → Auth Logs**:
+
+- `535 Authentication credentials invalid` — the API key. Username must be the
+  literal `resend`; password must be the `re_…` key, whole, no trailing newline.
+- `550 … domain is not verified` — DNS. The key is fine; §2 above is not done.
+
+### The no-domain option, rejected deliberately
+
+**Gmail SMTP with an app password** works, lifts the rate limit to Gmail's daily
+cap, and costs nothing. It also makes every confirmation email arrive from a
+personal address. To someone who knows you that reads as more trustworthy; to a
+stranger who signed up from a link it reads as a personal account asking them to
+click something, which is the exact shape of the thing they have been told to
 distrust. It also puts transactional mail through an account Google can
-rate-limit or flag at its discretion.
-
-Use it only if signups are actively failing and the domain is days away.
-Otherwise buy the domain — it is the cheaper fix in every sense.
+rate-limit at its discretion.
 
 ---
 
-## 3. The rate limit — the one that is silently costing you signups
+## 3. The rate limit — lifted by §2, kept here as the reason it mattered
 
 Supabase's built-in email service is for development. It is **heavily rate
 limited** — a handful of messages per hour across the whole project — and when
@@ -140,19 +163,27 @@ sent**, while the app tells the user to go and check their inbox.
 That is indistinguishable, from the user's side, from the localhost bug: they
 sign up, they are told to check their email, nothing arrives.
 
-Check the current ceiling at **Authentication → Rate Limits**. With real people
-signing up, moving to custom SMTP is not cosmetic — it is the difference between
-every confirmation arriving and some fraction of them vanishing.
+Custom SMTP replaced that service entirely, so the ceiling no longer applies —
+Resend's own limits are orders of magnitude higher. This is why §2 was not
+cosmetic. Between the localhost bug and this limit, an unknown number of the
+people who tried to sign up before 2026-08-11 never received anything, and
+nothing in the app or the logs would have shown it.
 
 ---
 
 ## Order to do this in
 
-1. **Now:** rewrite the templates (§1). Free, immediate, removes the worst of it.
-2. **Now:** confirm Site URL and Redirect URLs are the deployed origins, not
-   localhost. See the commit for ORB-33 — the code fix is useless without them.
+*All three are done as of 2026-08-11. Kept as the sequence to repeat if the
+domain or the mail provider ever changes.*
+
+1. Rewrite the templates (§1). Free, immediate, removes the worst of it.
+2. Confirm Site URL and Redirect URLs are the deployed origins, not localhost.
+   See the commit for ORB-33 — the code fix is useless without them. Redirect
+   URLs need the `/**` suffix, or only the bare origin matches and `auth.html`
+   falls back to Site URL silently.
 3. **ORB-37:** buy and verify a domain, then set custom SMTP (§2). This is what
    fixes the sender, the footer and the rate limit together.
 
-Until step 3, anyone signing up sees a Supabase sender. The template rewrite
-makes that survivable; it does not make it good.
+Step 3 is last for a reason and the ordering is not optional: enabling custom
+SMTP against an unverified domain replaces a working-but-ugly signup with a
+broken one.
