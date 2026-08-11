@@ -1,5 +1,15 @@
 # Orbit — Product Requirements
 
+> ⚠️ **This is a partial local copy, not a faithful export.** It merges the
+> Confluence *Customer Experience EPIC* with an old version of the *Backlog* page
+> and stops at ORB-24; Confluence's Backlog now runs to ORB-42. It also carries a
+> Milestones table and a Design section that Confluence does not.
+>
+> **Confluence is the source of truth.** Reading keys off this file is what led to
+> a batch of work being numbered from ORB-29 when those keys were already taken.
+> Use [BACKLOG.md](BACKLOG.md) for the reconciliation, and treat the Design section
+> below as the one genuinely useful thing here that Confluence lacks.
+
 | | |
 |---|---|
 | **Epic** | Orbit — a networking tracker that keeps relationships from going cold |

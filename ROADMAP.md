@@ -14,30 +14,38 @@ Jira Issue / Notes — live in [docs/BACKLOG.md](docs/BACKLOG.md), ready to past
 
 ## Q3 2026 · Aug 1 – Sep 30
 
-| Start | Key | Item | Team | Pri | Effort | Status |
+| Feature | Key | Team | Dates | Priority | Effort | Status |
 |---|---|---|---|---|---|---|
-| Aug 8 | ORB-13 | "Marked as reached out" flow | Core | **High** | High | ✅ Done |
-| Aug 8 | ORB-14 | "+" icon confirming logged conversation | Core | Med | Low | ✅ Done |
-| Aug 8 | ORB-20 | PDF attached to conversation | Core | Low | Low | ✅ Done |
-| Aug 8 | ORB-16 | Scheduled email reminders | Integrations | Med | High | ✅ Done — live |
-| Aug 8 | ORB-15 | Google Calendar integration | Integrations | **High** | High | 🔶 Built — needs your Google client |
-| Aug 12 | ORB-17 | AI talking points | Core | Med | Low | Next — spec agreed 2026-08-10 |
-| — | ORB-18 | Audio transcription | Core | **High** | Med | ⏸ Deferred by Davina 2026-08-10 — she is writing the spec |
-| Aug 12 | ORB-24 | Idle-pause resilience | Integrations | **High** | Med | ✅ Done 2026-08-10 — no setup |
-| Aug 19 | ORB-21 | Two-factor authentication | Integrations | Med | Med | Not started |
-| Aug 19 | ORB-23 | Network health over time | Integrations | Med | Med | Not started |
-| Sep 7 | ORB-22 | Key people tier | Core | Low | Low | Not started |
-| Sep 7 | ORB-19 | Thank-you draft from conversation | Core | Low | Low | Not started |
-| — | ORB-26 | Edit a conversation's notes | Core | **High** | Low | ✅ Done |
-| — | ORB-27 | Photos as attachments | Core | **Could have** | Low | ⚠️ Shipped ahead of priority |
-| — | ORB-28 | "Coming up" on the dashboard | Core | Med | Med | ✅ Done |
-| Aug 9 | ORB-34 | Integrations entry point in main nav | Integrations | Med | Med | ✅ Done |
-| Aug 9 | ORB-36 | Integrations pane in Settings | Integrations | Med | Med | ✅ Done |
-| Aug 9 | ORB-35 | Sync from the dashboard | Integrations | Med | Med | ✅ Done |
-| Aug 9 | ORB-27 | Revisit email reminder logic | Integrations | Med | Med | 🔶 Built — needs SQL |
-| — | ORB-37 | Match calendar events by name, not just email | Integrations | Med | High | 📋 Backlog — spec below, not started |
-| Aug 10 | ORB-38 | Digest fires at 9am in the reader's timezone | Integrations | Med | Low | ✅ Done 2026-08-10 — needs SQL |
-| Aug 10 | ORB-39 | Calendar connection follows the account, not the device | Integrations | Med | Med | ✅ Done 2026-08-10 |
+| "Marked as reached out" flow | ORB-13 | Core | Aug 8 | HIGH | HIGH | ✅ DONE |
+| "+" icon confirming logged conversation | ORB-14 | Core | Aug 8 | MEDIUM | LOW | ✅ DONE |
+| PDF attached to conversation | ORB-20 | Core | Aug 8 | LOW | LOW | ✅ DONE |
+| AI talking points | ORB-17 | Core | Aug 18 | MEDIUM | LOW | Not started — spec agreed 2026-08-10 |
+| Audio transcription | ORB-18 | Core | Aug 18 | HIGH | MEDIUM | Not started — Davina is writing the spec |
+| Key people tier | ORB-22 | Core | Sep 7 | LOW | LOW | Not started |
+| Thank-you draft from conversation | ORB-19 | Core | Sep 7 | LOW | LOW | Not started |
+| Schema audit and alignment | ORB-38 | Core | Aug 10 | HIGH | MEDIUM | ⚠️ Partial — see docs/BACKLOG.md §3 |
+| Multiple email addresses per contact | ORB-39 | Core | Aug 10 | HIGH | LOW | ✅ DONE — note needs correcting |
+| Role and company history per contact | ORB-40 | Core | Aug 10 | HIGH | MEDIUM | ⚠️ Partial — names only, no titles or dates |
+| Surface every tracked field on the profile | ORB-41 | Core | Aug 10 | HIGH | LOW | ✅ DONE |
+| Profile page UI rebuild | ORB-42 | Core | Aug 10 | HIGH | MEDIUM | ✅ DONE |
+| Schedule email reminders | ORB-16 | Integrations | Aug 8 | MEDIUM | HIGH | ✅ DONE — live |
+| Revisit email reminder logic | ORB-27 | Integrations | Aug 9 | MEDIUM | MEDIUM | ✅ DONE — note describes a different mechanism |
+| Google Calendar integration | ORB-15 | Integrations | Aug 8 | HIGH | HIGH | ✅ DONE |
+| Idle pause resilience | ORB-24 | Integrations | Aug 12 | HIGH | HIGH | ✅ DONE 2026-08-10 — Confluence still says NOT STARTED |
+| Two-factor authentication | ORB-21 | Integrations | Aug 17 | MEDIUM | MEDIUM | Not started |
+| Network health over time | ORB-23 | Integrations | Aug 19 | MEDIUM | MEDIUM | Not started |
+| Integrations tab | ORB-34 | Integrations | Aug 9 | MEDIUM | MEDIUM | ✅ DONE |
+| Sync from the dashboard | ORB-35 | Integrations | Aug 9 | MEDIUM | MEDIUM | ✅ DONE |
+| Integrations pane in Settings | ORB-36 | Integrations | Aug 9 | MEDIUM | LOW | ✅ DONE |
+| Configure custom email domain | ORB-37 | Integrations | Aug 11 | MEDIUM | HIGH | Not started — "hard blocker" claim is wrong, see BACKLOG §3 |
+| Reminder digest in the reader's timezone | ORB-43 | Integrations | Aug 10 | MEDIUM | LOW | ✅ DONE — **not yet in Confluence** |
+| Calendar connection follows the account | ORB-44 | Integrations | Aug 10 | MEDIUM | MEDIUM | ✅ DONE — **not yet in Confluence** |
+| Ask about a conversation only once it ended | ORB-45 | Integrations | Aug 10 | HIGH | LOW | ✅ DONE — **not yet in Confluence** |
+| "Coming up" holds its height | ORB-46 | Core | Aug 10 | MEDIUM | LOW | ✅ DONE — **not yet in Confluence** |
+| Match calendar events by name | ORB-47 | Integrations | — | MEDIUM | HIGH | 📋 Backlog — **not yet in Confluence** |
+
+Mirrors the Confluence **Detailed Quarterly Roadmap** exactly, plus ORB-43…47 which
+are new and marked as such. Rows to paste are in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 Dates are current-constraint estimates and expected to move **up**, not back.
 
@@ -376,7 +384,7 @@ live project: HTTP 200. The failure path was checked too — pointed at a file w
 key in it, it exits 1 with an error naming the file rather than silently pinging
 nothing.
 
-### ORB-38 — the digest arrives in your morning · ✅ done 2026-08-10
+### ORB-43 — the digest arrives in your morning · ✅ done 2026-08-10
 pg_cron is UTC-only, so one daily fire at 13:00 UTC was mid-morning in London and
 half past two in the morning in Honolulu. A nudge that lands overnight is read the
 next day with everything else, which defeats the point of a fixed rhythm.
@@ -404,7 +412,7 @@ date fix alone fails two of its assertions.
 
 **Needs from you:** run `supabase/add-timezone.sql`, then redeploy the function.
 
-### ORB-39 — the calendar connection follows the account · ✅ done 2026-08-10
+### ORB-44 — the calendar connection follows the account · ✅ done 2026-08-10
 Everything about the Google connection lived in `localStorage`, so it was a property
 of the BROWSER: open Orbit somewhere new and it claimed you had never connected
 Google, while "synced 2 hours ago" quietly meant *on this device* — the worse kind of
@@ -702,7 +710,7 @@ ahead, in progress, and finished, exactly one of the two lists claims it.
 
 ---
 
-## ORB-37 — matching by name when there is no invite · 📋 backlog, not started
+## ORB-47 — matching by name when there is no invite · 📋 backlog, not started
 
 **The gap.** Every match today runs through `attendeesInNetwork`, which is
 email-only, because an address is the one identifier both sides share. That
