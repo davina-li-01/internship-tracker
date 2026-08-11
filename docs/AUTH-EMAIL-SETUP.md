@@ -20,33 +20,66 @@ Subject:
 Confirm your email for Orbit
 ```
 
-Body:
+Body — this is the reminder digest's own design, so the two emails Orbit sends
+look like they came from the same product. Same cream card, same orange
+wordmark, same 520px column, same type sizes as
+`supabase/functions/send-reminders/reminders.ts`:
 
 ```html
-<h2>Confirm your email</h2>
+<div style="margin:0;padding:24px;background:#FAF6F0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+  <div style="max-width:520px;margin:0 auto;background:#FFFCF8;border-radius:16px;padding:28px;">
 
-<p>You just created an Orbit account. One click and you are in.</p>
+    <div style="font-size:18px;font-weight:700;color:#EA580C;letter-spacing:-0.01em;">Orbit</div>
 
-<p><a href="{{ .ConfirmationURL }}">Confirm my email address</a></p>
+    <p style="color:#1C1917;font-size:20px;font-weight:700;line-height:1.3;margin:20px 0 0;">
+      Confirm your email
+    </p>
 
-<p>Or paste this into your browser:<br>
-<span style="color:#555">{{ .ConfirmationURL }}</span></p>
+    <p style="color:#57534E;font-size:15px;line-height:1.5;margin:12px 0 24px;">
+      You just created an Orbit account. One click and you are in.
+    </p>
 
-<p style="color:#555;font-size:13px">
-  This link expires in 24 hours. If you did not sign up for Orbit, you can
-  ignore this email and nothing will happen.
-</p>
+    <a href="{{ .ConfirmationURL }}"
+       style="display:inline-block;background:#EA580C;color:#ffffff;text-decoration:none;
+              font-size:15px;font-weight:600;padding:12px 22px;border-radius:10px;">
+      Confirm my email address
+    </a>
 
-<p style="color:#555;font-size:13px">— Orbit · Keep your people in orbit</p>
+    <p style="color:#78716C;font-size:13px;line-height:1.5;margin:24px 0 0;">
+      Or paste this into your browser:
+    </p>
+    <p style="color:#78716C;font-size:12px;line-height:1.5;margin:4px 0 0;word-break:break-all;">
+      {{ .ConfirmationURL }}
+    </p>
+
+    <div style="border-top:1px solid #EEE8E0;margin:24px 0 0;"></div>
+
+    <p style="color:#A8A29E;font-size:13px;line-height:1.5;margin:16px 0 0;">
+      This link expires in 24 hours. If you did not sign up for Orbit, ignore
+      this email — nothing will happen.
+    </p>
+
+    <p style="color:#A8A29E;font-size:13px;margin:16px 0 0;">
+      Orbit · Keep your people in orbit
+    </p>
+
+  </div>
+</div>
 ```
 
-Two things earn their place. **The pasteable URL** matters because a bare link
-in an unfamiliar email is the thing people are told never to click — seeing
-where it goes is what makes it clickable. **"If you did not sign up"** is the
-line every legitimate confirmation email has and every phishing one omits.
+Three things earn their place. **The pasteable URL** — a bare link in an
+unfamiliar email is exactly what people are trained not to click, and being able
+to read where it goes is what makes it clickable. **"If you did not sign up"** is
+the line every real confirmation email carries and phishing almost never
+bothers with. And **the wordmark at the top**, because the sender line still
+says Supabase until §2 is done; the first thing in the body has to say Orbit or
+nothing in the email does.
 
-Do the same for **Reset password** and **Magic link** if you ever enable it.
-Whatever is left unedited keeps saying "your user".
+Inline styles and no `<style>` block on purpose: Gmail strips head styles, so
+anything not inline is decoration you will not see.
+
+Do the same for **Reset password**. Anything left unedited keeps saying "your
+user".
 
 ---
 
@@ -75,6 +108,25 @@ account — fine for testing the digest against yourself, useless for real users
 because their confirmation email would never arrive. So: buy the domain, verify
 it in Resend, then fill this in. That is ORB-37, and this is a second reason to
 do it beyond spam placement.
+
+### "Should I just set up custom SMTP now?"
+
+Yes — but the button cannot be finished today without a domain, so the order is
+domain first, SMTP second. A domain is roughly £10 a year and it unblocks the
+sender, the footer and the rate limit in one move.
+
+There is one no-domain option, and it is worth knowing about mainly so you can
+reject it deliberately: **Gmail SMTP with an app password**. It works, it lifts
+the rate limit to Gmail's much higher daily cap, and it costs nothing. What it
+does is make every confirmation email arrive from your personal address. For
+someone who knows you that reads as more trustworthy, not less. For a stranger
+who signed up from a link it reads as a personal account asking them to click
+something, which is the exact shape of the thing they have been told to
+distrust. It also puts transactional mail through an account Google can
+rate-limit or flag at its discretion.
+
+Use it only if signups are actively failing and the domain is days away.
+Otherwise buy the domain — it is the cheaper fix in every sense.
 
 ---
 
