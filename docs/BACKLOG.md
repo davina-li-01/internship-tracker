@@ -25,6 +25,67 @@ with no access to this repo.
 
 ---
 
+## Aug 11 — cadence research, and eight new tickets
+
+`User Research: Cadence Structure` is now a Confluence page under the EPIC,
+alongside Backlog and Roadmap. It argues that the flat per-contact interval is
+the documented failure mode of the personal-CRM category, and proposes tiers
+with researched defaults, triggers ranked above timers, and a rewrite of the
+word *overdue*. It carries its own sourcing caveats — read those first.
+
+**Nothing already in the Backlog was edited.** Existing rows stand as the record
+of what was decided when. Everything forward-looking is a new ticket, so the
+page reads decisions → research → what changes next.
+
+| Ticket | | |
+|---|---|---|
+| ORB-51 | Cadence strategy: tiers and triggers | Aug 11 · **In Progress** |
+| ORB-52 | Relationship tiers replace the interval picker | TBD |
+| ORB-53 | Trigger-first ordering for the reach-out list | TBD |
+| ORB-54 | Reframe "overdue" outside the inner circle | TBD |
+| ORB-55 | Digest orders by trigger and shows the reason | TBD |
+| ORB-56 | Tier as a filter axis | TBD |
+| ORB-57 | Restate the success metrics tiers invalidate | TBD |
+| ORB-58 | Finish the mark-as-reached-out rework | TBD |
+
+**Two things worth carrying forward:**
+
+The shipped picker stops at **quarterly**. The two outer tiers the research says
+matter most — twice-yearly and annual — cannot be expressed today except through
+the custom-days field. The options that matter are the ones the UI makes hardest.
+
+**ORB-22 and ORB-52 answer the same question twice.** A `starred` boolean and a
+four-tier system are two ways to say "this one matters." ORB-22 is scheduled for
+today; ORB-52 supersedes its approach. Open decision on the research page.
+
+### ORB-58 — what ORB-13 actually left behind
+
+ORB-13's row still describes a two-click modal. The code moved past that:
+`markReachedOut()` gives one past-tense click with an 8-second undo on the
+dashboard list, My Network and the contact profile, and the old dialog is already
+demoted to a secondary **Draft** button. The EPIC's Open Questions answered *row
+gone*, and the build followed it.
+
+Two gaps survive, and they are ORB-58, not ORB-13:
+
+- the **app-open nudge** still opens the old "Draft a message" modal — the one
+  surface that interrupts you never got the rework
+- the button only renders when `health.scheduled` is true, so **a contact given a
+  cadence later never appears in Reach out next**
+
+### Roadmap: Team colours
+
+The Team cells set a `background-color` on the *text run*. Confluence's HTML
+converter copies that colour into `textColor` as well, so the label was rendering
+in the same light purple as its own highlight — the "light grey, can't read it"
+symptom. Setting `color` explicitly does not survive the conversion.
+
+Fixed by moving the highlight to the **cell** (`data-background` on the `td`) and
+leaving the text unstyled, so it renders in the default dark. Core Functionality
+`#dfd8fd`, Integrations `#c6edfb`.
+
+---
+
 ## Aug 11 plan, set on Aug 10 evening
 
 Three moved up, one scheduled, one deferred, one shipped.
