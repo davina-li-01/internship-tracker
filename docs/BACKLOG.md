@@ -25,6 +25,51 @@ with no access to this repo.
 
 ---
 
+## ORB-52 — the four decisions, made Aug 11
+
+| Question | Decision |
+|---|---|
+| How many tiers | **Four**, as researched: inner circle ~monthly, mentors and managers ~quarterly, professional network ~twice yearly, met once ~annually |
+| Existing contacts | **Derive the tier from the interval already chosen.** Those were deliberate and carry intent a blanket default would throw away |
+| "No schedule" | **Survives as a deliberate opt-out**, but is no longer where a new contact lands by default |
+| ORB-22 | **Absorbed.** Inner circle is the star; a separate `starred` boolean would be a second answer to one question |
+
+**The model.** `follow_up_frequency` stays and remains the effective interval, so
+every existing health calculation keeps working untouched. Choosing a tier sets
+the interval to that tier's default; changing the interval afterwards is the
+override. Tier is what you pick, interval is what runs. That keeps the blast
+radius to the picker rather than the whole health engine.
+
+`012_relationship_tiers.sql` adds the column and back-fills it. Custom intervals
+map to the nearest tier by day count, and a malformed suffix falls through to
+professional network rather than erroring.
+
+## ORB-57 — success metrics restated
+
+Done on the EPIC. Two metrics replaced, two added.
+
+- ~~"50%+ of the network has a cadence set"~~ → **30%+ sit in a tier the user
+  changed from the default.** The old one is trivially 100% once everyone gets a
+  default tier. The 30% is provisional and needs a baseline.
+- ~~"Overdue count trends down"~~ → **"Inner-circle contacts past their cadence
+  trends down while network size grows."** Still the headline; now scoped to
+  where a missed cadence is genuinely a failure.
+- **New:** 2+ reconnections a month with contacts untouched six months or more.
+- **New:** over half of reach-outs carry a trigger rather than only a timer —
+  the direct test of the central bet.
+
+The "declared cadence proxies intent" assumption was rewritten to hold at the
+centre of the network and weaken with distance, and a new assumption records
+that memory may not be the binding constraint — held loosely, since the
+underlying finding has a live replication dispute.
+
+**Downstream catch:** the EPIC's Reference Links still pointed at
+`supabase/schema.sql`, `fix-rls.sql` and `storage-policies.sql`, all moved or
+removed by ORB-49 an hour earlier. Now point at `supabase/migrations/`,
+`002_rls_policies.sql` and `supabase/scripts/`, plus a link to the research page.
+
+---
+
 ## ORB-49 — numbered migrations and dead column cleanup
 
 `supabase/` was thirteen hand-named SQL files in one flat folder, with the apply

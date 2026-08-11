@@ -22,6 +22,7 @@ sequence against the live project is a no-op rather than a disaster.
 | 009 | `009_timezone_hourly_digest.sql` | `preferences.timezone`; re-schedules the cron hourly (ORB-43) |
 | 010 | `010_integrations.sql` | `preferences.integrations` jsonb (ORB-44) |
 | 011 | `011_drop_orphan_internship_columns.sql` | Drops the last two `internship_id` columns (ORB-49) |
+| 012 | `012_relationship_tiers.sql` | `contacts.tier`, back-filled from the existing interval (ORB-52) |
 
 ## Two things that look wrong and are not
 
