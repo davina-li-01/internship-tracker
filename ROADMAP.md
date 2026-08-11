@@ -20,7 +20,7 @@ Aligned to Confluence 2026-08-08. Every ORB key below matches the epic.
 | Aug 8 | ORB-15 | Google Calendar integration | Integrations | **High** | High | 🔶 Built — needs your Google client |
 | Aug 12 | ORB-17 | AI talking points | Core | Med | Low | Next — spec agreed 2026-08-10 |
 | — | ORB-18 | Audio transcription | Core | **High** | Med | ⏸ Deferred by Davina 2026-08-10 — she is writing the spec |
-| Aug 12 | ORB-24 | Idle-pause resilience | Integrations | **High** | Med | ✅ Done 2026-08-10 — needs one repo variable |
+| Aug 12 | ORB-24 | Idle-pause resilience | Integrations | **High** | Med | ✅ Done 2026-08-10 — no setup |
 | Aug 19 | ORB-21 | Two-factor authentication | Integrations | Med | Med | Not started |
 | Aug 19 | ORB-23 | Network health over time | Integrations | Med | Med | Not started |
 | Sep 7 | ORB-22 | Key people tier | Core | Low | Low | Not started |
@@ -358,10 +358,20 @@ It also protects the digest. The reminder job is pg_cron, so a paused project st
 the emails too — the message that would bring you back to Orbit is exactly what
 stops when you stay away.
 
-**Needs from you:** one repository variable. Settings → Secrets and variables →
-Actions → **Variables** → `SUPABASE_ANON_KEY`, set to the publishable key already in
-`js/supabase.js`. A *variable*, not a secret, because that key is public by design —
-and emphatically **not** the service-role key, which bypasses every RLS policy.
+**Nothing to set up.** The URL and publishable key are read out of `js/supabase.js`
+at run time. An earlier version asked for a repository variable holding the same key,
+which was ceremony: that file already ships both to every visitor's browser, so
+copying the key into GitHub bought a setup step, a second place to forget when the
+key rotates, and no security at all. Access is enforced by Row Level Security, not by
+keeping a publishable key quiet.
+
+The **service-role** key is the opposite case — it bypasses every RLS policy. It is
+not in this repo and must never be.
+
+Verified by extracting the step's script from the YAML and running it against the
+live project: HTTP 200. The failure path was checked too — pointed at a file with no
+key in it, it exits 1 with an error naming the file rather than silently pinging
+nothing.
 
 ### ORB-38 — the digest arrives in your morning · ✅ done 2026-08-10
 pg_cron is UTC-only, so one daily fire at 13:00 UTC was mid-morning in London and

@@ -16,19 +16,24 @@
 # job, so a paused project silently stops the emails too — and the email that
 # would bring you back to Orbit is exactly what stops when you stay away.
 #
-# WHAT IT SENDS
+# WHERE THE KEY COMES FROM
 #
-# One anonymous, read-only request per day against a table protected by RLS,
-# using the same publishable key the browser ships. With no session it reads
-# nothing: the point is a query reaching Postgres, not the rows coming back.
-# Nothing secret lives in this file — that key is public by design.
+# Straight out of js/supabase.js, which is checked out in the step below. That
+# file already ships the URL and the publishable key to every visitor's browser;
+# they are public by design and access is enforced by Row Level Security, not by
+# keeping them quiet. Copying them into a repository variable would have added a
+# setup step, a second place to forget when the key rotates, and no security
+# whatsoever. Reading the file means rotating the key in one place still works.
+#
+# The service-role key is a different animal entirely — it bypasses every RLS
+# policy. It is not in this repo, and must never be.
 
 name: Keep Supabase warm
 
 on:
   schedule:
-    # 11:00 UTC daily. Far from the reminder job's hourly run, so a slow wake-up
-    # never lands on top of a digest going out.
+    # 11:00 UTC daily. Away from the reminder job's hourly run, so a slow
+    # cold-start never lands on top of a digest going out.
     - cron: "0 11 * * *"
   workflow_dispatch: {}
 
@@ -36,28 +41,30 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Wake the database
-        env:
-          SUPABASE_URL: https://kctmclcjqpytswwyewti.supabase.co
-          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
         run: |
           set -uo pipefail
 
-          if [ -z "${SUPABASE_ANON_KEY}" ]; then
-            echo "::error::Repository variable SUPABASE_ANON_KEY is not set."
-            echo "Settings → Secrets and variables → Actions → Variables → New variable."
-            echo "Use the publishable/anon key from js/supabase.js — NOT the service-role key."
+          URL=$(grep -oE 'https://[a-z0-9]+\.supabase\.co' js/supabase.js | head -1)
+          KEY=$(grep -oE 'sb_publishable_[A-Za-z0-9_-]+' js/supabase.js | head -1)
+
+          if [ -z "${URL}" ] || [ -z "${KEY}" ]; then
+            echo "::error::Could not read the Supabase URL or publishable key from js/supabase.js."
+            echo "If the key format changed, update the grep patterns in this workflow."
             exit 1
           fi
+          echo "Pinging ${URL}"
 
           # A paused project has to cold-start, which is slow rather than
           # broken, so this retries with a long timeout before calling it a
           # failure. Waking it up IS the success condition.
           for attempt in 1 2 3 4 5; do
             code=$(curl -s -o /tmp/body -w "%{http_code}" --max-time 60 \
-              -H "apikey: ${SUPABASE_ANON_KEY}" \
-              -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
-              "${SUPABASE_URL}/rest/v1/preferences?select=user_id&limit=1") || code=000
+              -H "apikey: ${KEY}" \
+              -H "Authorization: Bearer ${KEY}" \
+              "${URL}/rest/v1/preferences?select=user_id&limit=1") || code=000
 
             echo "attempt ${attempt}: HTTP ${code}"
 
