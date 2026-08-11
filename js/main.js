@@ -53,6 +53,21 @@ function parseDateOnly(value) {
  * Every date in Orbit is a calendar day, not an instant. Calendar days belong
  * to whoever is looking at the calendar.
  */
+/**
+ * The IANA timezone this browser is in, e.g. "Pacific/Honolulu".
+ *
+ * Falls back to UTC rather than guessing from the clock offset: an offset
+ * cannot distinguish zones that share one today and diverge at the next
+ * daylight-saving change, and a stored zone outlives the session that read it.
+ */
+function browserTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
 function toDateString(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -3991,10 +4006,12 @@ async function openSettingsModal(section = "general") {
         + '<option value="fortnightly"' + (emailMode === "fortnightly" ? " selected" : "")
         + '>Every two weeks</option>'
         + '</select>')
-    + '<p class="field-hint">Sent to <strong>' + escapeHtml(reminderTarget) + '</strong>, '
-    + 'on the same day every fortnight — one email, everyone who is drifting, most '
-    + 'overdue first. Anyone still overdue after three of them stops being listed and '
-    + 'becomes a note that their cadence may be wrong.</p>'
+    + '<p class="field-hint">Sent to <strong>' + escapeHtml(reminderTarget) + '</strong> at '
+    + 'around <strong>9am</strong> your time (<span class="tz-name">'
+    + escapeHtml(browserTimezone()) + '</span>), on the same day every fortnight — one '
+    + 'email, everyone who is drifting, most overdue first. Anyone still overdue after '
+    + 'three of them stops being listed and becomes a note that their cadence may be '
+    + 'wrong.</p>'
     + '<p id="emailRemMsg" class="success" aria-live="polite"></p>'
     + '<p id="emailRemErr" class="error" aria-live="polite"></p>'
     + '<button class="btn btn-secondary btn-sm" id="saveEmailReminders" type="button">Save email setting</button>'
@@ -4124,7 +4141,11 @@ async function openSettingsModal(section = "general") {
       return;
     }
 
-    const result = await db.savePreferences({ email_reminders: mode });
+    // The digest goes out at 9am in YOUR morning, so the job needs to know
+    // which morning that is. Detected rather than asked for: a timezone picker
+    // is a long list of names to answer a question the browser already knows,
+    // and the wrong answer only costs the hour an email arrives.
+    const result = await db.savePreferences({ email_reminders: mode, timezone: browserTimezone() });
     if (!result.ok) { err.textContent = "Could not save — see the console (F12)."; return; }
     if (result.skipped.includes("email_reminders")) {
       err.textContent = "Run supabase/add-reminder-columns.sql and add-digest-streak.sql first.";
@@ -4133,7 +4154,8 @@ async function openSettingsModal(section = "general") {
     prefs.email_reminders = mode;
     msg.textContent = mode === "off"
       ? "Email reminders are off."
-      : "Saved. The first digest goes out within a fortnight, to "
+      : "Saved. The first digest goes out within a fortnight, around 9am "
+        + browserTimezone() + " time, to "
         + ((prefs.your_email || "").trim() || authEmail) + ".";
     setTimeout(() => { msg.textContent = ""; }, 3000);
   });

@@ -3,7 +3,7 @@
  *
  * Kept separate from index.ts, which is only the server wrapper, so all of this
  * can be tested without a network or a database. That matters more here than
- * anywhere else in the app: this code runs unattended at 13:00 UTC with nobody
+ * anywhere else in the app: this code runs unattended, hourly, with nobody
  * watching, so a bug does not show up as a broken page — it shows up as silence,
  * or as somebody's inbox filling with guilt.
  *
@@ -33,13 +33,63 @@
  *
  * The rhythm anchors itself. Fourteen days is exactly two weeks, so once the
  * first digest goes out on a Tuesday, every subsequent one is a Tuesday —
- * without this function needing to know anything about the user's timezone or
- * pick a weekday on their behalf.
+ * without this function having to pick a weekday on anyone's behalf. It does
+ * now know about timezones, but only to choose the HOUR (see SEND_HOUR); the
+ * fortnightly spacing is still what makes it a rhythm.
  */
 export const PERIOD_DAYS = 14;
 
 /** Most names in one email. A wall of them is a guilt trip, not a priority list. */
 export const MAX_PER_DIGEST = 8;
+
+/**
+ * The hour, in the READER's timezone, that a digest goes out.
+ *
+ * The job used to run once a day at 13:00 UTC for everyone, which is a fine
+ * mid-morning in London and half past two in the morning in Honolulu. A nudge
+ * that lands overnight is read the next day with everything else — the whole
+ * point of a fixed rhythm is that it arrives when you can act on it.
+ *
+ * The cron runs hourly now and this gate decides whose turn it is. Nine is
+ * early enough to catch the start of a working day and late enough not to be
+ * the first thing on a phone at dawn.
+ */
+export const SEND_HOUR = 9;
+
+/**
+ * The reader's local date and hour.
+ *
+ * Both, and from one formatter call, because they have to agree. `today` is
+ * what decides who is overdue, and taking it from UTC while sending at 9am
+ * local puts it a day out for every zone far enough east — a contact due today
+ * simply would not be found. This is the same fault that once made
+ * `todayDateString()` stamp tomorrow's date in the browser, arriving by a
+ * different route.
+ *
+ * en-CA gives ISO-ordered date parts, which is the only reason it is used.
+ * An unusable timezone falls back to UTC rather than skipping the user: a bad
+ * string in one row should cost that person a well-timed email, not every email.
+ */
+export function zonedNow(now: Date, timeZone: string | null | undefined) {
+  const zone = (timeZone || "").trim() || "UTC";
+  try {
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: zone,
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", hour12: false
+      }).formatToParts(now).map((p) => [p.type, p.value])
+    );
+    return {
+      date: `${parts.year}-${parts.month}-${parts.day}`,
+      // Some engines render midnight as "24" under hour12:false.
+      hour: Number(parts.hour) % 24,
+      zone
+    };
+  } catch {
+    return { date: now.toISOString().slice(0, 10), hour: now.getUTCHours(), zone: "UTC" };
+  }
+}
 
 /**
  * After this many consecutive digests, a name stops being listed.
@@ -68,6 +118,8 @@ export type Prefs = {
   your_email: string | null;
   email_reminders: string | null;
   last_reminder_sent_at: string | null;
+  /** IANA name, e.g. "Pacific/Honolulu". Null or unknown is treated as UTC. */
+  timezone: string | null;
 };
 
 export type Ranked = { contact: Contact; days: number; streak: number };
@@ -240,7 +292,7 @@ export function buildEmail(
 }
 
 export type UserResult =
-  | { user: string; skipped: string; detail?: number }
+  | { user: string; skipped: string; detail?: number | string }
   | { user: string; error: string }
   | { user: string; wouldSend: { to: string; subject: string; names: (string | null)[] } }
   | { user: string; sent: number; held: number; to: string };
@@ -250,12 +302,24 @@ export type UserResult =
  * one user's broken state cannot stop everyone else's reminders.
  */
 export async function runReminders(deps: Deps, dryRun = false): Promise<UserResult[]> {
-  const today = deps.now.toISOString().slice(0, 10);
   const results: UserResult[] = [];
 
   for (const prefs of await deps.listOptedInUsers()) {
     if (!isOptedIn(prefs.email_reminders)) {
       results.push({ user: prefs.user_id, skipped: "reminders off" });
+      continue;
+    }
+
+    // Everything below is decided in the reader's own day, not the server's.
+    const local = zonedNow(deps.now, prefs.timezone);
+    const today = local.date;
+
+    // The cron fires hourly; this is what makes it one email a fortnight
+    // rather than 24. A dry run deliberately ignores it — the point of ?dry=1
+    // is to see what would be sent, and making that only answerable at 9am in
+    // your own timezone would be a poor way to test a mail job.
+    if (!dryRun && local.hour !== SEND_HOUR) {
+      results.push({ user: prefs.user_id, skipped: "not their hour", detail: `${local.hour}:00 ${local.zone}` });
       continue;
     }
 

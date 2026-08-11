@@ -18,9 +18,9 @@ Aligned to Confluence 2026-08-08. Every ORB key below matches the epic.
 | Aug 8 | ORB-20 | PDF attached to conversation | Core | Low | Low | ✅ Done |
 | Aug 8 | ORB-16 | Scheduled email reminders | Integrations | Med | High | ✅ Done — live |
 | Aug 8 | ORB-15 | Google Calendar integration | Integrations | **High** | High | 🔶 Built — needs your Google client |
-| Aug 12 | ORB-17 | AI talking points | Core | Med | Low | Not started |
-| Aug 12 | ORB-18 | Audio transcription | Core | **High** | Med | Not started |
-| Aug 17 | ORB-24 | Idle-pause resilience | Integrations | Med | Med | Not started |
+| Aug 12 | ORB-17 | AI talking points | Core | Med | Low | Next — spec agreed 2026-08-10 |
+| — | ORB-18 | Audio transcription | Core | **High** | Med | ⏸ Deferred by Davina 2026-08-10 — she is writing the spec |
+| Aug 12 | ORB-24 | Idle-pause resilience | Integrations | **High** | Med | ✅ Done 2026-08-10 — needs one repo variable |
 | Aug 19 | ORB-21 | Two-factor authentication | Integrations | Med | Med | Not started |
 | Aug 19 | ORB-23 | Network health over time | Integrations | Med | Med | Not started |
 | Sep 7 | ORB-22 | Key people tier | Core | Low | Low | Not started |
@@ -33,6 +33,8 @@ Aligned to Confluence 2026-08-08. Every ORB key below matches the epic.
 | Aug 9 | ORB-35 | Sync from the dashboard | Integrations | Med | Med | ✅ Done |
 | Aug 9 | ORB-27 | Revisit email reminder logic | Integrations | Med | Med | 🔶 Built — needs SQL |
 | — | ORB-37 | Match calendar events by name, not just email | Integrations | Med | High | 📋 Backlog — spec below, not started |
+| Aug 10 | ORB-38 | Digest fires at 9am in the reader's timezone | Integrations | Med | Low | ✅ Done 2026-08-10 — needs SQL |
+| Aug 10 | ORB-39 | Calendar connection follows the account, not the device | Integrations | Med | Med | Next |
 
 Dates are current-constraint estimates and expected to move **up**, not back.
 
@@ -339,11 +341,65 @@ Needs `alter table contacts add column starred boolean`. Note `contactToRow()` i
 Requires historical snapshots, which are not stored. Needs a schema decision before
 anything else: a periodic snapshot table, or derive from `interactions` history.
 
-### ORB-24 — Idle-pause resilience
+### ORB-24 — Idle-pause resilience · ✅ done 2026-08-10
 Free-tier Supabase pauses after ~7 days idle and the project loses its DNS record, so
-the app dies with no useful error. Already cost a full debugging session once. The red
-banner in `js/db.js` explains it when it happens; the fragility remains. Options: a
-scheduled ping, or accept it and rely on the banner.
+the app dies with no useful error. Already cost a full debugging session once.
+
+**The obvious fix cannot work.** A scheduled ping from pg_cron pauses when the
+project does, so the thing meant to prevent the outage is the first casualty of it.
+The ping has to come from outside the project.
+
+**Shipped as** `.github/workflows/keep-warm.yml` — one anonymous, read-only REST
+request a day, retried five times with a long timeout because a paused project
+cold-starts slowly rather than failing. 401 and 403 count as success: RLS refusing
+an anonymous read is Postgres answering, which is the whole proof required.
+
+It also protects the digest. The reminder job is pg_cron, so a paused project stops
+the emails too — the message that would bring you back to Orbit is exactly what
+stops when you stay away.
+
+**Needs from you:** one repository variable. Settings → Secrets and variables →
+Actions → **Variables** → `SUPABASE_ANON_KEY`, set to the publishable key already in
+`js/supabase.js`. A *variable*, not a secret, because that key is public by design —
+and emphatically **not** the service-role key, which bypasses every RLS policy.
+
+### ORB-38 — the digest arrives in your morning · ✅ done 2026-08-10
+pg_cron is UTC-only, so one daily fire at 13:00 UTC was mid-morning in London and
+half past two in the morning in Honolulu. A nudge that lands overnight is read the
+next day with everything else, which defeats the point of a fixed rhythm.
+
+**The cron runs hourly now** and `SEND_HOUR` (9) decides whose turn it is, compared
+against `preferences.timezone`. Hourly is not the same as emailing hourly — 23 of
+those runs find nobody at 9am and send nothing.
+
+**A quieter bug came with it.** "Who is overdue" is a DATE comparison and the date
+came from `now.toISOString()` — UTC. Sending at 9am local in a zone far enough east
+means the UTC date has not rolled over, so a contact due today would not be found at
+all. Exactly the fault that once made `todayDateString()` stamp tomorrow's date in
+the browser, arriving by a different route. `zonedNow()` returns the date and the
+hour from one formatter call so they cannot disagree.
+
+The timezone is **detected, not asked for** — a picker is a long list of names to
+answer a question the browser already knows, and the cost of being wrong is the hour
+an email arrives. An unparseable zone falls back to UTC rather than skipping the
+user: a bad string in one row should cost that person a well-timed email, not cost
+everyone their email.
+
+`tests/digest-timezone.test.mjs` imports the Edge Function's `.ts` directly — node
+strips the types, so it tests the shipping file rather than a copy. Reverting the
+date fix alone fails two of its assertions.
+
+**Needs from you:** run `supabase/add-timezone.sql`, then redeploy the function.
+
+### ORB-39 — the calendar connection follows the account · next
+Everything about the Google connection lives in `localStorage`: whether you
+connected, which account, which calendar, when it last synced. So a new browser means
+reconnecting, and "synced 2 hours ago" silently means *on this device*.
+
+Shape: `preferences` becomes the durable copy and localStorage stays the fast one.
+It has to stay: the pre-paint script reads `orbit_calendar_connected` synchronously
+to decide the nav, and an async read there would reintroduce the flash it was written
+to remove.
 
 ### ORB-25 — Company logos · won't have
 Needs an external logo API on every render — a runtime dependency for decoration.

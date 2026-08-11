@@ -1,0 +1,76 @@
+# Orbit — keep the Supabase project awake (ORB-24)
+#
+# Free-tier Supabase pauses after ~7 days with no database activity, and a
+# paused project loses its DNS record: the app stops with a name-resolution
+# error rather than anything that explains itself. It has already cost one full
+# debugging session.
+#
+# WHY THIS RUNS ON GITHUB AND NOT ON pg_cron
+#
+# The obvious fix is a scheduled ping from inside Postgres. It cannot work: when
+# the project pauses, pg_cron pauses with it, so the thing meant to prevent the
+# outage is the first casualty of it. The ping has to come from outside, and
+# GitHub Actions is already where this repo lives.
+#
+# There is a second reason it matters here. The reminder digest is a pg_cron
+# job, so a paused project silently stops the emails too — and the email that
+# would bring you back to Orbit is exactly what stops when you stay away.
+#
+# WHAT IT SENDS
+#
+# One anonymous, read-only request per day against a table protected by RLS,
+# using the same publishable key the browser ships. With no session it reads
+# nothing: the point is a query reaching Postgres, not the rows coming back.
+# Nothing secret lives in this file — that key is public by design.
+
+name: Keep Supabase warm
+
+on:
+  schedule:
+    # 11:00 UTC daily. Far from the reminder job's hourly run, so a slow wake-up
+    # never lands on top of a digest going out.
+    - cron: "0 11 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake the database
+        env:
+          SUPABASE_URL: https://kctmclcjqpytswwyewti.supabase.co
+          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+        run: |
+          set -uo pipefail
+
+          if [ -z "${SUPABASE_ANON_KEY}" ]; then
+            echo "::error::Repository variable SUPABASE_ANON_KEY is not set."
+            echo "Settings → Secrets and variables → Actions → Variables → New variable."
+            echo "Use the publishable/anon key from js/supabase.js — NOT the service-role key."
+            exit 1
+          fi
+
+          # A paused project has to cold-start, which is slow rather than
+          # broken, so this retries with a long timeout before calling it a
+          # failure. Waking it up IS the success condition.
+          for attempt in 1 2 3 4 5; do
+            code=$(curl -s -o /tmp/body -w "%{http_code}" --max-time 60 \
+              -H "apikey: ${SUPABASE_ANON_KEY}" \
+              -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+              "${SUPABASE_URL}/rest/v1/preferences?select=user_id&limit=1") || code=000
+
+            echo "attempt ${attempt}: HTTP ${code}"
+
+            # 200 is awake. 401/403 is also awake — RLS refusing an anonymous
+            # read is Postgres answering, which is all this needs to prove.
+            case "${code}" in
+              200|401|403) echo "Database is awake."; exit 0 ;;
+            esac
+
+            echo "  body: $(head -c 300 /tmp/body 2>/dev/null)"
+            sleep 20
+          done
+
+          echo "::error::Supabase did not respond after 5 attempts — it may be paused."
+          echo "Open the Supabase dashboard and resume the project."
+          exit 1

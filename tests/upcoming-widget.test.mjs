@@ -21,7 +21,12 @@ document.body.appendChild(slot);
 
 const NOW = Date.now();
 const at = (h) => new Date(NOW + h * 3600_000).toISOString();
-const today = new Date(NOW).toISOString().slice(0, 10);
+// LOCAL, not toISOString(). relativeDayLabel() works in local time, so a UTC
+// date makes this suite say "tomorrow" for a few hours every night west of
+// Greenwich — the same fault the app itself had in todayDateString().
+const d = new Date(NOW);
+const today = [d.getFullYear(), d.getMonth() + 1, d.getDate()]
+  .map((n, i) => String(n).padStart(i ? 2 : 4, "0")).join("-");
 
 const person = [{ id: "c1", name: "Marcus Chen", talkingPoints: ["Ask about the platform move"] }];
 

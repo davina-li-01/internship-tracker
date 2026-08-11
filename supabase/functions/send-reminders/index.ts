@@ -14,6 +14,10 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { runReminders, type Contact, type Deps, type Prefs } from "./reminders.ts";
 
+/** Bumped whenever this function's behaviour changes, so `?dry=1` can prove
+ *  which version is deployed rather than leaving it to be inferred. */
+const BUILD = "orb27.2-per-user-timezone";
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body, null, 2), {
     status,
@@ -58,7 +62,7 @@ Deno.serve(async (req) => {
     listOptedInUsers: async () => {
       const { data, error } = await supabase
         .from("preferences")
-        .select("user_id, your_name, your_email, email_reminders, last_reminder_sent_at")
+        .select("user_id, your_name, your_email, email_reminders, last_reminder_sent_at, timezone")
         .in("email_reminders", ["fortnightly", "weekly", "daily"]);
       if (error) throw new Error(error.message);
       return (data || []) as Prefs[];
@@ -104,7 +108,11 @@ Deno.serve(async (req) => {
 
   try {
     const results = await runReminders(deps, dryRun);
-    return json({ ok: true, dryRun, ranAt: deps.now.toISOString(), results });
+    // BUILD is here so a deploy can be confirmed from the outside. Without it
+    // the only way to tell which version is live was to read the shape of the
+    // output and infer, which is not a check — it is a guess that happens to
+    // be right. Bump it when the behaviour changes.
+    return json({ ok: true, build: BUILD, dryRun, ranAt: deps.now.toISOString(), results });
   } catch (err) {
     return json({ ok: false, error: String(err) }, 500);
   }
