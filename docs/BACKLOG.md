@@ -1,149 +1,108 @@
-# Orbit — what to paste into Confluence
+# Orbit — Confluence reconciliation log
 
-Reconciled against the three exported pages on 2026-08-10: **Customer Experience
-EPIC**, **Backlog**, and **Roadmap Q3 2026**.
+Confluence is the source of truth. This file is the staging copy and the record of
+what was reconciled, so when the two disagree the **live page wins**.
 
-Confluence is the source of truth. Everything below is either a **new row**, a
-**status change**, or a **correction to a note that no longer describes what
-shipped**.
+Since 2026-08-10 the pages are written directly through the Atlassian MCP server
+rather than pasted by hand, so this file no longer needs to be a transcript of
+what to copy.
 
-Keys start at **ORB-43** because the Backlog page already runs to ORB-42.
+Pages: **Customer Experience EPIC**, **Backlog**, **Roadmap Q3 2026** — all in the
+`PM` space.
 
 ---
 
-## 1. New rows for the **Backlog** page
+## The Dependencies column
 
-Five. Everything else I built maps onto a ticket you already have — see §3.
+The fifth column is **Dependencies**, not Notes. It leads with what had to exist
+first — other ORB tickets, new columns or tables, constraints another ticket
+imposes on the design — and then carries a short account of what shipped and why.
 
-The fifth column is **Dependencies**, not Notes: what this item needed to exist
-first, so the shape of the project is readable from the table alone. What each one
-actually does, and why, lives in `ROADMAP.md` — that split is deliberate, so the
-backlog stays a plan rather than a changelog.
+That second half is deliberate (ruled 2026-08-11). A stricter version was written,
+which cut every cell to bare prerequisites and moved the design detail into
+`ROADMAP.md`; it was rejected because the Backlog has to stay readable to someone
+with no access to this repo.
+
+---
+
+## Written on 2026-08-11
+
+### Corrections — rows that no longer described what shipped
+
+Three had already been fixed by hand before this pass: **ORB-27**'s cell (now the
+fortnightly digest), **ORB-37** ("deliverability risk, not a blocker") and
+**ORB-16** ("shares no infrastructure with ORB-15").
+
+Three were still wrong and are now corrected:
+
+| Ticket | Was | Now |
+|---|---|---|
+| ORB-15 | "Blocked on having real contacts with emails saved" | Shipped Aug 8; follow-ons are ORB-44, ORB-45, ORB-47 |
+| ORB-39 | A `contact_emails` table with `is_primary`, and the old column retired | `contacts.emails` jsonb; `contacts.email` **retained** as primary |
+| ORB-40 | A `contact_roles` table with title, dates and `is_current` | `contacts.company_history` jsonb, company name strings only |
+
+ORB-39 and ORB-40 were not stale prose — they were **design specs for tables that
+were never built**. Anyone reading them would have gone looking for schema that
+does not exist. ORB-38's cell also now records that only its audit half shipped.
+
+**One title:** ORB-27 was *"Revisit Email Reminder Logic: Only notify a user when
+they have 14 days left until they should reach out by email"* — the lead-time
+mechanism that was considered and not built. Shortened to **"Revisit email
+reminder logic"**.
+
+### Two new tickets — remainders split out of part-done work
+
+ORB-38 and ORB-40 stay **DONE**, because what shipped for each is real and in use.
+What was specced but not built is split out rather than reopened, so the roadmap
+dates keep their meaning.
 
 | Requirement | User Story | Importance | Jira Issue | Dependencies |
 |---|---|---|---|---|
-| Reminder digest in the reader's timezone | As a user, I want the reminder email to arrive in my morning, so it lands when I can actually act on it rather than overnight | Should have | ORB-43 | **ORB-16** for the Edge Function, pg_cron and email provider. New column `preferences.timezone`. Requires the cron schedule to move from daily to hourly — the function, not the scheduler, decides whose hour it is. Soft dependency on **ORB-37**: better timing does not help mail that lands in spam |
-| Calendar connection follows the account | As a user, I want my calendar connection to work on any device I sign in on, so I do not reconnect every time I switch browsers | Should have | ORB-44 | **ORB-15** for the connection itself. **ORB-34** constrains the design: its nav rule is read from localStorage before first paint, so localStorage has to remain the synchronous copy and the database can only be the durable one. **ORB-36** surfaces the connected account this stores. New column `preferences.integrations` |
-| Ask about a conversation only once it has ended | As a user, I want to be asked how a meeting went after it happens, not while it is still ahead of me | Must have | ORB-45 | **ORB-15** for the calendar feed. Shares that feed with the "Coming up" dashboard widget, so the two must partition the same events — a meeting belongs to exactly one of "upcoming" and "loggable", never both. No schema change |
-| "Coming up" holds its height | As a user, I want a busy week of meetings to scroll inside its card rather than stretching the whole dashboard row | Should have | ORB-46 | **ORB-15** for the meetings, **ORB-35** for the card it lives in. Constrained by the dashboard chart row, which sizes every card to the tallest — so this is a layout dependency, not a data one. No schema change |
-| Match calendar events by name | As a user, I want an in-person coffee logged even when there was no calendar invite to match on | Should have | ORB-47 | **Not built.** Needs **ORB-15**. Blocked on three things that do not exist yet: an alias field per contact to remember disambiguation answers, a confidence level on an interaction to distinguish a confirmed name match from an accepted invite, and sticky per-event rejections. **ORB-23** will need the confidence field too, so build it once. **ORB-39** reduced the need by matching every stored address |
+| Role titles and dates on contact history | As a user, I can record what someone did at each company and when, so I remember whether they were a mentor, a peer or an interviewer | Should have | ORB-48 | Remainder of ORB-40, which shipped company names only. Titles, start and end dates and a current flag are more structure than a string array holds — so this is the point where `contacts.company_history` either grows to objects or becomes a table. **Breaking change to watch:** ORB-2 autocomplete disambiguates by role and company, so it must read current role from the new shape if the old columns retire. ORB-28 person summaries get sharper once dates exist |
+| Numbered migrations and dead column cleanup | As a developer, I want database state reproducible from the repo, so a fresh project matches the running one and setup drift stops looking like bugs | Should have | ORB-49 | Remainder of ORB-38, which shipped the audit — `catch-up.sql` reports every expected column as present or missing — but not the reproducibility half. Migrations are still hand-named files applied in no defined order, and the dead columns survive: `manager_name`, `next_steps`, and the orphan `internship_id` columns left over from InternTrack. Dropping columns is irreversible, so it needs the audit trusted first — an ORB-38 dependency, not a parallel track |
 
-## 2. New rows for the **Detailed Quarterly Roadmap**
-
-| Feature | Jira Issue | Team | Dates | Priority | Effort | Status |
-|---|---|---|---|---|---|---|
-| Reminder digest in the reader's timezone | ORB-43 | Integrations | Aug 10, 2026 | MEDIUM | LOW | DONE |
-| Calendar connection follows the account | ORB-44 | Integrations | Aug 10, 2026 | MEDIUM | MEDIUM | DONE |
-| Ask about a conversation only once it has ended | ORB-45 | Integrations | Aug 10, 2026 | HIGH | LOW | DONE |
-| "Coming up" holds its height | ORB-46 | Core Functionality | Aug 10, 2026 | MEDIUM | LOW | DONE |
-| Match calendar events by name | ORB-47 | Integrations | — | MEDIUM | HIGH | NOT STARTED |
-
-**One status change:** ORB-24 Idle Pause Resilience is **DONE**, not NOT STARTED.
+Roadmap rows for both: Core Functionality, date TBD, MEDIUM priority, Not Started.
+Effort MEDIUM for ORB-48, LOW for ORB-49.
 
 ---
 
-## 3. Corrections — tickets marked DONE that do not describe what shipped
+## Written earlier — ORB-43…47
 
-This is the part worth your time. Six existing rows now disagree with the code, and
-four of them would send whoever reads them next looking for something that is not
-there.
+Added to both pages on 2026-08-10. The live text is the narrative version, which
+is the one that stands; an alternative stricter draft that once lived in this file
+has been dropped to stop the two versions competing.
 
-Written against the old **Notes** column, since that is what those rows still have.
-If you want, I can convert all forty-two existing rows to **Dependencies** in one
-pass and move the descriptive text into `ROADMAP.md` — say the word and I will.
+| Jira Issue | Requirement | Status |
+|---|---|---|
+| ORB-43 | Reminder digest in the reader's timezone | DONE |
+| ORB-44 | Calendar connection follows the account | DONE |
+| ORB-45 | Ask about a conversation only once it has ended | DONE |
+| ORB-46 | "Coming up" holds its height | DONE |
+| ORB-47 | Match calendar events by name | NOT STARTED — specced only |
 
-### ORB-39 · Multiple email addresses per contact — note is wrong
-Says *"New `contact_emails` table … unique on (contact_id, address) … migrate the
-existing single email column into the new table, then retire the column."*
-
-**What shipped:** `contacts.emails` **jsonb**, and `contacts.email` was **kept** as
-the primary rather than retired. jsonb for the same reason conversations and
-follow-ups are — the shape grows without another migration. The column stayed
-because everything reading a single address (mailto, search, the capture form)
-keeps working, and because `js/db.js` can then degrade to one address when the
-column is missing instead of failing every save.
-
-> Suggested note: `contacts.emails` jsonb: `[{id, label, address}]`, label one of
-> personal/work/school/other. `contacts.email` is retained as the primary and kept
-> in sync with the first entry. Migration `add-contact-emails.sql` back-fills from
-> the existing column. Calendar matching in ORB-15 checks every stored address.
-
-### ORB-40 · Role and company history — marked DONE, only half shipped
-Says a `contact_roles` table with `title`, `start_date`, `end_date`, `is_current`.
-
-**What shipped:** `contacts.company_history`, a jsonb array of **company name
-strings**. No titles, no dates, no `is_current`. The profile shows past companies as
-chips. So "where someone worked before" is there; "what they did and when" is not.
-
-> Either reopen it, or split the dates-and-titles part into a new ticket.
-
-### ORB-27 · Revisit email reminder logic — note describes a different mechanism
-Says *"Only notify a user when they have 14 days left until they should reach out"*
-— a **lead time** before the deadline.
-
-**What shipped:** a **fortnightly digest of people already overdue**, which is what
-you chose on Aug 10 when you asked what cadence I would recommend. Different
-mechanism, same number of days, and the note reads as the other one.
-
-> Suggested note: One digest every 14 days containing whoever is overdue at that
-> moment, most overdue first, capped at 8 names. The fixed period *is* the
-> grouping, so there is no batching heuristic. Someone still overdue after three
-> consecutive digests stops being listed and becomes one line pointing at their
-> cadence. A quiet fortnight does not stamp the period, so the clock only starts
-> when an email actually goes.
-
-### ORB-38 · Schema audit and alignment — marked DONE, partially shipped
-`supabase/catch-up.sql` reconciles the columns the app actually writes and reports
-every one as present or missing. **Not done:** unused columns were not dropped
-(`manager_name`, `next_steps`, the orphan `internship_id` columns), and migrations
-are still hand-named files rather than the numbered, reproducible sequence the note
-asks for.
-
-### ORB-37 · Custom email domain — "hard blocker" is not true in practice
-Says *"Hard blocker for ORB-16 and ORB-27. Neither can be tested or validated while
-delivery is unreliable."*
-
-Both shipped and a real digest was delivered end to end from
-`onboarding@resend.dev`. It is a **deliverability risk** — mail lands in spam more
-often and the display name cannot be changed — not a blocker. Worth keeping as
-MEDIUM/HIGH for Aug 11, with the dependency line corrected so nobody blocks work on
-it that does not need to be blocked.
-
-### ORB-16 · Scheduled email reminders — dependency note is wrong
-Says *"Same infrastructure as ORB-15 — sequence together."*
-
-They share nothing. ORB-16 is server-side: Supabase Edge Function, pg_cron, pg_net,
-Vault, Resend. ORB-15 is **entirely browser-side** — Google Identity Services with
-the token held in a variable for the life of the tab, and nothing stored. Reasonable
-to assume up front, wrong once built.
-
-### ORB-15 · Google Calendar — stale blocker
-*"Blocked on having real contacts with emails saved"* is no longer true.
-
-### ORB-42 · Profile page UI rebuild — worth recording what shipped
-View-first with an **Edit** button rather than a permanently editable form; the same
-grid in both modes so nothing moves when switching. Repeatable fields commit when
-you leave them rather than on a save button. Two rows: role/company/industry, then
-addresses and past companies.
+ORB-24 Idle Pause Resilience was also flipped to **DONE**.
 
 ---
 
-## 4. The EPIC page itself
+## Still open
 
-- **The Milestones section is empty** — heading, then straight to Requirements.
-- The Requirements table holds only *Shipped — M0* (ORB-1…12), which is correct, but
-  means the EPIC alone never shows the backlog. That is what misled me into
-  numbering from ORB-29: `docs/PRD.md` in this repo merges the EPIC with an old copy
-  of the Backlog and stops at ORB-24.
-- Open questions are all answered and dated. Nothing to do.
-- All three reference links resolve (checked: GitHub Pages, Vercel mirror, repo).
+**ORB-27's user story** still reads *"notified while I still have time to reach out
+to my connection"* — a lead time. What shipped is a digest of people already
+overdue. The cell and the title now describe the digest, but the story describes
+the other mechanism. That is a scope question rather than a typo: either the story
+is rewritten to match the digest, or a separate ticket covers a genuine
+before-the-deadline nudge. Left alone pending a decision.
 
----
+**ORB-42's cell** is still the pre-build sequencing plan ("Sequence last. The field
+set changes underneath in ORB-38 to 41"). It reads as a dependency that has since
+been satisfied, so it is accurate rather than wrong. Harmless; not touched.
 
-## 5. Repo hygiene
+**The EPIC page** has an empty Milestones section, and its Requirements table holds
+only *Shipped — M0* (ORB-1…12). That is correct as far as it goes, but it means the
+EPIC alone never shows the backlog. Open questions on it are all answered and
+dated, and all three reference links resolve.
 
-`docs/PRD.md` is **not** a faithful export — it has a Milestones table and a Design
-section Confluence does not, and a Backlog table with keys that stopped at ORB-24.
-It is now marked as a partial local copy. `ROADMAP.md`'s Q3 table has been rewritten
-to mirror the Detailed Quarterly Roadmap exactly, including the dates I had wrong
-(ORB-17 and ORB-18 are **Aug 18**, not Aug 12).
+**`docs/PRD.md`** is not a faithful export — it has a Milestones table and a Design
+section Confluence does not, and a Backlog table whose keys stop at ORB-24. It is
+marked as a partial local copy. Reading keys off it once caused a collision with
+real tickets, so check the live Backlog page before inventing an ORB number.
