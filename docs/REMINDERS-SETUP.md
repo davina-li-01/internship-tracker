@@ -30,8 +30,8 @@ the email would start disagreeing with the dashboard.
 
 Supabase dashboard → **SQL Editor** → run **both**, in order:
 
-1. `supabase/add-reminder-columns.sql` — prints three rows
-2. `supabase/add-digest-streak.sql` — adds `contacts.nudge_streak` and the
+1. `supabase/migrations/005_reminder_columns.sql` — prints three rows
+2. `supabase/migrations/007_digest_streak.sql` — adds `contacts.nudge_streak` and the
    fortnightly rhythm (ORB-27)
 
 ## Step 2 — Get a Resend API key
@@ -148,7 +148,7 @@ Drop the `?dry=1` when you want a real send.
 
 ## Step 6 — Schedule it
 
-SQL Editor → paste `supabase/schedule-reminders.sql`, **replace
+SQL Editor → paste `supabase/migrations/006_schedule_reminders.sql`, **replace
 `REPLACE_WITH_YOUR_CRON_SECRET` with the value from step 3**, → Run.
 
 The secret goes into Supabase Vault rather than into the schedule itself,

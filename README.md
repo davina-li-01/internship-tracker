@@ -126,7 +126,7 @@ reads don't error, they just come back empty, so the settings page looked blank
 rather than broken. It had been silently unsaveable for who knows how long, and
 I only found it because a new feature needed to write there.
 
-I added `supabase/check-rls.sql` so next time it's one query instead of an
+I added `supabase/scripts/check-rls.sql` so next time it's one query instead of an
 afternoon.
 
 **5. Doing too much**

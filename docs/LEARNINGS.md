@@ -92,7 +92,7 @@ The root cause: **the database schema existed only inside the Supabase dashboard
 was no copy in the repository, so there was nothing to compare the code against, and
 nothing to rebuild from if the project were lost.
 
-Now `supabase/schema.sql` lives in version control alongside the code that depends on it.
+Now `supabase/migrations/001_schema.sql` lives in version control alongside the code that depends on it.
 
 **Lesson:** if part of your system's definition lives only in someone else's web UI, you
 do not actually have a backup, and you have no way to catch drift.

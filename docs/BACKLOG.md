@@ -25,6 +25,40 @@ with no access to this repo.
 
 ---
 
+## ORB-49 — numbered migrations and dead column cleanup
+
+`supabase/` was thirteen hand-named SQL files in one flat folder, with the apply
+order recorded nowhere. Now:
+
+- **`supabase/migrations/001…011`** — the real sequence, every file idempotent,
+  with a README explaining the two places where the order looks wrong and is not
+  (001 creates columns 004 drops; 006 schedules daily and 009 re-schedules
+  hourly). All moved with `git mv`, so history follows each file.
+- **`supabase/scripts/`** — `check-rls.sql` and `catch-up.sql`, which diagnose
+  rather than migrate and were never migrations.
+- **`storage-policies.sql` deleted** — verified a strict subset of
+  `002_rls_policies.sql`, which creates the same four policies and also clears
+  the older `rs3hur_*` ones.
+
+**The ticket was wrong about what survives.** It lists `manager_name`,
+`next_steps` and the orphan `internship_id` columns. The first two were already
+dropped by `004_settings_columns.sql`, whose drop statements are live, not
+commented — that ran on Aug 10. What actually survives is
+`contacts.internship_id` and `storage_files.internship_id`, whose drops were left
+commented in `003_drop_legacy_tables.sql`. `011` does those two, and says so.
+
+**Six runtime error strings named these paths to the user** — "Run
+supabase/add-settings-columns.sql to enable it" and similar, in `js/db.js` and
+`js/main.js`. A rename without them would have pointed people at files that no
+longer exist. Updated, along with README, PRD, LEARNINGS and REMINDERS-SETUP.
+
+**`ROADMAP.md` deliberately not updated.** Its references are dated log entries —
+"Migration: `supabase/add-integrations.sql`, run 2026-08-10" — and rewriting them
+would falsify the record of what was actually run under what name. Same principle
+as leaving the Backlog rows alone.
+
+---
+
 ## Aug 11 — cadence research, and eight new tickets
 
 `User Research: Cadence Structure` is now a Confluence page under the EPIC,

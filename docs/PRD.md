@@ -209,6 +209,6 @@ stacked bar, never a pie.
 | Repository | https://github.com/davina-li-01/orbit |
 | Engineering roadmap | `ROADMAP.md` |
 | Build retrospective | `docs/LEARNINGS.md` |
-| Database schema | `supabase/schema.sql` |
-| Row Level Security policies | `supabase/fix-rls.sql` |
-| Storage bucket policies | `supabase/storage-policies.sql` |
+| Database schema | `supabase/migrations/001_schema.sql` |
+| Row Level Security policies | `supabase/migrations/002_rls_policies.sql` |
+| Storage bucket policies | `supabase/migrations/002_rls_policies.sql` |

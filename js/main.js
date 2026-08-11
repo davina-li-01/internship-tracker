@@ -3023,7 +3023,7 @@ async function openProfileModal() {
     if (!uploaded) { err.textContent = "Upload failed — check the console (F12)."; return; }
     const result = await db.savePreferences({ avatar_url: uploaded.fileUrl });
     if (result.skipped.includes("avatar_url")) {
-      err.textContent = "Photo uploaded, but avatar_url needs supabase/add-settings-columns.sql first.";
+      err.textContent = "Photo uploaded, but avatar_url needs supabase/migrations/004_settings_columns.sql first.";
       return;
     }
     const av = modal.querySelector("#epAvatar");
@@ -3447,7 +3447,7 @@ async function persistCalendarConnection() {
     const result = await db.savePreferences({ integrations });
     if (result.skipped?.includes("integrations")) {
       console.warn("[calendar] preferences.integrations is missing, so this "
-        + "connection stays on this device only. Run supabase/add-integrations.sql");
+        + "connection stays on this device only. Run supabase/migrations/010_integrations.sql");
     }
   } catch (err) {
     // Never fatal. Failing to record the connection costs you a reconnect on
@@ -4195,7 +4195,7 @@ async function openSettingsModal(section = "general") {
     if (!result.ok) { err.textContent = "Could not save — see the console (F12)."; return; }
     if (result.skipped.length) {
       err.textContent = "Saved, but " + result.skipped.join(" and ")
-        + " needs supabase/add-settings-columns.sql to be run first.";
+        + " needs supabase/migrations/004_settings_columns.sql to be run first.";
     }
     msg.textContent = "Profile saved.";
     refreshProfileButton();
@@ -4230,7 +4230,7 @@ async function openSettingsModal(section = "general") {
     const result = await db.savePreferences({ email_reminders: mode, timezone: browserTimezone() });
     if (!result.ok) { err.textContent = "Could not save — see the console (F12)."; return; }
     if (result.skipped.includes("email_reminders")) {
-      err.textContent = "Run supabase/add-reminder-columns.sql and add-digest-streak.sql first.";
+      err.textContent = "Run supabase/migrations/005_reminder_columns.sql and 007_digest_streak.sql first.";
       return;
     }
     prefs.email_reminders = mode;

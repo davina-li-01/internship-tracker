@@ -105,7 +105,7 @@ export async function savePreferences(updates) {
 
     console.warn(
       `[DB] preferences.${missing} is missing — saving without it. ` +
-      "Run supabase/add-settings-columns.sql to enable it."
+      "Run supabase/migrations/004_settings_columns.sql to enable it."
     );
     delete row[missing];
     skipped.push(missing);
@@ -165,7 +165,7 @@ export async function saveContact(contact) {
   if (error && emailsSupported && isMissingColumn(error, "emails")) {
     console.warn(
       "[DB] contacts.emails is missing — saving only the primary address. " +
-      "To store several per person run supabase/add-contact-emails.sql"
+      "To store several per person run supabase/migrations/008_contact_emails.sql"
     );
     emailsSupported = false;
     delete row.emails;
