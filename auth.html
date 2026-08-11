@@ -123,6 +123,24 @@
     // Already logged in → go to workspace
     getUser().then((user) => { if (user) window.location.href = "index.html"; });
 
+    /**
+     * Where an emailed auth link should send someone back to.
+     *
+     * Supabase only falls back to the dashboard's Site URL when a call does not
+     * say. Sign-up never said, so every confirmation email was built from Site
+     * URL — which was still http://localhost, so the link worked on the machine
+     * that set it up and died for everyone else. That is the bug real users hit.
+     *
+     * Resolved against the current page rather than assembled from origin. On
+     * GitHub Pages the app is served under /orbit/, so `origin + "/auth.html"`
+     * loses the subdirectory and 404s — which the password-reset call was doing.
+     *
+     * Supabase checks this against the Redirect URLs allowlist and silently
+     * falls back to Site URL if it does not match, so both deploy origins have
+     * to be listed in the dashboard or this changes nothing.
+     */
+    const authReturnUrl = () => new URL("auth.html", window.location.href).href;
+
     const tabSignIn    = document.getElementById("tabSignIn");
     const tabSignUp    = document.getElementById("tabSignUp");
     const signInForm   = document.getElementById("signInForm");
@@ -221,7 +239,10 @@
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { full_name: document.getElementById("suName").value.trim() } }
+        options: {
+          data: { full_name: document.getElementById("suName").value.trim() },
+          emailRedirectTo: authReturnUrl()
+        }
       });
 
       if (error) {
@@ -260,7 +281,11 @@
       errEl.textContent = ""; successEl.textContent = "";
       if (!pendingConfirmEmail) { errEl.textContent = "No email to resend to."; return; }
       btn.disabled = true; btn.textContent = "Sending…";
-      const { error } = await supabase.auth.resend({ type: "signup", email: pendingConfirmEmail });
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: pendingConfirmEmail,
+        options: { emailRedirectTo: authReturnUrl() }
+      });
       btn.disabled = false; btn.textContent = "Resend confirmation email";
       if (error) { errEl.textContent = error.message; }
       else { successEl.textContent = "Sent! Check your inbox (and spam)."; }
@@ -287,7 +312,7 @@
       errEl.textContent = ""; successEl.textContent = "";
       if (!email) { errEl.textContent = "Enter your email."; return; }
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin + "/auth.html"
+        redirectTo: authReturnUrl()
       });
       if (error) { errEl.textContent = error.message; }
       else { successEl.textContent = "Reset link sent! Check your email."; }
