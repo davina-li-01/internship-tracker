@@ -9,6 +9,9 @@ Aligned to Confluence 2026-08-08. Every ORB key below matches the epic.
 
 ---
 
+Backlog rows formatted for Confluence — Requirement / User Story / Importance /
+Jira Issue / Notes — live in [docs/BACKLOG.md](docs/BACKLOG.md), ready to paste.
+
 ## Q3 2026 · Aug 1 – Sep 30
 
 | Start | Key | Item | Team | Pri | Effort | Status |
@@ -34,7 +37,7 @@ Aligned to Confluence 2026-08-08. Every ORB key below matches the epic.
 | Aug 9 | ORB-27 | Revisit email reminder logic | Integrations | Med | Med | 🔶 Built — needs SQL |
 | — | ORB-37 | Match calendar events by name, not just email | Integrations | Med | High | 📋 Backlog — spec below, not started |
 | Aug 10 | ORB-38 | Digest fires at 9am in the reader's timezone | Integrations | Med | Low | ✅ Done 2026-08-10 — needs SQL |
-| Aug 10 | ORB-39 | Calendar connection follows the account, not the device | Integrations | Med | Med | ✅ Done 2026-08-10 — needs SQL |
+| Aug 10 | ORB-39 | Calendar connection follows the account, not the device | Integrations | Med | Med | ✅ Done 2026-08-10 |
 
 Dates are current-constraint estimates and expected to move **up**, not back.
 
@@ -431,9 +434,9 @@ Writes happen on deliberate acts only — connect, disconnect, change of calenda
 never on a timer, so the stored record always reflects a decision somebody made
 rather than whichever tab loaded last.
 
-**Needs from you:** run `supabase/add-integrations.sql`. Until then the connection
-still works, just per-device: `savePreferences` reports the column as skipped and
-the console says so, rather than the save failing.
+**Migration:** `supabase/add-integrations.sql`, run 2026-08-10. Before it, the
+connection still worked — just per-device: `savePreferences` reported the column as
+skipped and the console said so, rather than the save failing.
 
 ### ORB-25 — Company logos · won't have
 Needs an external logo API on every render — a runtime dependency for decoration.
