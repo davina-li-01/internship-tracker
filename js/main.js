@@ -2723,6 +2723,14 @@ async function initContactPage() {
         editor.className = "convo-editor";
         editor.innerHTML = '<textarea class="convo-textarea" rows="4"'
           + ' placeholder="What did you talk about? What should you follow up on?"></textarea>'
+          // A transcript is the other half of "what was said", and this is where
+          // you are standing when you remember you have one. It goes through the
+          // same upload as everywhere else, so it lands on the Files page too —
+          // attached to the conversation, not floating loose against the person.
+          + '<div class="field-group convo-attach">'
+          + '<label>Attach a transcript or PDF <span class="tiny muted">optional</span></label>'
+          + '<input type="file" class="convo-file" accept="' + ATTACH_ACCEPT + '" /></div>'
+          + '<p class="convo-edit-err error" aria-live="polite"></p>'
           + '<div class="convo-editor-actions">'
           + '<button class="btn btn-sm convo-save" type="button">Save</button>'
           + '<button class="btn btn-secondary btn-sm convo-cancel" type="button">Cancel</button>'
@@ -2745,16 +2753,48 @@ async function initContactPage() {
 
         editor.querySelector(".convo-save").addEventListener("click", async (e) => {
           const next = area.value.trim();
-          if (next === original.trim()) { restore(); return; }
-          e.currentTarget.disabled = true;
+          const docFile = editor.querySelector(".convo-file")?.files?.[0] || null;
+          const errEl = editor.querySelector(".convo-edit-err");
+          errEl.textContent = "";
+
+          if (docFile && !isAllowedAttachment(docFile)) {
+            errEl.textContent = "That file type is not supported — PDF or an image.";
+            return;
+          }
+          // Attaching a file with the text untouched is a real edit, so the
+          // no-op check has to account for it or the upload is silently dropped.
+          if (next === original.trim() && !docFile) { restore(); return; }
+
+          const saveBtn = e.currentTarget;
+          saveBtn.disabled = true;
           const id = btn.dataset.editConvo;
+
+          // Upload first, but never let it cost the notes: a failed attachment
+          // still saves the text and says so, same order the profile logger uses.
+          let newFileId = null;
+          let attachmentFailed = false;
+          if (docFile) {
+            saveBtn.textContent = "Uploading…";
+            const uploaded = await db.uploadFileToStorage(docFile, { contactId });
+            if (uploaded) newFileId = uploaded.id;
+            else attachmentFailed = true;
+          }
+
           await save((cur) => ({
             ...cur,
             interactions: (cur.interactions || []).map((i) =>
-              i.id === id ? { ...i, notes: next } : i)
+              i.id === id
+                ? normalizeInteraction({
+                    ...i,
+                    notes: next,
+                    fileIds: newFileId ? [...(i.fileIds || []), newFileId] : (i.fileIds || [])
+                  })
+                : i)
           }));
           await renderPage();
-          showToast("Notes saved.");
+          showToast(attachmentFailed
+            ? "Notes saved — the file could not be attached."
+            : newFileId ? "Notes and transcript saved." : "Notes saved.");
         });
       });
     });
@@ -3623,23 +3663,27 @@ function renderUpcomingMeetings() {
   const state = connection;
   const run = calendar.lastRun();
 
-  // In needs-reauth this card is the ONLY place the problem surfaces: the nav
-  // entry point is gone by then, and it deliberately does not come back for an
-  // expired token. So it has to carry the error and point at where the fix is.
-  const syncBar = '<div class="sync-bar' + (state === "needs-reauth" ? ' sync-bar-warn' : '') + '">'
+  // An expired Google grant is not a broken integration, it is a sign-in that
+  // lapsed — Google expires them about weekly for apps still in testing. So the
+  // button stays "Sync now" in both states and re-authorising happens inside it:
+  // connectCalendar() already prompts when the token is gone, and the sync it
+  // was asked for runs straight afterwards. Announcing "nothing is syncing" and
+  // sending you to Settings made a routine re-login look like a fault.
+  //
+  // The state is still stated, quietly, because "Synced 3 days ago" on its own
+  // would imply it is still running when it is not.
+  const syncBar = '<div class="sync-bar">'
     + '<span class="sync-source">' + googleCalendarMark("sync-mark")
     + '<span>Google Calendar</span></span>'
     + '<span class="sync-status">'
+    + 'Synced ' + escapeHtml(timeAgo(calendar.lastSyncedAt()))
     + (state === "needs-reauth"
-      ? '<span class="sync-warn">Calendar access expired — nothing is syncing.</span>'
-      : 'Synced ' + escapeHtml(timeAgo(calendar.lastSyncedAt()))
-        + (run && run.logged
-          ? ' · ' + run.logged + (run.logged === 1 ? ' conversation' : ' conversations') + ' logged'
-          : ''))
+      ? ' <span class="muted">· sign in again to pick up anything new</span>'
+      : (run && run.logged
+        ? ' · ' + run.logged + (run.logged === 1 ? ' conversation' : ' conversations') + ' logged'
+        : ''))
     + '</span>'
-    + (state === "needs-reauth"
-      ? '<button class="btn btn-sm" id="dashFixBtn" type="button">Fix in Settings</button>'
-      : '<button class="btn btn-secondary btn-sm" id="dashSyncBtn" type="button">Sync now</button>')
+    + '<button class="btn btn-secondary btn-sm" id="dashSyncBtn" type="button">Sync now</button>'
     + '</div>';
 
   // No slice. The old cap of 5 existed only because the card grew with the
@@ -3722,11 +3766,6 @@ function wireUpcomingScroll(list) {
 
 /** The Sync now button (ORB-35). Same path as Settings, fewer clicks away. */
 function wireDashboardSync(slot) {
-  // The deep link into ORB-36, which is where re-authorising actually lives.
-  slot.querySelector("#dashFixBtn")?.addEventListener("click", () => {
-    openSettingsModal("integrations");
-  });
-
   const btn = slot.querySelector("#dashSyncBtn");
   if (!btn) return;
 
@@ -3841,6 +3880,14 @@ function openCalendarReviewModal(candidates, contacts, { justHappened = false } 
       + '<textarea class="cal-notes" data-notes-index="' + i + '" rows="3"'
       + (openNotes ? '' : ' hidden')
       + ' placeholder="What did you talk about? What should you bring up next time?"></textarea>'
+      // A synced meeting is exactly when a transcript exists — Meet has just
+      // produced one. Making you log first and attach later, from the profile,
+      // is the trip this dialog is supposed to save.
+      + '<div class="cal-attach" data-attach-index="' + i + '"'
+      + (openNotes ? '' : ' hidden') + '>'
+      + '<label class="tiny muted" for="calFile' + i + '">Transcript or PDF, if you have one</label>'
+      + '<input type="file" id="calFile' + i + '" class="cal-file"'
+      + ' data-file-index="' + i + '" accept="' + ATTACH_ACCEPT + '" /></div>'
       + '</div>'
       + '</li>';
   }).join("");
@@ -3873,27 +3920,70 @@ function openCalendarReviewModal(candidates, contacts, { justHappened = false } 
   modal.querySelectorAll(".cal-notes-toggle").forEach((toggle) => {
     toggle.addEventListener("click", () => {
       const area = modal.querySelector('[data-notes-index="' + toggle.dataset.notesFor + '"]');
+      const attach = modal.querySelector('[data-attach-index="' + toggle.dataset.notesFor + '"]');
       area.hidden = !area.hidden;
+      if (attach) attach.hidden = area.hidden;
       toggle.textContent = area.hidden ? "+ Add notes" : "− Hide notes";
       if (!area.hidden) area.focus();
     });
   });
 
+  // Asked once, then remembered — a confirmation you cannot get past is a
+  // different bug from the one being fixed.
+  let blankNotesConfirmed = false;
+
   modal.querySelector("#calReviewSave").addEventListener("click", async (e) => {
     const btn = e.currentTarget;
+    const errEl = modal.querySelector("#calReviewErr");
+    errEl.textContent = "";
+
     const picked = [...modal.querySelectorAll(".cal-pick:checked")]
       .map((el) => {
         const index = Number(el.dataset.index);
         const typed = modal.querySelector('[data-notes-index="' + index + '"]')?.value.trim() || "";
         const choice = modal.querySelector('input[name="clash' + index + '"]:checked')?.value || "add";
-        return { ...candidates[index], notes: typed, resolution: choice };
+        const file = modal.querySelector('[data-file-index="' + index + '"]')?.files?.[0] || null;
+        return { ...candidates[index], notes: typed, resolution: choice, file, index };
       })
       .filter((c) => c.resolution !== "skip");
     if (!picked.length) { close(); return; }
 
+    const badFile = picked.find((c) => c.file && !isAllowedAttachment(c.file));
+    if (badFile) {
+      errEl.textContent = "That file type is not supported — PDF or an image.";
+      return;
+    }
+
+    // The whole point of asking "how did it go?" is the answer. Saving silently
+    // when the box is empty turns the question into a rhetorical one and sends
+    // you to the profile afterwards to type what you were just asked for.
+    // Only on the just-happened prompt: a first sync pulling in a month of old
+    // meetings has no notes by nature, and nagging about that is its own chore.
+    const blank = picked.filter((c) => !c.notes);
+    if (justHappened && blank.length && !blankNotesConfirmed) {
+      blankNotesConfirmed = true;
+      errEl.innerHTML = '<span class="cal-confirm">'
+        + (blank.length === 1
+          ? 'No notes on this one yet. '
+          : 'No notes on ' + blank.length + ' of these yet. ')
+        + 'That is the part you will want later — press Log again to save without them.'
+        + '</span>';
+      const first = modal.querySelector('[data-notes-index="' + blank[0].index + '"]');
+      if (first) {
+        const toggle = modal.querySelector('[data-notes-for="' + blank[0].index + '"]');
+        const attach = modal.querySelector('[data-attach-index="' + blank[0].index + '"]');
+        first.hidden = false;
+        if (attach) attach.hidden = false;
+        if (toggle) toggle.textContent = "− Hide notes";
+        first.focus();
+      }
+      btn.textContent = "Log without notes";
+      return;
+    }
+
     btn.disabled = true;
     btn.textContent = "Logging…";
-    const { logged, failed } = await applyCalendarCandidates(picked, contacts);
+    const { logged, failed, attachmentsFailed } = await applyCalendarCandidates(picked, contacts);
     close();
 
     if (!logged) {
@@ -3902,7 +3992,11 @@ function openCalendarReviewModal(candidates, contacts, { justHappened = false } 
     }
     calendar.recordRun({ found: candidates.length, logged });
     showToast(logged + (logged === 1 ? " conversation logged." : " conversations logged.")
-      + (failed ? " " + failed + " could not be saved." : ""), {
+      + (failed ? " " + failed + " could not be saved." : "")
+      + (attachmentsFailed
+        ? " " + attachmentsFailed + (attachmentsFailed === 1 ? " file" : " files")
+          + " could not be attached."
+        : ""), {
       actionLabel: "View in log",
       href: "network.html",
       duration: 7000
@@ -3926,6 +4020,9 @@ async function applyCalendarCandidates(picked, contacts) {
 
   let logged = 0;
   let failed = 0;
+  // Counted separately from `failed`: the conversation saved, only the file
+  // did not, and reporting that as a failed log would be a lie.
+  let attachmentsFailed = 0;
 
   for (const [contactId, items] of byContact) {
     const contact = contacts.find((c) => c.id === contactId);
@@ -3937,13 +4034,26 @@ async function applyCalendarCandidates(picked, contacts) {
     const toMerge = items.filter((i) => i.resolution === "merge" && i.existing);
     const toAdd = items.filter((i) => i.resolution !== "merge" || !i.existing);
 
+    // Attachments go up before the contact is written, so one storage failure
+    // costs that transcript and nothing else — the conversation still lands.
+    // Keyed by eventId because merge and add both need to find their own file.
+    const uploadedFor = new Map();
+    for (const item of items) {
+      if (!item.file) continue;
+      const uploaded = await db.uploadFileToStorage(item.file, { contactId });
+      if (uploaded) uploadedFor.set(item.eventId, uploaded.id);
+      else attachmentsFailed += 1;
+    }
+
     let interactions = (contact.interactions || []).map((existing) => {
       const match = toMerge.find((m) => m.existing.id === existing.id);
       if (!match) return existing;
       const parts = [match.title, existing.notes, match.notes].filter(Boolean);
+      const fileId = uploadedFor.get(match.eventId);
       return normalizeInteraction({
         ...existing,
         notes: parts.join("\n\n"),
+        fileIds: fileId ? [...(existing.fileIds || []), fileId] : (existing.fileIds || []),
         sourceEventId: match.eventId
       });
     });
@@ -3954,6 +4064,7 @@ async function applyCalendarCandidates(picked, contacts) {
       // Anything typed goes under the meeting name rather than replacing it —
       // "Coffee with Marcus" is worth keeping as the heading for what follows.
       notes: item.notes ? item.title + "\n\n" + item.notes : item.title,
+      fileIds: uploadedFor.has(item.eventId) ? [uploadedFor.get(item.eventId)] : [],
       sourceEventId: item.eventId
     }));
 
@@ -3975,7 +4086,7 @@ async function applyCalendarCandidates(picked, contacts) {
     else failed += items.length;
   }
 
-  return { logged, failed };
+  return { logged, failed, attachmentsFailed };
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────

@@ -123,6 +123,7 @@ const EXPORTS = [
   "isAllowedAttachment", "isImageFile", "ATTACH_ACCEPT",
   // integrations
   "calendarCardHtml", "timeAgo",
+  "openCalendarReviewModal", "applyCalendarCandidates",
   // whole-page renderers, for structural tests
   "initContactPage"
 ];
