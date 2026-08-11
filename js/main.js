@@ -4027,12 +4027,15 @@ async function openSettingsModal(section = "general") {
     // ── General ──────────────────────────────────────────────────────────
     + '<section class="settings-pane" data-pane="general">'
     + '<h3 class="settings-h3">General</h3>'
-    + '<div class="settings-callout">'
-    + '<p class="sc-icon" aria-hidden="true">⛨</p>'
-    + '<div><p class="sc-title">Secure your account</p>'
-    + '<p class="sc-body">Add two-factor authentication so a stolen password is not enough to get in.</p></div>'
-    + '<button class="btn btn-secondary btn-sm" id="goSecurity" type="button">Set up</button>'
-    + '</div>'
+    // Hidden until ORB-21 ships. This callout offered to set up 2FA and the
+    // Security pane could not actually do it — an invitation to a dead end.
+    // Restore both this and the block in the Security pane together.
+    // + '<div class="settings-callout">'
+    // + '<p class="sc-icon" aria-hidden="true">⛨</p>'
+    // + '<div><p class="sc-title">Secure your account</p>'
+    // + '<p class="sc-body">Add two-factor authentication so a stolen password is not enough to get in.</p></div>'
+    // + '<button class="btn btn-secondary btn-sm" id="goSecurity" type="button">Set up</button>'
+    // + '</div>'
     + settingsRow("Appearance",
         '<select id="setTheme">'
         + '<option value="light"' + (theme === "light" ? " selected" : "") + '>Light</option>'
@@ -4119,15 +4122,18 @@ async function openSettingsModal(section = "general") {
     + '<p id="pwMsg" class="success" aria-live="polite"></p>'
     + '<p id="pwErr" class="error" aria-live="polite"></p>'
     + '<button class="btn" id="savePw" type="button">Update password</button>'
-    + '<hr class="settings-rule" />'
-    + '<h4 class="settings-h4">Two-factor authentication</h4>'
-    + '<p class="settings-note">Not enabled. Two options, and they are not equal:</p>'
-    + '<ul class="settings-list">'
-    + '<li><strong>Authenticator app</strong> — free on Supabase, works offline. The one worth building.</li>'
-    + '<li><strong>SMS to your phone</strong> — needs a paid provider (Twilio) and is weaker: '
-    + 'SIM-swap attacks are why security guidance now prefers an app.</li>'
-    + '</ul>'
-    + '<button class="btn btn-secondary" type="button" disabled>Set up authenticator (not built yet)</button>'
+    // Hidden until ORB-21 ships. A permanently disabled "not built yet" button
+    // is worse than no button: it advertises a security control the account does
+    // not have. Change password is real and stays.
+    // + '<hr class="settings-rule" />'
+    // + '<h4 class="settings-h4">Two-factor authentication</h4>'
+    // + '<p class="settings-note">Not enabled. Two options, and they are not equal:</p>'
+    // + '<ul class="settings-list">'
+    // + '<li><strong>Authenticator app</strong> — free on Supabase, works offline. The one worth building.</li>'
+    // + '<li><strong>SMS to your phone</strong> — needs a paid provider (Twilio) and is weaker: '
+    // + 'SIM-swap attacks are why security guidance now prefers an app.</li>'
+    // + '</ul>'
+    // + '<button class="btn btn-secondary" type="button" disabled>Set up authenticator (not built yet)</button>'
     + '</section>'
 
     // ── Data ─────────────────────────────────────────────────────────────
@@ -4163,7 +4169,9 @@ async function openSettingsModal(section = "general") {
   };
   modal.querySelectorAll(".settings-navitem").forEach((b) =>
     b.addEventListener("click", () => show(b.dataset.section)));
-  modal.querySelector("#goSecurity").addEventListener("click", () => show("security"));
+  // Restore with the 2FA callout above (ORB-21). Left uncommented it would throw
+  // on a null button and take the whole settings modal down with it.
+  // modal.querySelector("#goSecurity").addEventListener("click", () => show("security"));
   show(section);
 
   modal.querySelector("#setTheme").addEventListener("change", (e) => {

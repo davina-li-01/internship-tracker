@@ -25,6 +25,42 @@ with no access to this repo.
 
 ---
 
+## Aug 11 plan, set on Aug 10 evening
+
+Three moved up, one scheduled, one deferred, one shipped.
+
+| Ticket | Change | Why |
+|---|---|---|
+| ORB-13 | Aug 8 → **Aug 11**, DONE → **In Progress** | The decision was deferred *pending real usage*. Orbit is now in daily use, so that condition is met. Booked as thinking time, not build time |
+| ORB-22 | Sep 7 → **Aug 11** | One `starred` column. Mission Control's fractions count everyone with a cadence, so "in touch" cannot distinguish who matters — this is the input those rings were missing |
+| ORB-49 | TBD → **Aug 11** | Cleanup only gets more expensive, and the InternTrack leftovers have already cost time twice. Do it before ORB-48, which reshapes a column this pass would otherwise revisit |
+| ORB-33 | unscheduled → **Aug 15** | **Not hypothetical.** People have tried to sign up and reported problems. Bare minimum first: unblock account creation, then the empty-state work |
+| ORB-23 | Aug 19 → **Q4** | Needs historical snapshots that do not exist, so the chart would render near-empty. Wants the same confidence field ORB-47 needs — build them together |
+| ORB-50 | new, **DONE Aug 10** | 2FA hidden from Settings until ORB-21 ships |
+| ORB-37 | stays **Aug 11** | Deferred from today by choice: spam placement only matters once someone other than the author receives the mail |
+
+**The filter behind most of these:** with one primary user, work that needs real
+usage data to decide (ORB-13) gets *better* now, and work that serves people who
+have not arrived yet can wait. ORB-33 is the exception that corrected the rule —
+people *are* arriving, and some of them cannot get in.
+
+### ORB-50 — what shipped
+
+`js/main.js`, two blocks commented out rather than deleted, so ORB-21 restores
+them by uncommenting:
+
+- the **"Secure your account"** callout in the Settings General pane
+- the **Two-factor authentication** block in the Security pane
+
+The `#goSecurity` click handler had to go with them. Left in place it would call
+`.addEventListener` on a null button and take the entire settings modal down —
+a worse bug than the one being fixed. Change password is untouched.
+
+The test harness under `tests/.harness/` is generated and gitignored, so it needed
+no parallel edit. 585 tests still pass.
+
+---
+
 ## Written on 2026-08-11
 
 ### Corrections — rows that no longer described what shipped
