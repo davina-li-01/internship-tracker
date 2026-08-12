@@ -12,6 +12,39 @@ Pages: **Customer Experience EPIC**, **Backlog**, **Roadmap Q3 2026** — all in
 
 ---
 
+## Writing the Roadmap: the Team column round-trip trap
+
+**Declare `color` before `background-color`, always.** Confluence's HTML→ADF
+conversion overwrites the text colour to match the background when
+`background-color` comes first — the Team names go invisible against their own
+highlight.
+
+The trap is that Confluence **re-serialises to background-first on read**. So
+fetching the page and writing it back verbatim destroys the column, even though
+nothing was edited. It happened on Aug 10 and again on Aug 12, the second time
+while fixing something unrelated: 49 of 50 cells went unreadable. The one that
+survived was a row authored fresh with the correct order.
+
+Correct form:
+
+```html
+<span style="color: #000000"><span style="background-color: #dfd8fd">Core Functionality</span></span>
+```
+
+`#dfd8fd` is Core Functionality, `#c6edfb` is Integrations.
+
+Always verify after any Roadmap write — a full-body replacement is the only
+update the API offers, so every write puts all 50 cells at risk:
+
+```
+readable = the two hex values in a Team cell differ
+```
+
+Also check the Roadmap Planner macro survived: 22 bars, and the hash
+`716d1f1e…4e9a6d4` still present in `data-parameters`.
+
+---
+
 ## The Dependencies column
 
 The fifth column is **Dependencies**, not Notes. It leads with what had to exist
