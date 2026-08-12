@@ -4208,3 +4208,16 @@ body.dark .view-emails a:hover { color: var(--accent); }
 @media (max-width: 560px) {
   .profile-edit { position: static; align-self: flex-start; margin-bottom: 0.6rem; }
 }
+
+/* The tier picker's result line (ORB-52). The interval control is the override
+   and lives behind "Adjust", so this sentence is the only place most people
+   ever see what their tier choice actually does. */
+.cadence-result {
+  margin: 0.4rem 0 0.6rem;
+  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+.cadence-result .link-btn { font-size: inherit; }

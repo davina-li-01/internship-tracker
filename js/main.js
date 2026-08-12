@@ -223,6 +223,17 @@ function effectiveTier(contact) {
   return contact?.tier || tierForFrequency(contact?.followUpFrequency);
 }
 
+/**
+ * What the cadence means, in a sentence — the tier picker's result line.
+ *
+ * The interval control is the override and lives behind "Adjust", so this is
+ * the only place most people ever see what their choice actually does.
+ */
+function cadenceSentence(freq) {
+  if (!freq || freq === "none") return "No reminders — kept on file.";
+  return "Reaching out " + getFreqLabel(freq).toLowerCase() + ".";
+}
+
 /** `<option>` list for a tier select, with one marked selected. */
 function tierOptionsHtml(selected) {
   return TIER_ORDER
@@ -2292,6 +2303,11 @@ async function initContactPage() {
       .map((t) => '<option value="' + t + '"' + (shownTier === t ? " selected" : "") + '>'
         + escapeHtml(TIERS[t].label) + '</option>')
       .join("");
+    // An interval the tier would not have produced was chosen on purpose — the
+    // seasonal mentor you see twice a year, the custom:150 back-fills. Showing
+    // the control expanded means a deliberate override is never hidden from the
+    // person who made it.
+    const isOverridden = (c.followUpFrequency || "none") !== frequencyForTier(shownTier);
     const pastCompanies = (c.companyHistory || []).filter((co) => co !== c.company);
 
     root.innerHTML =
@@ -2396,9 +2412,17 @@ async function initContactPage() {
       + '<div class="field-group"><label for="cpTier">What kind of relationship?</label>'
       + '<select id="cpTier">' + tierOptions + '</select>'
       + '<p class="tiny muted" id="cpTierHint">' + escapeHtml(TIERS[shownTier].hint) + '</p></div>'
-      + '<div class="field-group"><label for="cpFrequency">Reach out again?</label>'
+      // The result line, so the tier's consequence is visible without a second
+      // control competing with it. An interval that does not match the tier's
+      // default is an override the user set deliberately, so it opens expanded
+      // rather than hiding a disagreement behind a link.
+      + '<p class="cadence-result tiny" id="cpCadenceLine">'
+      + '<span id="cpCadenceText">' + escapeHtml(cadenceSentence(c.followUpFrequency)) + '</span> '
+      + '<button type="button" class="link-btn" id="cpAdjust">Adjust</button></p>'
+      + '<div class="field-group' + (isOverridden ? '' : ' hidden') + '" id="cpFreqGroup">'
+      + '<label for="cpFrequency">Reach out again?</label>'
       + '<select id="cpFrequency">' + freqOptions + '</select></div>'
-      + '<div class="field-group' + (isCustomFreq ? '' : ' hidden') + '" id="cpCustomDaysGroup">'
+      + '<div class="field-group' + (isCustomFreq && isOverridden ? '' : ' hidden') + '" id="cpCustomDaysGroup">'
       + '<label for="cpCustomDays">Every how many days?</label>'
       + '<input type="number" id="cpCustomDays" min="1" max="365" placeholder="30" value="'
       + escapeHtml(isCustomFreq ? c.followUpFrequency.slice(7) : "") + '" /></div>'
@@ -2655,26 +2679,51 @@ async function initContactPage() {
 
     const freqSelect = $("#cpFrequency");
     const customGroup = $("#cpCustomDaysGroup");
+    const freqGroup = $("#cpFreqGroup");
     const tierSelect = $("#cpTier");
+
+    /** The interval the controls currently describe, in stored form. */
+    const chosenFrequency = () => {
+      if (freqSelect.value !== "custom") return freqSelect.value;
+      const days = parseInt($("#cpCustomDays")?.value, 10);
+      return (!Number.isNaN(days) && days > 0) ? "custom:" + days : "none";
+    };
+    const refreshCadenceLine = () => {
+      $("#cpCadenceText").textContent = cadenceSentence(chosenFrequency());
+    };
+
     freqSelect.addEventListener("change", () => {
       customGroup.classList.toggle("hidden", freqSelect.value !== "custom");
+      refreshCadenceLine();
+    });
+    $("#cpCustomDays")?.addEventListener("input", refreshCadenceLine);
+
+    // The override is one click away rather than a second question competing
+    // with the first. Once open it stays open — hiding a control someone just
+    // asked for would be worse than the clutter it was meant to avoid.
+    $("#cpAdjust").addEventListener("click", () => {
+      freqGroup.classList.remove("hidden");
+      customGroup.classList.toggle("hidden", freqSelect.value !== "custom");
+      freqSelect.focus();
     });
 
-    // Picking a tier fills in that tier's interval, and the interval stays
-    // editable afterwards. The two controls are not locked together: the tier
-    // is the answer to a question, the interval is the schedule it suggests.
+    // Picking a tier fills in that tier's interval. The two are not locked
+    // together: the tier is what the relationship is, the interval is what is
+    // realistic for it — a close mentor you can only reach twice a year is a
+    // mentor on a long interval, not a lesser tier.
     tierSelect.addEventListener("change", () => {
       const preset = frequencyForTier(tierSelect.value);
       $("#cpTierHint").textContent = TIERS[tierSelect.value]?.hint || "";
       if (preset.startsWith("custom:")) {
         freqSelect.value = "custom";
-        customGroup.classList.remove("hidden");
+        if (!freqGroup.classList.contains("hidden")) customGroup.classList.remove("hidden");
         const daysEl = $("#cpCustomDays");
         if (daysEl) daysEl.value = preset.slice(7);
       } else {
         freqSelect.value = preset;
         customGroup.classList.add("hidden");
       }
+      refreshCadenceLine();
     });
 
     $("#cpSaveReminderBtn").addEventListener("click", async () => {

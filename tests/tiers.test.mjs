@@ -172,6 +172,89 @@ eq("reloading shows the chosen tier, not the one the interval implies",
 eq("while the interval alone would have said otherwise",
   tierForFrequency(saved.followUpFrequency), "professional_network");
 
+// ── The result line and the override ─────────────────────────────────────────
+// Two controls side by side read as two questions. The tier is the question;
+// the interval is an escape hatch, and it is placed like one.
+
+async function renderProfile(contact) {
+  resetState();
+  state.store.set(contact.id, normalizeContact(contact));
+  dom.reconfigure({ url: "https://orbit.test/contact.html?id=" + contact.id });
+  document.body.innerHTML = "";
+  const el = document.createElement("section");
+  el.id = "contactPageContent";
+  document.body.appendChild(el);
+  await main.initContactPage();
+  return el;
+}
+
+group("A tier whose interval it already implies hides the override");
+{
+  const r = await renderProfile({
+    id: "m1", name: "Chris Rule", followUpFrequency: "quarterly",
+    tier: "mentors_managers", reminderEnabled: true,
+    lastContacted: "2026-08-07", interactions: [], companyHistory: [], followUps: []
+  });
+  ok("the interval control starts hidden",
+    r.querySelector("#cpFreqGroup").classList.contains("hidden"));
+  eq("the result line says what the tier does",
+    r.querySelector("#cpCadenceText").textContent, "Reaching out every 3 months.");
+
+  r.querySelector("#cpAdjust").click();
+  ok("Adjust reveals it",
+    !r.querySelector("#cpFreqGroup").classList.contains("hidden"));
+}
+
+group("An interval the tier would not have produced is never hidden");
+{
+  // Exactly the seasonal case: a close mentor you can only reach twice a year.
+  // The tier stays "mentors and managers"; the interval carries the reality.
+  const r = await renderProfile({
+    id: "m2", name: "Seasonal Mentor", followUpFrequency: "custom:60",
+    tier: "mentors_managers", reminderEnabled: true,
+    lastContacted: "2026-08-07", interactions: [], companyHistory: [], followUps: []
+  });
+  ok("the override is visible without clicking Adjust",
+    !r.querySelector("#cpFreqGroup").classList.contains("hidden"));
+  ok("and so is the day count",
+    !r.querySelector("#cpCustomDaysGroup").classList.contains("hidden"));
+  eq("the result line reports the real interval, not the tier default",
+    r.querySelector("#cpCadenceText").textContent, "Reaching out every 60 days.");
+  eq("and the tier is unchanged by the disagreement",
+    r.querySelector("#cpTier").value, "mentors_managers");
+}
+
+group("The result line follows every change");
+{
+  const r = await renderProfile({
+    id: "m3", name: "Taylor Smith", followUpFrequency: "quarterly",
+    tier: "mentors_managers", reminderEnabled: true,
+    lastContacted: "2026-08-07", interactions: [], companyHistory: [], followUps: []
+  });
+  const t = r.querySelector("#cpTier");
+  t.value = "inner_circle";
+  t.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  eq("changing the tier restates the cadence",
+    r.querySelector("#cpCadenceText").textContent, "Reaching out every month.");
+
+  t.value = "none";
+  t.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  eq("opting out reads as a choice, not an empty schedule",
+    r.querySelector("#cpCadenceText").textContent, "No reminders — kept on file.");
+
+  t.value = "met_once";
+  t.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  eq("a custom preset is described in days",
+    r.querySelector("#cpCadenceText").textContent, "Reaching out every 365 days.");
+
+  r.querySelector("#cpAdjust").click();
+  const daysEl = r.querySelector("#cpCustomDays");
+  daysEl.value = "60";
+  daysEl.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+  eq("typing a day count restates it live",
+    r.querySelector("#cpCadenceText").textContent, "Reaching out every 60 days.");
+}
+
 // ── The quick-add widget ─────────────────────────────────────────────────────
 // Creating a contact is where "how many days?" is least answerable, so the tier
 // has to be here too — a picker that only exists on the profile leaves the
