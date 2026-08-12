@@ -58,6 +58,52 @@ with no access to this repo.
 
 ---
 
+## ORB-52 — the tier picker, shipped Aug 12
+
+Schema landed Aug 11; this is the rest. `tier` existed in the database and
+nothing in `js/` read or wrote it, so the whole path is new: column mapping,
+model, and a picker in both places a cadence gets chosen.
+
+**Tier first, interval second, everywhere.** "What kind of relationship is
+this?" leads; "reach out again?" follows and stays editable. Choosing a tier
+fills in that tier's interval; changing the interval afterwards is the override
+and both are kept. Nothing downstream moved — health, digest and dashboard still
+read `followUpFrequency`, which is what made this safe to ship in one pass.
+
+**The rule now exists twice**, in `tierForFrequency()` and in `012`'s back-fill,
+in two languages. If they drift, a contact shows one tier in the picker and
+carries another in the database and nothing errors. The boundaries — 1–60,
+61–135, 136–272, >272, with named frequencies matched *before* day counts, so
+`bimonthly` is mentors while `custom:60` is inner circle — are asserted directly
+against the SQL's own `between` clauses. There is also a round-trip assertion
+that every tier's default interval classifies back to that tier, or picking a
+tier and reloading would show a different one.
+
+**A derived tier is never persisted.** `normalizeContact` leaves it blank and
+`effectiveTier()` derives one only for display. Saving a derived value would make
+ORB-57's "30%+ sit in a tier the user changed from the default" unmeasurable,
+because every contact would look deliberately classified.
+
+**Missing-column degradation**, following `industry` and `emails`: an unrun `012`
+costs the tier, not the save, because the interval is still the effective
+schedule.
+
+**Deliberately not changed:** the quick-add default is still `monthly`, with the
+tier defaulting to whatever that implies so the two controls agree on load.
+Whether monthly is right for someone you have just met is **ORB-51**'s question,
+and answering it here would have buried a cadence change inside a UI ticket.
+
+**Reality check before building:** the back-fill mapped one-to-one onto the two
+intervals in use — every `quarterly` became a mentor, every `custom:150` became
+professional network, nobody landed in `inner_circle`. So the tier column carried
+no information the interval did not already have. That is not a fault in the
+back-fill; it is what makes the picker the point, and why ORB-57 measures
+corrections rather than counting classified contacts.
+
+Sixty-eight assertions in `tests/tiers.test.mjs`; 681 passing.
+
+---
+
 ## ORB-69 — shipped Aug 12
 
 **Decision: yes, a cadence with no anchor date is scheduled**, judged against the

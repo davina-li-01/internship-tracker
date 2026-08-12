@@ -108,6 +108,9 @@ const EXPORTS = [
   "getHealth", "getIntervalDays", "calculateNextReminder", "firstDeadlineFor",
   "GRACE_DAYS", "addDays", "daysSince", "needsAttention", "countByBand",
   "getFreqLabel", "relativeDayLabel", "todayDateString",
+  // relationship tiers
+  "TIERS", "TIER_ORDER", "tierLabel", "frequencyForTier", "tierForFrequency",
+  "effectiveTier",
   // model
   "normalizeContact", "normalizeInteraction",
   // filtering

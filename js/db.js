@@ -132,6 +132,10 @@ export async function getContacts() {
 // missing migration costs you the industry tag rather than the whole save.
 let industrySupported = true;
 let emailsSupported = true;
+// `tier` arrives with 012. Same treatment: an unrun migration costs the tier,
+// not the save. The interval keeps running either way, which is the whole point
+// of keeping follow_up_frequency as the effective schedule (ORB-52).
+let tierSupported = true;
 
 /**
  * True when `error` says this specific column is missing.
@@ -159,8 +163,20 @@ export async function saveContact(contact) {
   const row = contactToRow(contact, userId);
   if (!industrySupported) delete row.industry;
   if (!emailsSupported) delete row.emails;
+  if (!tierSupported) delete row.tier;
 
   let { data, error } = await upsert(row);
+
+  if (error && tierSupported && isMissingColumn(error, "tier")) {
+    console.warn(
+      "[DB] contacts.tier is missing — saving without it. The cadence still " +
+      "runs off follow_up_frequency. To enable relationship tiers run " +
+      "supabase/migrations/012_relationship_tiers.sql"
+    );
+    tierSupported = false;
+    delete row.tier;
+    ({ data, error } = await upsert(row));
+  }
 
   if (error && emailsSupported && isMissingColumn(error, "emails")) {
     console.warn(
@@ -189,6 +205,11 @@ export async function saveContact(contact) {
 /** False once a save has proven the column is absent — the UI hides the field. */
 export function isIndustrySupported() {
   return industrySupported;
+}
+
+/** Same, for tiers. The picker falls back to the interval when this is false. */
+export function isTierSupported() {
+  return tierSupported;
 }
 
 export async function deleteContact(contactId) {
@@ -227,6 +248,7 @@ function rowToContact(row) {
     dateMet: row.date_met || "",
     lastContacted: row.last_contacted || "",
     followUpFrequency: row.follow_up_frequency || "none",
+    tier: row.tier || "",
     notes: row.notes || "",
     adviceGiven: row.advice_given || "",
     interests: row.interests || "",
@@ -255,6 +277,9 @@ function contactToRow(contact, userId) {
     date_met: contact.dateMet || null,
     last_contacted: contact.lastContacted || null,
     follow_up_frequency: contact.followUpFrequency || "none",
+    // Empty string would fail the tier check constraint; the column is nullable
+    // and null is how "not classified yet" is stored.
+    tier: contact.tier || null,
     notes: contact.notes || "",
     advice_given: contact.adviceGiven || "",
     interests: contact.interests || "",

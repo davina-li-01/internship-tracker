@@ -145,6 +145,92 @@ const FREQUENCY_DAYS = {
   quarterly: 90
 };
 
+/**
+ * Relationship tiers (ORB-52).
+ *
+ * The tier is what you pick; the interval is what runs. Choosing a tier sets
+ * `followUpFrequency` to its default, and editing the interval afterwards is
+ * the override — so these numbers are a starting point, never a constraint.
+ * Everything downstream (health, digest, dashboard) still reads the interval
+ * and is untouched by any of this.
+ *
+ * Thresholds come from "User Research: Cadence Structure" (Confluence, Aug 11).
+ * Read its caveats before treating them as settled: the tier sizes come from
+ * secondary coverage of Dunbar rather than the primary papers.
+ */
+const TIERS = {
+  inner_circle: {
+    label: "Inner circle",
+    hint: "The few you would actually call. About monthly.",
+    frequency: "monthly"
+  },
+  mentors_managers: {
+    label: "Mentors and managers",
+    hint: "People invested in how you do. About every three months.",
+    frequency: "quarterly"
+  },
+  professional_network: {
+    label: "Professional network",
+    hint: "Worth staying known to. About twice a year.",
+    frequency: "custom:180"
+  },
+  met_once: {
+    label: "Met once",
+    hint: "A good conversation, not yet a relationship. About yearly.",
+    frequency: "custom:365"
+  },
+  none: {
+    label: "No schedule",
+    hint: "On file, never surfaced. A deliberate choice, not a gap.",
+    frequency: "none"
+  }
+};
+
+/** Display order, closest relationships first. */
+const TIER_ORDER = [
+  "inner_circle", "mentors_managers", "professional_network", "met_once", "none"
+];
+
+function tierLabel(tier) {
+  return TIERS[tier]?.label || "";
+}
+
+function frequencyForTier(tier) {
+  return TIERS[tier] ? TIERS[tier].frequency : "none";
+}
+
+/**
+ * The tier an interval implies, for contacts saved before tiers existed.
+ *
+ * Mirrors the back-fill in `012_relationship_tiers.sql` exactly — same named
+ * frequencies, same day boundaries. If the two ever drift, the same contact
+ * shows one tier in the picker and another in the database, which is worse
+ * than having no tier at all.
+ */
+function tierForFrequency(freq) {
+  if (freq === "weekly" || freq === "biweekly" || freq === "monthly") return "inner_circle";
+  if (freq === "bimonthly" || freq === "quarterly") return "mentors_managers";
+  const days = getIntervalDays(freq);
+  if (!days) return "none";
+  if (days <= 60) return "inner_circle";
+  if (days <= 135) return "mentors_managers";
+  if (days <= 272) return "professional_network";
+  return "met_once";
+}
+
+/** The tier to show: what was chosen, else what the interval implies. */
+function effectiveTier(contact) {
+  return contact?.tier || tierForFrequency(contact?.followUpFrequency);
+}
+
+/** `<option>` list for a tier select, with one marked selected. */
+function tierOptionsHtml(selected) {
+  return TIER_ORDER
+    .map((t) => '<option value="' + t + '"' + (selected === t ? " selected" : "") + '>'
+      + escapeHtml(TIERS[t].label) + '</option>')
+    .join("");
+}
+
 function getFreqLabel(freq) {
   if (freq && freq.startsWith("custom:")) {
     const days = parseInt(freq.slice(7), 10);
@@ -546,6 +632,11 @@ function normalizeContact(contact = {}) {
     dateMet: contact.dateMet || "",
     lastContacted,
     followUpFrequency: frequency,
+    // Only what the user actually chose is stored. A tier derived from the
+    // interval is a display fallback (effectiveTier), not a saved answer —
+    // persisting it would make ORB-57's "changed from the default" metric
+    // unmeasurable, since every contact would look deliberately classified.
+    tier: contact.tier || "",
     nextReminder,
     reminderEnabled: frequency !== "none" ? (contact.reminderEnabled !== false) : false,
     notes: (contact.notes || "").trim(),
@@ -1214,6 +1305,14 @@ function conversationWidgetHtml() {
     + '<input type="text" class="cw-company" placeholder="Where they work" /></div>'
     + '<div class="field-group"><label>Email</label>'
     + '<input type="email" class="cw-email" placeholder="email@example.com" /></div>'
+    // ORB-52: the tier is asked first here too. Creating a contact is exactly
+    // where "how many days?" is least answerable — you have just met them.
+    // Defaults to the tier matching the existing `monthly` default, so the two
+    // controls agree on first render. Whether monthly is the right default for
+    // someone you have just met is a separate question and belongs to ORB-51 —
+    // it is deliberately not changed here.
+    + '<div class="field-group"><label>What kind of relationship?</label>'
+    + '<select class="cw-tier">' + tierOptionsHtml(tierForFrequency("monthly")) + '</select></div>'
     + '<div class="field-group"><label>Reach out again?</label>'
     + '<select class="cw-freq">' + freqOptions
     + '<option value="custom">Custom…</option></select>'
@@ -1276,6 +1375,22 @@ function wireConversationWidget(root, getContacts, onSaved) {
     if (freqEl.value === "custom") $(".cw-custom-days").focus();
   });
 
+  // Same relationship as on the profile: the tier fills in an interval, the
+  // interval remains editable. No focus jump here — unlike the change above,
+  // this one was not initiated by someone reaching for the day count.
+  const tierEl = $(".cw-tier");
+  tierEl?.addEventListener("change", () => {
+    const preset = frequencyForTier(tierEl.value);
+    if (preset.startsWith("custom:")) {
+      freqEl.value = "custom";
+      customWrap.classList.remove("hidden");
+      $(".cw-custom-days").value = preset.slice(7);
+    } else {
+      freqEl.value = preset;
+      customWrap.classList.add("hidden");
+    }
+  });
+
   // ── Autocomplete ─────────────────────────────────────────────────────
   const closeList = () => {
     listEl.hidden = true;
@@ -1314,6 +1429,9 @@ function wireConversationWidget(root, getContacts, onSaved) {
       freqEl.value = freq;
       customWrap.classList.add("hidden");
     }
+    // And their tier, for the same reason — logging a conversation with someone
+    // must not silently reclassify the relationship.
+    if (tierEl) tierEl.value = effectiveTier(contact);
 
     setLinked(contact);
     closeList();
@@ -1445,6 +1563,7 @@ function wireConversationWidget(root, getContacts, onSaved) {
       interactions: merged,
       lastContacted: merged[0].date,
       followUpFrequency: frequency,
+      tier: tierEl ? tierEl.value : (base.tier || ""),
       reminderEnabled: frequency !== "none",
       // A conversation puts the relationship on its normal rhythm. The grace
       // window only applies when a cadence is switched on without one.
@@ -2166,6 +2285,13 @@ async function initContactPage() {
       .map(([v, l]) => '<option value="' + v + '"' + (freqSelectValue === v ? " selected" : "") + '>' + l + '</option>')
       .join("")
       + '<option value="custom"' + (isCustomFreq ? " selected" : "") + '>Custom…</option>';
+    // ORB-52. Falls back to the tier the interval implies, so a contact saved
+    // before tiers existed still shows one rather than an empty select.
+    const shownTier = effectiveTier(c);
+    const tierOptions = TIER_ORDER
+      .map((t) => '<option value="' + t + '"' + (shownTier === t ? " selected" : "") + '>'
+        + escapeHtml(TIERS[t].label) + '</option>')
+      .join("");
     const pastCompanies = (c.companyHistory || []).filter((co) => co !== c.company);
 
     root.innerHTML =
@@ -2264,6 +2390,12 @@ async function initContactPage() {
       + '<dd>' + (c.nextReminder ? formatDate(c.nextReminder.split("T")[0]) : "—") + '</dd></div>'
       + '</dl>'
       + '<div class="reachout-controls">'
+      // Tier first, because "what kind of relationship is this" is a question
+      // you can answer; "how many days" is one most people cannot (ORB-51).
+      // The interval below stays editable as the override.
+      + '<div class="field-group"><label for="cpTier">What kind of relationship?</label>'
+      + '<select id="cpTier">' + tierOptions + '</select>'
+      + '<p class="tiny muted" id="cpTierHint">' + escapeHtml(TIERS[shownTier].hint) + '</p></div>'
       + '<div class="field-group"><label for="cpFrequency">Reach out again?</label>'
       + '<select id="cpFrequency">' + freqOptions + '</select></div>'
       + '<div class="field-group' + (isCustomFreq ? '' : ' hidden') + '" id="cpCustomDaysGroup">'
@@ -2523,8 +2655,26 @@ async function initContactPage() {
 
     const freqSelect = $("#cpFrequency");
     const customGroup = $("#cpCustomDaysGroup");
+    const tierSelect = $("#cpTier");
     freqSelect.addEventListener("change", () => {
       customGroup.classList.toggle("hidden", freqSelect.value !== "custom");
+    });
+
+    // Picking a tier fills in that tier's interval, and the interval stays
+    // editable afterwards. The two controls are not locked together: the tier
+    // is the answer to a question, the interval is the schedule it suggests.
+    tierSelect.addEventListener("change", () => {
+      const preset = frequencyForTier(tierSelect.value);
+      $("#cpTierHint").textContent = TIERS[tierSelect.value]?.hint || "";
+      if (preset.startsWith("custom:")) {
+        freqSelect.value = "custom";
+        customGroup.classList.remove("hidden");
+        const daysEl = $("#cpCustomDays");
+        if (daysEl) daysEl.value = preset.slice(7);
+      } else {
+        freqSelect.value = preset;
+        customGroup.classList.add("hidden");
+      }
     });
 
     $("#cpSaveReminderBtn").addEventListener("click", async () => {
@@ -2539,6 +2689,10 @@ async function initContactPage() {
         return {
           ...cur,
           followUpFrequency: newFreq,
+          // Saved even when it matches what the interval already implied —
+          // pressing Save is the user answering the question, and ORB-57
+          // measures how many answered it rather than took the default.
+          tier: tierSelect.value,
           reminderEnabled: newFreq !== "none",
           // Switching a schedule ON grants the one-week grace window if the
           // cadence alone would already be blown. Editing an existing cadence
