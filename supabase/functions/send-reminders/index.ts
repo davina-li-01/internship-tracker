@@ -27,7 +27,12 @@ const json = (body: unknown, status = 200) =>
 async function sendViaResend(to: string, subject: string, text: string, html: string) {
   const key = Deno.env.get("RESEND_API_KEY");
   if (!key) throw new Error("RESEND_API_KEY is not set");
-  const from = Deno.env.get("REMINDER_FROM") || "Orbit <onboarding@resend.dev>";
+  // The fallback used to be Resend's onboarding@resend.dev, which delivers only
+  // to the Resend account owner and drops everything else without an error. A
+  // digest could run green for weeks while reaching exactly one person. Now that
+  // orbit-networking.com is verified (ORB-37) the default is an address that
+  // works for everyone; REMINDER_FROM still overrides it.
+  const from = Deno.env.get("REMINDER_FROM") || "Orbit <noreply@orbit-networking.com>";
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",

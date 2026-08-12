@@ -40,10 +40,15 @@ Supabase dashboard → **SQL Editor** → run **both**, in order:
    emails/month, which is far more than this will ever use.
 2. **API Keys** → **Create API Key** → copy it (`re_...`). You only see it once.
 
-You can send from `onboarding@resend.dev` immediately without verifying a
-domain. It is fine for testing, but it will land in spam more often and you
-cannot change the display name. If you want reminders that reliably reach your
-inbox, verify a domain under **Domains** and set `REMINDER_FROM` in step 4.
+**Do not send from `onboarding@resend.dev`.** Resend lets you use it without
+verifying a domain, and it reads as a convenient way to skip step 4 — but it
+**only delivers to the address that owns the Resend account.** Every other
+recipient is accepted by the API and silently dropped, so the function returns
+`ok` and the logs look clean while nobody but you receives a digest.
+
+This project sends from `noreply@orbit-networking.com`, verified in Resend on
+2026-08-11 (ORB-37). That is the default in `index.ts`; `REMINDER_FROM` in
+step 4 overrides it if the domain ever changes.
 
 ## Step 3 — Invent a cron secret
 
@@ -202,8 +207,13 @@ select id, created, status_code, content
 from net._http_response order by created desc limit 5;
 ```
 
-**Emails go to spam.** Expected with `onboarding@resend.dev`. Verify a domain in
-Resend and set `REMINDER_FROM`.
+**Emails go to spam.** Check the `from` address on the send in **Resend →
+Emails**. It should be `noreply@orbit-networking.com`; if it still says
+`onboarding@resend.dev`, `REMINDER_FROM` is misspelled and the code fell back.
+
+**One person gets the digest and nobody else does.** Same cause, worse symptom:
+`onboarding@resend.dev` delivers only to the Resend account owner and drops the
+rest without an error. Resend → Emails is the only place this is visible.
 
 **Nothing is ever due.** Confirm there is something to find:
 

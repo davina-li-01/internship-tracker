@@ -58,6 +58,21 @@ A separate 535 `Authentication credentials invalid` in the Auth logs was the API
 key, not the domain — different failure, different fix. Worth reading the log
 line rather than guessing: 535 means the key, 550 means the domain.
 
+**The reminder digest was still broken, and this ticket was always about it.**
+ORB-37's user story is *"I want reminder emails to arrive in my inbox rather than
+my spam folder"* — the digest, not auth. Auth had taken over the day, so the
+digest went unchecked until after SMTP was live. `send-reminders/index.ts`
+defaulted to `Orbit <onboarding@resend.dev>`, which **delivers only to the Resend
+account owner and drops every other recipient without an error.** The function
+returns `ok`, the logs are clean, and one person receives the digest. Live since
+ORB-16 shipped; no user would have reported it, because a reminder that never
+arrives looks exactly like having nothing due.
+
+Fixed twice over: `REMINDER_FROM` set as an Edge Function secret, *and* the
+hardcoded fallback changed to `noreply@orbit-networking.com`. The old default was
+a footgun — a value that works in testing and silently fails in production is
+worse than no default at all.
+
 **Not done:** `davina@orbit-networking.com` receives nothing. Sending and
 receiving are separate, and no mailbox exists. Cloudflare Email Routing or a
 mailbox provider covers it when wanted, and will not collide, because Resend's MX
