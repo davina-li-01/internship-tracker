@@ -202,16 +202,26 @@ function getHealth(contact) {
   const last = contact.lastContacted || contact.dateMet;
   const elapsed = daysSince(last);
 
-  if (!interval || !contact.reminderEnabled || elapsed === null) {
+  if (!interval || !contact.reminderEnabled) {
     return { scheduled: false, pct: 0, band: "none", elapsed, interval: 0, daysLeft: null, grace: false };
   }
 
+  // `elapsed === null` means there is no date to count from — someone was put on
+  // a cadence before any contact was recorded. That used to fall out here as
+  // "No schedule", which was wrong twice over (ORB-69): firstDeadlineFor already
+  // answers this case with the grace window, and the reminder digest queries
+  // next_reminder in SQL without consulting this function, so the same contact
+  // was emailed while the dashboard denied they were scheduled.
   const naturalNext = addDays(last, interval);
-  const next = contact.nextReminder ? String(contact.nextReminder).slice(0, 10) : naturalNext;
+  const next = contact.nextReminder
+    ? String(contact.nextReminder).slice(0, 10)
+    : (naturalNext || firstDeadlineFor(last, contact.followUpFrequency));
 
   // A deadline later than the cadence alone would give means the window was
   // deliberately extended — the one-week grace on a fresh schedule, or a snooze.
-  const grace = Boolean(next && naturalNext && next > naturalNext);
+  // No anchor date is the same situation by definition: you owe a first
+  // reach-out and nothing has been measured yet.
+  const grace = !naturalNext || Boolean(next && next > naturalNext);
   const window = grace ? GRACE_DAYS : interval;
 
   // daysSince is negative for future dates, so this is "days until the deadline".

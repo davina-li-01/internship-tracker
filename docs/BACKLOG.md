@@ -58,16 +58,31 @@ with no access to this repo.
 
 ---
 
-## ORB-69 — opened Aug 11, scheduled Aug 12
+## ORB-69 — shipped Aug 12
 
-Not shipped; recorded here because the finding is worth having next to the code.
+**Decision: yes, a cadence with no anchor date is scheduled**, judged against the
+grace deadline. Two parts of the code already assumed it and only `getHealth`
+disagreed, so the fix was to make it agree rather than to narrow the other two.
 
-`firstDeadlineFor()` is written specifically for a contact with no anchor date —
+`getHealth` no longer bails when `elapsed === null`. It falls back to
+`firstDeadlineFor`, treats the window as grace — a first reach-out is owed, so it
+never reads as "in touch" — and leaves `elapsed` null, because there genuinely is
+nothing to measure. A stored `nextReminder` still wins, so a snooze survives.
+
+Verified against the shipped module: the contact that reported
+`{ scheduled: false, band: "none" }` now reports
+`{ scheduled: true, band: "warning", daysLeft: 7, grace: true }`, appears in
+`needsAttention`, and counts in the rings. A contact with no cadence at all is
+still unscheduled. Nine assertions added; 613 passing.
+
+### What it looked like before
+
+`firstDeadlineFor()` was written specifically for a contact with no anchor date —
 `if (!natural) return graceUntil`, today plus `GRACE_DAYS`. `getHealth()` never
-reaches it: it returns `scheduled: false` the moment `elapsed === null`, which is
-true whenever both `lastContacted` and `dateMet` are empty.
+reached it: it returned `scheduled: false` the moment `elapsed === null`, which
+is true whenever both `lastContacted` and `dateMet` are empty.
 
-Verified against the shipped module, not reasoned about:
+Measured against the shipped module, not reasoned about:
 
 ```
 firstDeadlineFor('', 'monthly') = 2026-08-18   ← a real deadline
@@ -76,17 +91,21 @@ displays as                     = "No schedule"
 needsAttention()                = does not include them
 ```
 
-**The digest disagrees with the app.** `listDueContacts` filters on
+**The digest disagreed with the app.** `listDueContacts` filters on
 `reminder_enabled = true AND next_reminder <= today` in SQL and never calls
-`getHealth`, so the same contact would be emailed while the dashboard says they
-have no schedule.
+`getHealth`, so the same contact would be emailed while the dashboard said they
+had no schedule. That mismatch is what made this a defect rather than a
+preference — the fix had to move one of them, and the decision was which.
 
-Reachability is limited — every add path traced sets `lastContacted`, so it comes
-in mainly through CSV import or an edit clearing both dates. **The product
-question comes before the code:** should a cadence with no anchor date count as
-scheduled? `firstDeadlineFor` and the digest already say yes, which makes the
-cheap fix "let `getHealth` agree". Answering no is defensible, but then the fix
-inverts and the digest query needs narrowing.
+Reachability was limited — every add path traced sets `lastContacted`, so it
+arrived mainly through CSV import or an edit clearing both dates. That is why it
+survived: rare enough never to be reported, and silent when it happened.
+
+The alternative was defensible and was considered: rule that a cadence without a
+measurable date is not a schedule, leave `getHealth` alone, and narrow the digest
+query instead. It was rejected because it would have made `firstDeadlineFor`'s
+grace branch dead code, and because a contact you have committed to and not yet
+contacted is exactly who a reach-out list exists to surface.
 
 ---
 
