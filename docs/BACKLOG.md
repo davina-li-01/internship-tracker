@@ -25,6 +25,38 @@ with no access to this repo.
 
 ---
 
+## ORB-69 — opened Aug 11, scheduled Aug 12
+
+Not shipped; recorded here because the finding is worth having next to the code.
+
+`firstDeadlineFor()` is written specifically for a contact with no anchor date —
+`if (!natural) return graceUntil`, today plus `GRACE_DAYS`. `getHealth()` never
+reaches it: it returns `scheduled: false` the moment `elapsed === null`, which is
+true whenever both `lastContacted` and `dateMet` are empty.
+
+Verified against the shipped module, not reasoned about:
+
+```
+firstDeadlineFor('', 'monthly') = 2026-08-18   ← a real deadline
+getHealth(...)                  = { scheduled: false, band: 'none' }
+displays as                     = "No schedule"
+needsAttention()                = does not include them
+```
+
+**The digest disagrees with the app.** `listDueContacts` filters on
+`reminder_enabled = true AND next_reminder <= today` in SQL and never calls
+`getHealth`, so the same contact would be emailed while the dashboard says they
+have no schedule.
+
+Reachability is limited — every add path traced sets `lastContacted`, so it comes
+in mainly through CSV import or an edit clearing both dates. **The product
+question comes before the code:** should a cadence with no anchor date count as
+scheduled? `firstDeadlineFor` and the digest already say yes, which makes the
+cheap fix "let `getHealth` agree". Answering no is defensible, but then the fix
+inverts and the digest query needs narrowing.
+
+---
+
 ## ORB-37 — custom SMTP, shipped Aug 11
 
 Auth email now leaves through Resend on an owned domain. `orbit-networking.com`,
