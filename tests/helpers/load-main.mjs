@@ -119,6 +119,9 @@ const EXPORTS = [
   "ringHtml", "splitBarHtml", "personRowHtml", "wirePersonRows",
   "renderNotes", "stripNoteMarks", "noteToolbarHtml", "cadenceSentence",
   "openConversationEditor", "editorToMarks", "notesEditorHtml", "wireNotesEditor",
+  // bullets, rich paste and history (ORB-77)
+  "htmlToMarks", "normaliseBullets", "createNoteHistory", "toggleBullets",
+  "renderInlineMarks", "markFromStyle",
   "renderInteractionTimeline", "conversationPreview", "renderStorageFileCard",
   "conversationTitle", "conversationNotes",
   "renderUpcomingMeetings", "healthBarHtml", "statusChip", "BAND_META",

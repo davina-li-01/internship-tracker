@@ -57,7 +57,9 @@ group("It carries the same fields as logging a conversation");
     main.editorToMarks($("#convoEditNotes")), "Talked about **the platform team**.");
   ok("it is an editable box, not a textarea",
     $("#convoEditNotes").getAttribute("contenteditable") === "true");
-  ok("the formatting toolbar is here too", modal().querySelectorAll(".note-tool").length === 4);
+  // Four marks plus undo, redo and bullets (ORB-77) — the dialog gets the same
+  // toolbar as everywhere else, which is the point of sharing notesEditorHtml.
+  ok("the formatting toolbar is here too", modal().querySelectorAll(".note-tool").length === 7);
   ok("a transcript can be attached", $("#convoEditFile"));
 }
 

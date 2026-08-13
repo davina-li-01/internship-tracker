@@ -3073,14 +3073,25 @@ body.dark .doc-tile:hover { box-shadow: 0 6px 18px rgba(0,0,0,0.4); }
 .doc-delete { flex: 0 0 28px; }
 .doc-delete:hover { color: var(--danger); border-color: var(--danger); }
 
-/* ── Capture widget: 3 per row, matching the notes box ───────── */
-.cw-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.7rem 0.85rem; }
+/* ── Capture widget: 3 per row, matching the notes box ─────────
+   When/Type share the tracks rather than declaring two of their own (ORB-77).
+   With their own 2-column grid they sat on a different rhythm to the six fields
+   above, so "When" started under "Who did you speak with?" but "Type" landed
+   halfway between "Role" and "Company". Same tracks means they line up. */
+.cw-grid,
+.cw-convo-head { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.7rem 0.85rem; }
 .cw-form > .field-group { margin-top: 0.85rem; }
 .cw-form .cw-submit { margin-top: 0.85rem; }
 .cw-form .error:empty, .cw-form .success:empty { display: none; margin: 0; }
 
-@media (max-width: 760px) { .cw-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 520px) { .cw-grid { grid-template-columns: 1fr; } }
+@media (max-width: 760px) {
+  .cw-grid,
+  .cw-convo-head { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .cw-grid,
+  .cw-convo-head { grid-template-columns: 1fr; }
+}
 
 /* ── Profile button + menu ───────────────────────────────────── */
 .sidebar-footer { position: relative; }
@@ -4348,6 +4359,20 @@ body.dark .chooser-option:hover { border-color: var(--accent); }
   cursor: pointer;
   transition: background var(--trans);
 }
+/* Three groups: history, the inline marks, then the line-level one (ORB-77).
+   The rules are hairlines rather than gaps so the toolbar stays one object. */
+.note-tool-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 0.15rem 0.25rem;
+  background: var(--hairline);
+}
+.note-tool[disabled] { opacity: 0.35; cursor: default; }
+.note-tool[disabled]:hover { background: none; }
+.note-tool.is-undo svg,
+.note-tool.is-redo svg,
+.note-tool.is-bullet svg { display: block; }
+
 .note-tool:hover { background: var(--row-hover); }
 .note-tool:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
 .note-tool.is-bold      { font-weight: 800; }
@@ -4423,15 +4448,25 @@ body.dark .convo-note mark { background: #A16207; color: #FFFBEB; }
    div. */
 .notes-input {
   width: 100%;
-  min-height: 8rem;
-  padding: 0.5rem 0.75rem;
+  /* A fixed height, not a floor (ORB-77). It used to grow with the note and
+     push Attach a PDF and Save down the page, and because the box was always
+     exactly as tall as its content it never scrolled — so a long note had no
+     way to be read back except by growing the dialog past the window. */
+  height: 11rem;
+  padding: 0.55rem 0.75rem;
   border: 1px solid var(--input-border);
   border-radius: 10px;
   background: var(--input-bg);
   color: var(--text);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  resize: none;
   white-space: pre-wrap;
   word-break: break-word;
+  /* The attachment row sat tight under the box while every other field had air
+     around it. Added here rather than on the field-group so it applies wherever
+     a note is written, not only in the logger. */
+  margin-bottom: 0.4rem;
 }
 .notes-input:focus {
   outline: none;
@@ -4453,9 +4488,23 @@ body.dark .convo-note mark { background: #A16207; color: #FFFBEB; }
 }
 body.dark .notes-input mark { background: #A16207; color: #FFFBEB; }
 
-.cw-notes.notes-input { min-height: 11rem; }
-.convo-edit-notes.notes-input { min-height: 14rem; resize: none; }
-#cpIntNotes.notes-input { min-height: 9rem; }
+/* Bullets inside the editor and in the rendered timeline (ORB-77). The box is
+   `white-space: pre-wrap`, which would otherwise leave a blank line either side
+   of the list, so the margins are set rather than inherited. */
+.notes-input .note-list,
+.convo-notes .note-list,
+.note-list {
+  margin: 0.15rem 0;
+  padding-left: 1.25rem;
+  list-style: disc;
+  white-space: normal;
+}
+.note-list li { margin: 0.1rem 0; }
+
+.cw-notes.notes-input { height: 11rem; }
+.convo-edit-notes.notes-input { height: 14rem; }
+#cpIntNotes.notes-input { height: 9rem; }
+.cal-notes.notes-input { height: 5.5rem; }
 
 
 /* ── Conversation history holds its height (ORB-62) ───────────────────────

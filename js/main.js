@@ -113,10 +113,56 @@ const NOTE_MARKS = [
   [/==([^=\n]+)==/g, "<mark>$1</mark>"]
 ];
 
-function renderNotes(value = "") {
+/**
+ * A bullet, which is a line and not a span (ORB-77).
+ *
+ * The other four marks wrap a selection. A bullet marks a whole line, so it
+ * cannot be another entry in NOTE_MARKS — the text has to be split into lines
+ * first and consecutive bullets gathered into one list.
+ *
+ * `-` only. `*` is the italic mark, and a line beginning "*this*" is a sentence
+ * in italics far more often than it is a bullet. `•` is accepted on the way in
+ * because that is what Docs, Notion and the chat tools put on the clipboard,
+ * but it is normalised to `-` before it is ever stored.
+ */
+const BULLET_LINE = /^[ \t]*[-•]\s+(.*)$/;
+
+/** The inline marks only, for one line at a time. */
+function renderInlineMarks(value = "") {
   let out = escapeHtml(value);
   for (const [pattern, replacement] of NOTE_MARKS) out = out.replace(pattern, replacement);
   return out;
+}
+
+function renderNotes(value = "") {
+  const out = [];
+  let text = [];
+  let list = [];
+
+  const flushText = () => {
+    if (text.length) out.push(renderInlineMarks(text.join("\n")));
+    text = [];
+  };
+  const flushList = () => {
+    if (list.length) {
+      out.push('<ul class="note-list">'
+        + list.map((i) => "<li>" + renderInlineMarks(i) + "</li>").join("")
+        + "</ul>");
+    }
+    list = [];
+  };
+
+  for (const line of String(value).split("\n")) {
+    const bullet = BULLET_LINE.exec(line);
+    if (bullet) { flushText(); list.push(bullet[1]); }
+    else { flushList(); text.push(line); }
+  }
+  // The newline that separated a paragraph from a list is deliberately dropped:
+  // the <ul> is already a block, and keeping it would leave a blank line under
+  // `white-space: pre-wrap`.
+  flushText();
+  flushList();
+  return out.join("");
 }
 
 /**
@@ -134,23 +180,61 @@ const HIGHLIGHTER_SVG =
   + '<path d="M7.5 13.5l4 4-2.2 2.2H5.6l-1.4-1.4z" fill="currentColor" opacity="0.55"/>'
   + '</svg>';
 
+const UNDO_SVG =
+  '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">'
+  + '<path d="M8 7H15a5 5 0 0 1 0 10h-4" fill="none" stroke="currentColor"'
+  + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+  + '<path d="M11 4L7.5 7 11 10" fill="none" stroke="currentColor"'
+  + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+const REDO_SVG =
+  '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">'
+  + '<path d="M16 7H9a5 5 0 0 0 0 10h4" fill="none" stroke="currentColor"'
+  + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+  + '<path d="M13 4l3.5 3L13 10" fill="none" stroke="currentColor"'
+  + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+const BULLET_SVG =
+  '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">'
+  + '<circle cx="4.5" cy="6.5" r="1.6" fill="currentColor"/>'
+  + '<circle cx="4.5" cy="12" r="1.6" fill="currentColor"/>'
+  + '<circle cx="4.5" cy="17.5" r="1.6" fill="currentColor"/>'
+  + '<path d="M9.5 6.5h11M9.5 12h11M9.5 17.5h11" fill="none" stroke="currentColor"'
+  + ' stroke-width="2" stroke-linecap="round"/></svg>';
+
+/**
+ * The toolbar, in three groups (ORB-63, extended by ORB-77).
+ *
+ * History sits on the far left because that is where every editor puts it, and
+ * because it is the one group that is not about the selection. Bullets sit
+ * after the inline marks for the opposite reason: a bullet acts on the line,
+ * so it does not belong among the four that act on the words.
+ */
 const NOTE_TOOLS = [
-  { mark: "**", label: "B", title: "Bold", cls: "is-bold" },
-  { mark: "*",  label: "I", title: "Italic", cls: "is-italic" },
-  { mark: "__", label: "U", title: "Underline", cls: "is-underline" },
-  { mark: "==", label: HIGHLIGHTER_SVG, title: "Highlight", cls: "is-highlight", raw: true }
+  { action: "undo", label: UNDO_SVG, title: "Undo", cls: "is-undo", raw: true, group: "history" },
+  { action: "redo", label: REDO_SVG, title: "Redo", cls: "is-redo", raw: true, group: "history" },
+  { mark: "**", label: "B", title: "Bold", cls: "is-bold", group: "inline" },
+  { mark: "*",  label: "I", title: "Italic", cls: "is-italic", group: "inline" },
+  { mark: "__", label: "U", title: "Underline", cls: "is-underline", group: "inline" },
+  { mark: "==", label: HIGHLIGHTER_SVG, title: "Highlight", cls: "is-highlight", raw: true, group: "inline" },
+  { action: "bullet", label: BULLET_SVG, title: "Bullet list", cls: "is-bullet", raw: true, group: "block" }
 ];
 
 function noteToolbarHtml() {
-  return '<div class="note-toolbar" role="group" aria-label="Formatting">'
-    + NOTE_TOOLS.map((t) =>
-        '<button type="button" class="note-tool ' + t.cls + '"'
-        + ' data-mark="' + escapeHtml(t.mark) + '"'
-        + ' title="' + escapeHtml(t.title) + '" aria-label="' + escapeHtml(t.title) + '">'
-        // Only the hard-coded SVG above is ever inserted raw; everything a user
-        // could influence still goes through escapeHtml.
-        + (t.raw ? t.label : escapeHtml(t.label)) + '</button>').join("")
-    + '</div>';
+  let html = '<div class="note-toolbar" role="group" aria-label="Formatting">';
+  let group = null;
+  for (const t of NOTE_TOOLS) {
+    if (group && t.group !== group) html += '<span class="note-tool-sep" aria-hidden="true"></span>';
+    group = t.group;
+    html += '<button type="button" class="note-tool ' + t.cls + '"'
+      + (t.mark ? ' data-mark="' + escapeHtml(t.mark) + '"' : "")
+      + (t.action ? ' data-action="' + escapeHtml(t.action) + '"' : "")
+      + ' title="' + escapeHtml(t.title) + '" aria-label="' + escapeHtml(t.title) + '">'
+      // Only the hard-coded SVGs above are ever inserted raw; everything a user
+      // could influence still goes through escapeHtml.
+      + (t.raw ? t.label : escapeHtml(t.label)) + '</button>';
+  }
+  return html + '</div>';
 }
 
 /**
@@ -288,6 +372,30 @@ const EDITOR_TAG_MARKS = {
 };
 
 /** Serialise a contenteditable's children back to marked-up plain text. */
+/**
+ * The mark an inline style is standing in for (ORB-77).
+ *
+ * Google Docs does not emit `<b>`. It emits `<span style="font-weight:700">`,
+ * and Word, Notion and the chat tools all do something similar — so reading
+ * only tag names loses every bit of formatting from the places notes are
+ * actually pasted from.
+ *
+ * Weight is a number as often as it is a keyword, and `600` is bold to a reader
+ * even though it is not `bold` to a string comparison.
+ */
+function markFromStyle(el) {
+  const style = (el?.getAttribute?.("style") || "").toLowerCase();
+  if (!style) return "";
+  if (style.includes("background")) return "==";
+  const weight = /font-weight:\s*(\d{3}|bold(?:er)?)/.exec(style);
+  if (weight && (weight[1] === "bold" || weight[1] === "bolder" || Number(weight[1]) >= 600)) {
+    return "**";
+  }
+  if (/font-style:\s*italic/.test(style)) return "*";
+  if (/text-decoration[^;]*underline/.test(style)) return "__";
+  return "";
+}
+
 function editorToMarks(node) {
   let out = "";
   for (const child of node.childNodes) {
@@ -298,12 +406,36 @@ function editorToMarks(node) {
     if (child.nodeType !== 1) continue;               // comments and the rest
     const tag = child.tagName;
     if (tag === "BR") { out += "\n"; continue; }
+    // Nothing inside these is a note. They arrive from a paste, never from the
+    // editor, and their text content is markup rather than writing.
+    if (tag === "SCRIPT" || tag === "STYLE") continue;
 
     const inner = editorToMarks(child);
-    // A browser may wrap a highlight as a styled span rather than <mark>;
-    // treat any background colour as the highlight we meant.
-    const styled = (child.getAttribute?.("style") || "").includes("background");
-    const mark = EDITOR_TAG_MARKS[tag] || (styled ? "==" : "");
+
+    // A list is lines, so it is handled before the inline marks (ORB-77). The
+    // <ul> itself adds nothing — its items have already ended their own lines.
+    if (tag === "LI") {
+      const item = inner.replace(/\n+$/, "").trim();
+      if (item) out += "- " + item + "\n";
+      continue;
+    }
+    if (tag === "UL" || tag === "OL") {
+      // A list that follows text needs to start on its own line, or the first
+      // bullet is swallowed into the paragraph above it.
+      if (out && !out.endsWith("\n")) out += "\n";
+      out += inner;
+      continue;
+    }
+    // A heading only ever arrives from a paste — Claude, ChatGPT and Docs all
+    // emit them. A note has no heading levels, so it becomes a bold line, which
+    // is what the text was doing anyway.
+    if (/^H[1-6]$/.test(tag)) {
+      const head = inner.trim();
+      if (head) out += "**" + head + "**\n";
+      continue;
+    }
+
+    const mark = EDITOR_TAG_MARKS[tag] || markFromStyle(child);
 
     if (mark && inner.trim()) out += mark + inner + mark;
     else out += inner;
@@ -330,30 +462,99 @@ function notesEditorHtml({ id = "", className = "", placeholder = "" } = {}) {
  */
 function wireNotesEditor(scope, box) {
   const trim = (s) => s.replace(/\n+$/, "");
+  const history = createNoteHistory(box);
 
-  // Paste arrives as whatever the source was — a styled email, a Google Doc,
-  // a whole page. Only its text is taken, so the four marks stay the only
-  // formatting that can exist in a note.
+  // Paste arrives as whatever the source was — a Google Doc, a Claude reply, a
+  // whole web page. The HTML is READ but never inserted: it is converted to
+  // markers, and those go back through renderNotes, which escapes before it
+  // translates. So the note ends up formatted, and the only tags that can ever
+  // exist are the ones this file writes (ORB-77).
   box.addEventListener("paste", (e) => {
     e.preventDefault();
-    const text = e.clipboardData?.getData("text/plain") || "";
-    // Only honour a selection that is actually inside this box. A stale range
-    // left in another field would otherwise have the paste land there instead.
-    const sel = window.getSelection();
-    if (!sel || !sel.rangeCount || !box.contains(sel.anchorNode)) {
-      box.textContent += text;
-      return;
-    }
-    const range = sel.getRangeAt(0);
-    range.deleteContents();
-    range.insertNode(document.createTextNode(text));
-    sel.collapseToEnd();
+    const html = e.clipboardData?.getData("text/html") || "";
+    const plain = e.clipboardData?.getData("text/plain") || "";
+    const marks = html ? htmlToMarks(html) : normaliseBullets(plain);
+
+    history.record();
+    insertMarksAtCaret(box, marks || plain);
+    history.record();
     box.dispatchEvent(new Event("input", { bubbles: true }));
   });
+
+  // ── Keyboard ─────────────────────────────────────────────────────────
+  // The browser's own undo stack is not usable here: the toolbar edits the DOM
+  // directly, so the native stack does not know those edits happened and Cmd+Z
+  // walks past them into a state the note was never in. Ours covers every
+  // change, which is why it also has to intercept the shortcut.
+  box.addEventListener("keydown", (e) => {
+    const meta = e.metaKey || e.ctrlKey;
+    if (!meta) return;
+    const key = e.key.toLowerCase();
+
+    if (key === "z") {
+      e.preventDefault();
+      if (e.shiftKey) history.redo(); else history.undo();
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+      return;
+    }
+    if (key === "y") {                    // the Windows habit
+      e.preventDefault();
+      history.redo();
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+      return;
+    }
+    const shortcut = { b: "**", i: "*", u: "__" }[key];
+    if (shortcut) {
+      // Without this the browser runs its own bold, which inserts a <b> the
+      // history never saw and styles the caret for text not yet typed.
+      e.preventDefault();
+      history.record();
+      applyEditorMark(shortcut);
+      history.record();
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  });
+
+  // Enter inside a bullet continues the list; Enter on an empty bullet ends it.
+  // Without this a list is one item long and every following line is a
+  // paragraph, which is not what pressing Enter in a list means anywhere else.
+  box.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || e.shiftKey || e.metaKey || e.ctrlKey) return;
+    const li = currentListItem(box);
+    if (!li) return;
+    e.preventDefault();
+    history.record();
+    if (!li.textContent.trim()) exitList(li);
+    else splitListItem(li);
+    history.record();
+    box.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+
+  // A history button that does nothing when pressed is worse than one that
+  // says so. Kept in step with the stack rather than guessed from the content.
+  const undoBtn = scope.querySelector('.note-tool[data-action="undo"]');
+  const redoBtn = scope.querySelector('.note-tool[data-action="redo"]');
+  const syncTools = () => {
+    if (undoBtn) undoBtn.disabled = !history.canUndo();
+    if (redoBtn) redoBtn.disabled = !history.canRedo();
+  };
+  syncTools();
+
+  box.addEventListener("input", () => { history.schedule(); syncTools(); });
 
   scope.querySelectorAll(".note-tool").forEach((tool) => {
     tool.addEventListener("mousedown", (e) => {
       e.preventDefault();
+      const action = tool.dataset.action;
+
+      // History buttons do not touch the selection, so they skip the restore
+      // dance below — and must not record, or undo would undo itself.
+      if (action === "undo" || action === "redo") {
+        if (action === "undo") history.undo(); else history.redo();
+        box.dispatchEvent(new Event("input", { bubbles: true }));
+        return;
+      }
+
       // Save the range before focusing. preventDefault keeps focus in the box
       // when it already has it, but if the user selected text and then clicked
       // away, focus() moves the caret and collapses the selection — the tool
@@ -364,15 +565,259 @@ function wireNotesEditor(scope, box) {
         : null;
       if (document.activeElement !== box) box.focus();
       if (saved) { sel.removeAllRanges(); sel.addRange(saved); }
-      applyEditorMark(tool.dataset.mark);
+
+      history.record();
+      if (action === "bullet") toggleBullets(box);
+      else applyEditorMark(tool.dataset.mark);
+      history.record();
       box.dispatchEvent(new Event("input", { bubbles: true }));
     });
   });
 
   return {
     getMarks: () => trim(editorToMarks(box)),
-    setMarks: (text) => { box.innerHTML = renderNotes(text || ""); }
+    setMarks: (text) => {
+      box.innerHTML = renderNotes(text || "");
+      history.reset();
+      syncTools();
+    },
+    history
   };
+}
+
+/**
+ * Undo and redo for a contenteditable (ORB-77).
+ *
+ * Snapshots of innerHTML plus a caret offset. Crude next to a diff, and right
+ * for the size: a note is a few hundred characters, and the alternative is
+ * modelling every edit as an operation for a box with five formatting rules.
+ *
+ * Typing is coalesced on a timer so one word is one undo rather than six.
+ * Anything deliberate — a toolbar press, a paste, Enter in a list — records on
+ * both sides of itself, so it is always exactly one step regardless of timing.
+ */
+function createNoteHistory(box, { limit = 120, coalesceMs = 400 } = {}) {
+  const snap = () => ({ html: box.innerHTML, caret: caretOffset(box) });
+  let stack = [snap()];
+  let index = 0;
+  let timer = null;
+
+  const commit = () => {
+    timer = null;
+    const next = snap();
+    if (stack[index] && stack[index].html === next.html) {
+      stack[index] = next;                 // caret moved, content did not
+      return;
+    }
+    stack = stack.slice(0, index + 1);
+    stack.push(next);
+    if (stack.length > limit) stack.shift();
+    index = stack.length - 1;
+  };
+
+  const restore = (state) => {
+    if (!state) return;
+    box.innerHTML = state.html;
+    setCaretOffset(box, state.caret);
+  };
+
+  return {
+    /** Take a snapshot now, cancelling any pending coalesced one. */
+    record() {
+      if (timer) { clearTimeout(timer); timer = null; }
+      commit();
+    },
+    /** Typing: fold rapid changes into one entry. */
+    schedule() {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(commit, coalesceMs);
+    },
+    undo() {
+      this.record();
+      if (index <= 0) return false;
+      index -= 1;
+      restore(stack[index]);
+      return true;
+    },
+    redo() {
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (index >= stack.length - 1) return false;
+      index += 1;
+      restore(stack[index]);
+      return true;
+    },
+    /** After setMarks: the loaded note is the beginning, not a step to undo. */
+    reset() {
+      if (timer) { clearTimeout(timer); timer = null; }
+      stack = [snap()];
+      index = 0;
+    },
+    // A burst of typing that has not been committed yet is still undoable —
+    // `undo()` flushes it first. Without this the button greys out for the
+    // coalescing window every time someone types, which reads as broken.
+    canUndo: () => index > 0 || timer !== null,
+    canRedo: () => index < stack.length - 1,
+    size: () => stack.length
+  };
+}
+
+/** Characters before the caret, counting only text — enough to put it back. */
+function caretOffset(box) {
+  const sel = typeof window !== "undefined" ? window.getSelection() : null;
+  if (!sel || !sel.rangeCount || !box.contains(sel.anchorNode)) return null;
+  const range = sel.getRangeAt(0);
+  const measure = range.cloneRange();
+  measure.selectNodeContents(box);
+  try { measure.setEnd(range.endContainer, range.endOffset); }
+  catch { return null; }
+  return measure.toString().length;
+}
+
+function setCaretOffset(box, offset) {
+  if (offset == null) return;
+  const sel = typeof window !== "undefined" ? window.getSelection() : null;
+  if (!sel) return;
+  let remaining = offset;
+  const walk = (node) => {
+    for (const child of node.childNodes) {
+      if (child.nodeType === 3) {
+        const len = child.nodeValue.length;
+        if (remaining <= len) {
+          const range = document.createRange();
+          range.setStart(child, remaining);
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+          return true;
+        }
+        remaining -= len;
+      } else if (child.nodeType === 1 && walk(child)) return true;
+    }
+    return false;
+  };
+  if (!walk(box)) {
+    // Past the end, which happens when an undo shortens the note.
+    const range = document.createRange();
+    range.selectNodeContents(box);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+}
+
+/**
+ * Pasted HTML to markers (ORB-77).
+ *
+ * `DOMParser` builds a detached document: no scripts run, no images load, no
+ * styles apply. Only tag names and text are read out of it, and the result is
+ * marker text — so nothing from the clipboard can reach the DOM as markup.
+ */
+function htmlToMarks(html) {
+  const Parser = (typeof DOMParser !== "undefined" && DOMParser)
+    || (typeof window !== "undefined" && window.DOMParser);
+  if (!Parser) return "";
+  let doc;
+  try { doc = new Parser().parseFromString(String(html), "text/html"); }
+  catch { return ""; }
+  if (!doc?.body) return "";
+  return normaliseBullets(editorToMarks(doc.body))
+    .replace(/\n{3,}/g, "\n\n")     // Docs wraps every line in its own <p>
+    .replace(/[ \t]+$/gm, "")
+    .trim();
+}
+
+/** Bullet characters other tools use, rewritten to the one we store. */
+function normaliseBullets(text) {
+  return String(text || "").replace(/^[ \t]*[•▪◦‣·]\s+/gm, "- ");
+}
+
+/** Insert marker text at the caret, rendered, without trusting the source. */
+function insertMarksAtCaret(box, marks) {
+  const holder = document.createElement("div");
+  holder.innerHTML = renderNotes(marks || "");
+
+  const sel = typeof window !== "undefined" ? window.getSelection() : null;
+  if (!sel || !sel.rangeCount || !box.contains(sel.anchorNode)) {
+    while (holder.firstChild) box.appendChild(holder.firstChild);
+    return;
+  }
+  const range = sel.getRangeAt(0);
+  range.deleteContents();
+  const frag = document.createDocumentFragment();
+  let last = null;
+  while (holder.firstChild) last = frag.appendChild(holder.firstChild);
+  range.insertNode(frag);
+  if (last) {
+    const after = document.createRange();
+    after.setStartAfter(last);
+    after.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(after);
+  }
+}
+
+// ── Bullet lists in the editor ───────────────────────────────────────────────
+
+function currentListItem(box) {
+  const sel = typeof window !== "undefined" ? window.getSelection() : null;
+  if (!sel || !sel.rangeCount || !box.contains(sel.anchorNode)) return null;
+  const from = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
+  const li = from?.closest?.("li");
+  return li && box.contains(li) ? li : null;
+}
+
+function splitListItem(li) {
+  const next = document.createElement("li");
+  next.appendChild(document.createElement("br"));
+  li.parentNode.insertBefore(next, li.nextSibling);
+  const sel = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(next);
+  range.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+/** Enter on an empty bullet leaves the list rather than adding another. */
+function exitList(li) {
+  const list = li.parentNode;
+  const after = document.createElement("div");
+  after.appendChild(document.createElement("br"));
+  list.parentNode.insertBefore(after, list.nextSibling);
+  li.remove();
+  if (!list.children.length) list.remove();
+  const sel = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(after);
+  range.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+/**
+ * Turn the selected lines into a list, or back into lines.
+ *
+ * Done through the marker text rather than by moving nodes. The box is small
+ * and the round trip is exact, so rebuilding it is both shorter and less likely
+ * to be wrong than the DOM surgery that turns three paragraphs and half a bold
+ * run into list items.
+ */
+function toggleBullets(box) {
+  const before = caretOffset(box);
+  const marks = editorToMarks(box).replace(/\n+$/, "");
+  const lines = marks.split("\n");
+  const allBullets = lines.every((l) => !l.trim() || BULLET_LINE.test(l));
+
+  const next = lines
+    .map((line) => {
+      if (!line.trim()) return line;
+      if (allBullets) return line.replace(BULLET_LINE, "$1");
+      return BULLET_LINE.test(line) ? line : "- " + line;
+    })
+    .join("\n");
+
+  box.innerHTML = renderNotes(next);
+  setCaretOffset(box, before);
 }
 
 /**
@@ -426,7 +871,10 @@ function stripNoteMarks(value = "") {
     .replace(/\*\*([^*\n]+)\*\*/g, "$1")
     .replace(/__([^_\n]+)__/g, "$1")
     .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1$2")
-    .replace(/==([^=\n]+)==/g, "$1");
+    .replace(/==([^=\n]+)==/g, "$1")
+    // The bullet goes too (ORB-77). A one-line preview that opens with "- " is
+    // showing punctuation from a list the reader cannot see.
+    .replace(/^[ \t]*[-•]\s+/gm, "");
 }
 
 /** Whole days between a date-only string and today. Negative means future. */

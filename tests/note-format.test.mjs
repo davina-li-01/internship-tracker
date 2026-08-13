@@ -106,7 +106,13 @@ group("Nothing unexpected becomes a marker");
 // A pasted table, a link, a heading: unknown tags contribute their text and
 // nothing else, so no formatting can enter that the four marks cannot express.
 eq("a link keeps its words only", marksOf('<a href="http://x">click</a>'), "click");
-eq("a heading is just text", marksOf("<h1>Title</h1>"), "Title");
+// A heading became a bold line in ORB-77, which does not weaken the rule above:
+// bold is one of the marks, so nothing inexpressible has entered. Headings only
+// arrive from a paste — Claude, ChatGPT and Docs all emit them — and dropping
+// them to plain text lost the one thing the writer had said about that line.
+eq("a heading becomes a bold line", marksOf("<h1>Title</h1>"), "**Title**\n");
+eq("every level, not just h1", marksOf("<h3>Sub</h3>"), "**Sub**\n");
+eq("an empty heading adds nothing", marksOf("<h2></h2>"), "");
 eq("a table contributes cells, not structure",
   marksOf("<table><tr><td>a</td><td>b</td></tr></table>"), "ab");
 eq("an empty tag adds no stray markers", marksOf("<strong></strong>"), "");
@@ -241,11 +247,16 @@ group("A collapsed selection marks nothing");
   eq("no stray markers appear", main.editorToMarks(box), "nothing selected");
 }
 
-group("Pasting brings words, never markup");
+group("Pasting brings words and the marks, never markup");
 {
-  // The reason markers are safe is that nothing else can get in. A note is
-  // exactly where someone pastes a styled email or half a Google Doc, and a
-  // contenteditable will happily accept all of it unless stopped.
+  // ORB-63's property, restated for ORB-77. Formatting now survives a paste, so
+  // "no tags at all" is no longer the assertion — "no tags but ours" is, which
+  // is the stronger claim. The clipboard is parsed into markers and re-rendered
+  // by renderNotes, which escapes before it translates, so the tag set that can
+  // reach the box is fixed by this file rather than by the thing being pasted.
+  //
+  // A note is exactly where someone pastes a styled email or half a Google Doc,
+  // and a contenteditable will happily accept all of it unless stopped.
   document.body.innerHTML = '<div id="p">'
     + main.notesEditorHtml({ className: "cw-notes" }) + "</div>";
   const scope = document.getElementById("p");
@@ -259,10 +270,19 @@ group("Pasting brings words, never markup");
   };
 
   paste('<b>bold</b> <script>alert(1)</script>', "bold alert(1)");
-  ok("no tags came through", !/<[a-z]/i.test(box.innerHTML));
-  ok("the words did", box.textContent.includes("bold"));
-  eq("and it serialises to plain text with no markers",
-    main.editorToMarks(box), "bold alert(1)");
+  ok("the words came through", box.textContent.includes("bold"));
+  ok("so did the formatting the writer meant", Boolean(box.querySelector("strong")));
+  ok("the script element did not", !box.querySelector("script"));
+  ok("and neither did its text", !/alert/.test(box.innerHTML));
+
+  // The whole safety claim in one assertion: whatever the clipboard held, the
+  // elements now in the note are drawn from the fixed set main.js can produce.
+  const ALLOWED = ["STRONG", "EM", "U", "MARK", "UL", "LI", "BR", "DIV", "P"];
+  const got = [...box.querySelectorAll("*")].map((n) => n.tagName);
+  ok("only tags this file writes are present: " + (got.join(",") || "none"),
+    got.every((t) => ALLOWED.includes(t)));
+
+  eq("and it serialises back to markers", main.editorToMarks(box), "**bold**");
 }
 
 group("The highlighter is drawn, not an emoji");
@@ -276,7 +296,13 @@ group("The highlighter is drawn, not an emoji");
   // aria-label of its own and a naive match counts five.
   document.body.innerHTML = html;
   const tools = [...document.querySelectorAll(".note-tool")];
-  eq("four tools", tools.length, 4);
+  // Four marks, plus undo, redo and bullets from ORB-77.
+  eq("seven tools", tools.length, 7);
+  eq("history sits on the far left, where every editor puts it",
+    tools.slice(0, 2).map((t) => t.dataset.action).join(","), "undo,redo");
+  eq("and the line-level tool comes after the inline ones",
+    tools[tools.length - 1].dataset.action, "bullet");
+  eq("the groups are separated", document.querySelectorAll(".note-tool-sep").length, 2);
   ok("each has an accessible name, including the icon-only one",
     tools.every((t) => (t.getAttribute("aria-label") || "").length > 0));
   eq("and the group itself is named",

@@ -83,6 +83,71 @@ with no access to this repo.
 
 ---
 
+## ORB-77 — the notes box behaves like a text editor, shipped Aug 13
+
+Not planned — five complaints from one session of real use, all in the same box.
+
+**Paste kept the words and threw away the writing.** ORB-72 took only
+`text/plain`, so a Claude answer, a Google Doc or a ChatGPT reply arrived as one
+undifferentiated block: every heading, bold and bullet gone. Paste now reads
+`text/html` and converts it to markers.
+
+**This is the ORB-63 property under real pressure, and it holds.** The clipboard
+HTML is *read* but never inserted — it is parsed in a detached `DOMParser`
+document, walked for tag names and text only, and the resulting **marker text**
+goes back through `renderNotes`, which escapes before it translates. So the tag
+set that can reach the box is fixed by `main.js`, not by whatever was copied.
+The old test asserted "no tags came through"; that is now the wrong assertion,
+and it was replaced with the stronger one — **no tags but ours** — plus a paste
+of `<script>`, `<img onerror>`, `javascript:` and `<style>` through the real
+handler.
+
+**Reading style, not just tags, is what makes it work at all.** Google Docs does
+not emit `<b>`; it emits `<span style="font-weight:700">`. Matching tag names
+alone would have lost every bit of formatting from the source these notes are
+most often pasted from. `600` counts as bold, `500` does not.
+
+**Bullets are a line, not a span**, so they could not be a fifth entry in
+`NOTE_MARKS` — the text is split into lines and consecutive bullets gathered
+into one `<ul>`. The marker is `-` only: `*` is already italic, and a line
+beginning `*this*` is far more often a sentence than a bullet. `•`, `▪`, `‣` are
+accepted on the way in because that is what everything else puts on the
+clipboard, and normalised to `-` before storage. Enter continues a list; Enter
+on an empty bullet leaves it.
+
+**Undo was broken, and it was our doing.** ORB-72 removed `execCommand` and
+edits the DOM directly, so the browser's native stack never saw the toolbar's
+changes and Cmd+Z walked into states the note had never been in. There is now a
+real history — innerHTML plus a caret offset, typing coalesced on a 400ms timer
+so a word is one step, deliberate edits recorded on both sides so they are
+always exactly one. Cmd+Z, Cmd+Shift+Z, Ctrl+Y, and Cmd+B/I/U are intercepted;
+the browser's own bold would otherwise insert a `<b>` the history never saw.
+Undo and redo buttons sit on the far left of the toolbar and grey out when dead.
+
+**The box grew instead of scrolling.** It had `min-height` and no ceiling, so it
+was always exactly as tall as its content — meaning it never scrolled, and a
+long note pushed Attach a PDF and Save off the bottom of the dialog. Fixed
+height, `overflow-y: auto`, `overscroll-behavior: contain`.
+
+**Spacing:** the attachment row was jammed against the note box, and When/Type
+had their own 2-column grid while the six fields above used 3 — so "Type" landed
+halfway between "Role" and "Company". They share the tracks now and line up.
+
+**What the tests can and cannot see.** jsdom has no layout engine, so the height
+and the scrolling are read off the stylesheet, and the assertions check the
+value that *wins* rather than whether a value appears — `.notes-input` is given
+`resize: vertical` by the shared typography group and `resize: none` by its own
+rule, and only the source order makes the second one apply. Both CSS guards were
+verified by reintroducing the bug.
+
+100 new assertions; 1,107 across 33 suites.
+
+| Requirement | User Story | Importance | Jira Issue | Dependencies |
+|---|---|---|---|---|
+| The notes box behaves like a text editor | As a user, I want to paste from a doc and keep the formatting, write bullet points, and undo a mistake, so writing a note does not feel worse than writing it anywhere else | Should have | ORB-77 | Reported from use, not planned. Extends **ORB-63**'s marker format with a line-level bullet and **ORB-72**'s editor boundary with a real undo stack — ORB-72 removed `execCommand`, which is what broke native undo, so this is the other half of that change. Paste reads HTML but never inserts it: parsed detached, converted to markers, re-rendered through `renderNotes`, so ORB-63's escape-first property still holds and is asserted against hostile input. No schema — storage is still plain text with markers, so **ORB-12** CSV export is unaffected |
+
+---
+
 ## ORB-75 — a person you have not spoken to reads as a starting point, shipped Aug 13
 
 Phase 2 of ORB-73. Phase 1 made the state reachable; this makes it legible.
