@@ -1159,7 +1159,7 @@ function generateFollowUpSuggestions(contact) {
 
   for (const interaction of (contact.interactions || []).slice(0, 3)) {
     if (!interaction.notes) continue;
-    interaction.notes.split(/[.!?\n]+/).forEach((s) => {
+    stripNoteMarks(interaction.notes).split(/[.!?\n]+/).forEach((s) => {
       const trimmed = s.trim();
       if (trimmed.length > 8) sentences.push({ text: trimmed, source: "interaction" });
     });
@@ -1331,7 +1331,10 @@ function renderInteractionTimeline(interactions, files = []) {
     // The first line, shown on the closed row. For anything the calendar logged
     // that is the meeting title, which is the thing worth seeing without having
     // to open every entry to find the one you meant.
-    const headline = (item.notes || "").split("\n")[0].trim();
+    // Markers stripped: the closed row shows words, not syntax. A note that
+    // opens with **Coffee with Marcus** should read as the meeting, not as
+    // punctuation someone forgot to close.
+    const headline = stripNoteMarks((item.notes || "").split("\n")[0]).trim();
 
     const summary = '<summary class="convo-summary">'
       + '<span class="convo-caret" aria-hidden="true">▸</span>'
@@ -4268,7 +4271,7 @@ function openCalendarReviewModal(candidates, contacts, { justHappened = false } 
         + '<p class="cal-clash-head">You already logged something with '
         + escapeHtml(c.contactName) + ' on ' + formatDate(c.date) + ':</p>'
         + '<p class="cal-clash-quote">'
-        + escapeHtml((clash.notes || "(no notes)").split("\n")[0].slice(0, 140))
+        + escapeHtml(stripNoteMarks(clash.notes || "(no notes)").split("\n")[0].slice(0, 140))
         + '</p>'
         + '<div class="cal-clash-choices" role="radiogroup"'
         + ' aria-label="What to do with ' + escapeHtml(c.title) + '">'
