@@ -172,6 +172,75 @@ group("And it is wired, not just drawn");
     main.editorToMarks(box), "the ==platform team==");
 }
 
+// ── Applying a mark ──────────────────────────────────────────────────────────
+// Bold, italic and underline used to go through document.execCommand, which
+// jsdom does not implement — so three of the four tools were browser-verified
+// and nothing more. They are done by hand now, the same way highlight always
+// was, which costs a little code and buys the coverage below.
+
+function editorWith(text) {
+  document.body.innerHTML = '<div id="e">'
+    + main.notesEditorHtml({ className: "cw-notes" }) + "</div>";
+  const scope = document.getElementById("e");
+  const box = scope.querySelector(".notes-input");
+  main.wireNotesEditor(scope, box);
+  box.textContent = text;
+  return { scope, box };
+}
+function selectIn(box, node, from, to) {
+  const range = document.createRange();
+  range.setStart(node, from);
+  range.setEnd(node, to);
+  const sel = dom.window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+const press = (scope, mark) =>
+  scope.querySelector('.note-toolbar [data-mark="' + mark + '"]')
+    .dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+
+group("Every tool marks the selection");
+for (const [mark, expected] of [
+  ["**", "keep **this**"],
+  ["*",  "keep *this*"],
+  ["__", "keep __this__"],
+  ["==", "keep ==this=="]
+]) {
+  const { scope, box } = editorWith("keep this");
+  selectIn(box, box.firstChild, 5, 9);
+  press(scope, mark);
+  eq(mark + " wraps the selected words", main.editorToMarks(box), expected);
+}
+
+group("Pressing the same tool again removes it");
+{
+  const { scope, box } = editorWith("keep this");
+  selectIn(box, box.firstChild, 5, 9);
+  press(scope, "**");
+  eq("bold on", main.editorToMarks(box), "keep **this**");
+  press(scope, "**");
+  eq("bold off again", main.editorToMarks(box), "keep this");
+}
+
+group("Marks combine rather than replacing each other");
+{
+  const { scope, box } = editorWith("keep this");
+  selectIn(box, box.firstChild, 5, 9);
+  press(scope, "**");
+  // The selection has to survive the first press, or the second tool marks
+  // nothing — which is what made this worth asserting.
+  press(scope, "*");
+  eq("bold and italic together", main.editorToMarks(box), "keep ***this***");
+}
+
+group("A collapsed selection marks nothing");
+{
+  const { scope, box } = editorWith("nothing selected");
+  selectIn(box, box.firstChild, 3, 3);
+  press(scope, "**");
+  eq("no stray markers appear", main.editorToMarks(box), "nothing selected");
+}
+
 group("Pasting brings words, never markup");
 {
   // The reason markers are safe is that nothing else can get in. A note is

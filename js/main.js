@@ -277,6 +277,9 @@ function openConversationEditor(interaction, { title = "", onSubmit, onDelete } 
  * — nested tags, a pasted table, a browser that emits `<b>` where another emits
  * `<strong>` — are testable without a browser.
  */
+/** Which element each marker becomes while you are editing. */
+const MARK_TAGS = { "**": "strong", "*": "em", "__": "u", "==": "mark" };
+
 const EDITOR_TAG_MARKS = {
   STRONG: "**", B: "**",
   EM: "*", I: "*",
@@ -382,24 +385,39 @@ function wireNotesEditor(scope, box) {
  * and a <mark> is what the serialiser and the reader both want.
  */
 function applyEditorMark(mark) {
-  if (mark === "**") return void document.execCommand?.("bold");
-  if (mark === "*") return void document.execCommand?.("italic");
-  if (mark === "__") return void document.execCommand?.("underline");
+  const tag = MARK_TAGS[mark];
+  if (!tag) return;
 
   const sel = window.getSelection();
-  if (!sel || !sel.rangeCount || sel.isCollapsed) return;
-  const range = sel.getRangeAt(0);
-  // Already highlighted: unwrap rather than nest a second <mark>.
-  const existing = sel.anchorNode?.parentElement?.closest?.("mark");
+  if (!sel || !sel.rangeCount) return;
+
+  // Already inside this mark: unwrap, so the button toggles rather than nesting
+  // a second identical tag that serialises to doubled markers.
+  const from = sel.anchorNode?.nodeType === 1 ? sel.anchorNode : sel.anchorNode?.parentElement;
+  const existing = from?.closest?.(tag);
   if (existing) {
     const parent = existing.parentNode;
     while (existing.firstChild) parent.insertBefore(existing.firstChild, existing);
     parent.removeChild(existing);
+    parent.normalize?.();
     return;
   }
-  const el = document.createElement("mark");
+
+  if (sel.isCollapsed) return;
+  const range = sel.getRangeAt(0);
+  const el = document.createElement(tag);
+  // surroundContents refuses a range that starts inside one element and ends
+  // inside another — selecting across an existing bold, say. Lifting the
+  // contents out and re-inserting them handles that case.
   try { range.surroundContents(el); }
   catch { el.appendChild(range.extractContents()); range.insertNode(el); }
+
+  // Keep the words selected, so pressing a second tool applies to the same
+  // text instead of to nothing.
+  const after = document.createRange();
+  after.selectNodeContents(el);
+  sel.removeAllRanges();
+  sel.addRange(after);
 }
 
 /** The same text with markers removed, for previews and anywhere plain. */
