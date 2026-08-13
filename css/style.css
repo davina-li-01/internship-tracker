@@ -4397,3 +4397,27 @@ body.dark .notes-input mark { background: #A16207; color: #FFFBEB; }
 .cw-notes.notes-input { min-height: 11rem; }
 .convo-edit-notes.notes-input { min-height: 14rem; resize: none; }
 #cpIntNotes.notes-input { min-height: 9rem; }
+
+
+/* ── Conversation history holds its height (ORB-62) ───────────────────────
+   A person you talk to often used to give a profile that scrolled forever,
+   with the files card and the danger zone pushed somewhere below the horizon.
+   Three conversations, then the list scrolls inside itself.
+
+   A max-height rather than a slice: dropping conversations on the floor to
+   keep a card short is the failure ORB-46 avoided on the dashboard, and the
+   count in the heading says how many are down there. */
+.profile-timeline .timeline {
+  max-height: 21rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Room for the focus ring on a row against the scroll edge. */
+  margin: 0 -0.25rem;
+  padding: 0 0.25rem;
+}
+/* The same fade as the dashboard: on only while there is more below, off at
+   the end, or it keeps implying content that is not there. */
+.profile-timeline .timeline.is-scrollable:not(.at-end) {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.75rem), transparent);
+          mask-image: linear-gradient(to bottom, #000 calc(100% - 1.75rem), transparent);
+}

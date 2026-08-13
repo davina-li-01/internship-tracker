@@ -58,6 +58,79 @@ with no access to this repo.
 
 ---
 
+## ORB-62 — conversation history holds its height, shipped Aug 13
+
+Three conversations, then the list scrolls inside itself. Same pattern as
+**ORB-46** on the dashboard, and `wireUpcomingScroll` was generalised to
+`wireScrollFade` and shared rather than copied — two lists doing the same thing
+from two implementations is how they drift.
+
+**A max-height, not a slice.** Dropping conversations to keep a card short is
+the exact failure ORB-46 spent a ticket undoing, so the tests assert the
+opposite of the obvious implementation: with twelve conversations, all twelve
+still render and all twelve are still openable. The count in the heading says
+how many are below the fold, and only appears once there are more than three.
+
+**What the suite cannot see.** The cap is a CSS `max-height` and the fade is
+driven by measuring `scrollHeight` against `clientHeight`. jsdom has no layout
+engine, so both are zero. Those are read off the stylesheet instead — that a
+max-height exists, that it scrolls rather than clips, and that the fade is bound
+to `is-scrollable:not(.at-end)` rather than always on. The visual result is
+eye-verified, and the tests say so rather than implying otherwise.
+
+---
+
+## ORB-72 — notes look formatted while you write them, shipped Aug 13
+
+Not planned. Reported from use on Aug 12: the toolbar wrote `**asterisks**` into
+the box and formatting only appeared after saving.
+
+**Storage and display are separable and I had conflated them.** ORB-63's marker
+format is load-bearing — plain text keeps the injection surface shut and keeps
+CSV export free of tags — but nothing required it to be what the user reads
+while typing. The notes box is a contenteditable now; conversion happens at the
+boundary, markers in on open and markers out on save, and the only HTML that
+exists lives somewhere that never reaches the database.
+
+**Three bugs the tests forced out.** Focusing the box before applying a mark
+collapses the selection when the box was not already focused, so the range is
+captured first. Paste and the toolbar both honoured any selection, including a
+stale one in a different field. And marks only compose — bold then italic
+giving `***both***` — because the selection is restored over the newly wrapped
+element, which nothing was asserting.
+
+**`execCommand` removed** on Aug 13. Bold, italic and underline went through it;
+jsdom does not implement it, so a test clicking **B** called a function that was
+not there and could not distinguish a broken feature from a missing API. Three
+of the four tools were browser-verified and nothing more. They use the same
+manual wrap-or-unwrap as highlight now, which also drops a deprecated API with
+no replacement. The trade is real and worth stating: `execCommand` is hardened
+against strange selections in a way new code is not.
+
+---
+
+## The toolbar that shipped to one surface out of four (Aug 12)
+
+Worth recording as a pattern, not just an incident. **ORB-63 added the
+formatting toolbar to the edit dialog and nowhere else**, so two-thirds of the
+places a note gets typed had none. Every assertion in the suite passed, because
+they all exercised the toolbar in isolation and never asked whether the boxes
+people type in had one.
+
+The same shape appeared twice more the same day: `renderNotes` was wired into
+the timeline but not the three surfaces that print note text plain, so
+`**markers**` leaked into headlines, talking points and the calendar clash
+quote; and `.cal-notes` was redeclaring a font size the ORB-65 scale was meant
+to own.
+
+**The lesson is about test shape, not diligence.** A component test proves a
+thing works. It says nothing about whether it is *present*. Coverage for
+anything shared should assert it at every call site, and the cheap version of
+that is a test that reads the source or the stylesheet — which is what caught
+`.cal-notes` and what now guards the toolbar.
+
+---
+
 ## Evidence for ORB-32, from real use (Aug 12)
 
 The first day of tiers against a real network produced two observations. Neither

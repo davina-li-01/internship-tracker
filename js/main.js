@@ -2844,7 +2844,12 @@ async function initContactPage() {
       + '</section>'
 
       + '<section class="card profile-timeline">'
-      + '<h3 class="section-title">Conversation history</h3>'
+      // The count says how much is below the fold rather than leaving it to be
+      // discovered by scrolling — same reasoning as the "Coming up" card.
+      + '<h3 class="section-title">Conversation history'
+      + ((c.interactions || []).length > 3
+        ? '<span class="chart-count">' + (c.interactions || []).length + '</span>' : '')
+      + '</h3>'
       + '<div class="timeline">' + renderInteractionTimeline(c.interactions, files) + '</div>'
       + '</section>'
 
@@ -3264,6 +3269,11 @@ async function initContactPage() {
     // Deleting is confirmed rather than undoable: unlike a reach-out, a
     // conversation carries notes you cannot reconstruct, and an undo toast that
     // vanishes after eight seconds is a poor guardian of the only copy.
+    // ORB-62. A person you talk to often gave an endlessly long profile; the
+    // list holds three and scrolls the rest, the same way the dashboard's
+    // "Coming up" card does.
+    wireScrollFade(root.querySelector(".timeline"));
+
     root.querySelectorAll("[data-edit-convo]").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const id = btn.dataset.editConvo;
@@ -4279,7 +4289,7 @@ function renderUpcomingMeetings() {
     + '<p class="chart-sub muted">And what you wanted to raise</p>'
     + syncBar
     + '<ul class="upcoming-list">' + rows + '</ul>';
-  wireUpcomingScroll(slot.querySelector(".upcoming-list"));
+  wireScrollFade(slot.querySelector(".upcoming-list"));
   wireDashboardSync(slot);
 }
 
@@ -4290,7 +4300,7 @@ function renderUpcomingMeetings() {
  * list that fits is just a washed-out last row, and a fade that stays at the
  * bottom of the scroll keeps promising content that has run out.
  */
-function wireUpcomingScroll(list) {
+function wireScrollFade(list) {
   if (!list) return;
   const update = () => {
     const scrollable = list.scrollHeight > list.clientHeight + 1;
