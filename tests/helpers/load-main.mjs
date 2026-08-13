@@ -121,7 +121,7 @@ const EXPORTS = [
   "openConversationEditor", "editorToMarks", "notesEditorHtml", "wireNotesEditor",
   "renderInteractionTimeline", "conversationPreview", "renderStorageFileCard",
   "conversationTitle", "conversationNotes",
-  "renderUpcomingMeetings", "healthBarHtml",
+  "renderUpcomingMeetings", "healthBarHtml", "statusChip", "BAND_META",
   // behaviour
   "markReachedOut", "showToast",
   "conversationWidgetHtml", "wireConversationWidget",

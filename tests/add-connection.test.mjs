@@ -113,6 +113,10 @@ group("When you met is optional, and never guessed");
   $(".ac-datemet").value = daysAgo(40);
   await submit($, host);
   eq("supplied, it is kept exactly", state.saves[0].dateMet, daysAgo(40));
+  // normalizeContact would otherwise derive lastContacted from it, filing a
+  // meeting as a conversation and putting a contact date on a relationship
+  // where nothing has been said (ORB-75).
+  eq("and it does NOT become a contact date", state.saves[0].lastContacted, "");
 }
 
 // ── Cadence: they must surface, and must not read as healthy ─────────────────

@@ -640,8 +640,15 @@ function getHealth(contact) {
   const last = contact.lastContacted || contact.dateMet;
   const elapsed = daysSince(last);
 
+  // Someone added but never spoken to (ORB-75). Both halves are required: no
+  // conversation is what "not contacted" means, and no `lastContacted` is what
+  // makes it provable — a contact whose only conversation was deleted under
+  // ORB-64 has an empty array but a real date behind it, and calling them
+  // "not contacted yet" would be a claim the data does not support.
+  const firstContact = !(contact.interactions || []).length && !contact.lastContacted;
+
   if (!interval || !contact.reminderEnabled) {
-    return { scheduled: false, pct: 0, band: "none", elapsed, interval: 0, daysLeft: null, grace: false };
+    return { scheduled: false, pct: 0, band: "none", elapsed, interval: 0, daysLeft: null, grace: false, firstContact };
   }
 
   // `elapsed === null` means there is no date to count from — someone was put on
@@ -680,7 +687,7 @@ function getHealth(contact) {
     : grace ? "warning"
     : pct >= 60 ? "good" : "warning";
 
-  return { scheduled: true, pct, band, elapsed, interval, daysLeft, grace };
+  return { scheduled: true, pct, band, elapsed, interval, daysLeft, grace, firstContact };
 }
 
 /**
@@ -714,8 +721,32 @@ const BAND_META = {
   none:     { label: "No schedule",    icon: "○", short: "No schedule" }
 };
 
+/**
+ * The words for a status, which are not always the band's own (ORB-75).
+ *
+ * "Overdue" means a rhythm lapsed. Someone you added and never spoke to has no
+ * rhythm to lapse — you owe them a first reach-out, which is a different thing
+ * and reads as an accusation when it borrows the vocabulary of a failure.
+ *
+ * Only the words change. The band still decides colour, ordering and the counts
+ * on the dashboard, so a never-contacted person keeps their place in Reach out
+ * next instead of being quietly filed somewhere gentler.
+ *
+ * ORB-75 shipped before ORB-54, so this is the vocabulary ORB-54 reuses when it
+ * reframes "overdue" for dormant ties — it should not invent a parallel set.
+ */
+const FIRST_CONTACT_META = {
+  label: "Not contacted yet",
+  short: "Not contacted",
+  icon: "○"
+};
+
+function bandWords(health) {
+  return health?.firstContact ? FIRST_CONTACT_META : BAND_META[health.band];
+}
+
 function healthBarHtml(health) {
-  const meta = BAND_META[health.band];
+  const meta = bandWords(health);
   if (!health.scheduled) {
     return '<div class="health health-none">'
       + '<span class="health-label muted"><span class="health-icon" aria-hidden="true">'
@@ -723,11 +754,16 @@ function healthBarHtml(health) {
       + '</div>';
   }
   const days = Math.abs(health.daysLeft);
-  const detail = health.daysLeft < 0
-    ? `${days} day${days === 1 ? "" : "s"} over`
-    : health.grace
-      ? `${days} day${days === 1 ? "" : "s"} to first reach-out`
-      : `${days} day${days === 1 ? "" : "s"} left`;
+  const plural = (n) => (n === 1 ? "" : "s");
+  // Past the deadline on a first reach-out is stated as elapsed time, not as
+  // being "over" something — there was never a schedule to run past (ORB-75).
+  const detail = health.firstContact && health.daysLeft < 0
+    ? `waiting ${days} day${plural(days)}`
+    : health.daysLeft < 0
+      ? `${days} day${plural(days)} over`
+      : health.grace
+        ? `${days} day${plural(days)} to first reach-out`
+        : `${days} day${plural(days)} left`;
   return '<div class="health">'
     + '<div class="health-track">'
     + '<div class="health-fill fill-' + health.band + '" style="width:' + health.pct + '%"></div>'
@@ -739,7 +775,7 @@ function healthBarHtml(health) {
 }
 
 function statusChip(health) {
-  const meta = BAND_META[health.band];
+  const meta = bandWords(health);
   return '<span class="status-chip chip-' + health.band + '">'
     + '<span aria-hidden="true">' + meta.icon + '</span> ' + escapeHtml(meta.short) + '</span>';
 }
@@ -1463,8 +1499,22 @@ function conversationNotes(item) {
   return notes.slice(title.length).replace(/^\s*\n\s*\n?/, "");
 }
 
-function renderInteractionTimeline(interactions, files = []) {
-  if (!interactions || !interactions.length) return '<p class="empty">No conversations logged yet.</p>';
+function renderInteractionTimeline(interactions, files = [], { name = "", dateMet = "" } = {}) {
+  // An empty history is a beginning, not a fault (ORB-75). "No conversations
+  // logged yet." with nothing round it reads like something failed to load, and
+  // it is the state every contact added through ORB-73 starts in — so it is a
+  // normal view of the app rather than an edge case worth one flat sentence.
+  if (!interactions || !interactions.length) {
+    const who = name ? escapeHtml(name.split(" ")[0]) : "them";
+    return '<div class="empty empty-first">'
+      + '<p class="empty-lead">No conversations yet.</p>'
+      + '<p class="tiny muted">'
+      + (dateMet
+        ? 'You met ' + who + ' ' + escapeHtml(relativeDayLabel(dateMet)) + '. '
+        : '')
+      + 'The first one you log will appear here.</p>'
+      + '</div>';
+  }
   const byId = new Map(files.map((f) => [f.id, f]));
 
   return interactions.map((item, i) => {
@@ -2326,6 +2376,14 @@ function wireAddConnectionForm(root, getContacts, onSaved) {
       interactions: []
     });
 
+    // `normalizeContact` falls back to `dateMet` for `lastContacted`, which is
+    // right for every other caller — they only reach it with a conversation
+    // date. Here it would record a meeting as a conversation and put a date on
+    // a relationship where nothing has been said, so the guardrail is applied
+    // after normalising rather than by weakening the fallback for everyone
+    // (ORB-75). Contacts are not re-normalised on read, so this sticks.
+    contact.lastContacted = "";
+
     const submitBtn = $(".ac-submit");
     submitBtn.disabled = true;
     submitBtn.textContent = "Adding…";
@@ -2676,7 +2734,13 @@ function personRowHtml(contact, health, { showReconnect = false } = {}) {
     + '<p class="person-name">' + escapeHtml(contact.name) + '</p>'
     + '<p class="tiny">' + escapeHtml(contact.role || "Role not set")
     + (contact.company ? ' @ <strong>' + escapeHtml(contact.company) + '</strong>' : '') + '</p>'
-    + '<p class="tiny muted">Last connected ' + relativeDayLabel(contact.lastContacted)
+    // "Last connected no date" was what a never-contacted person got, which
+    // reads as a missing field rather than a fact about the relationship
+    // (ORB-75). There is nothing to be last, so the line says so instead.
+    + '<p class="tiny muted">'
+    + (health.firstContact
+      ? 'Not contacted yet'
+      : 'Last connected ' + relativeDayLabel(contact.lastContacted))
     + (health.scheduled ? ' · ' + escapeHtml(getFreqLabel(contact.followUpFrequency)) : '') + '</p>'
     + (contact.industry ? '<span class="token token-industry">' + escapeHtml(contact.industry) + '</span>' : '')
     + '</div>'
@@ -3264,7 +3328,9 @@ async function initContactPage() {
       + ((c.interactions || []).length > 3
         ? '<span class="chart-count">' + (c.interactions || []).length + '</span>' : '')
       + '</h3>'
-      + '<div class="timeline">' + renderInteractionTimeline(c.interactions, files) + '</div>'
+      + '<div class="timeline">'
+      + renderInteractionTimeline(c.interactions, files, { name: c.name, dateMet: c.dateMet })
+      + '</div>'
       + '</section>'
 
       + '</div>'

@@ -1752,6 +1752,22 @@ h3 {
   font-size: clamp(0.8rem, 0.76rem + 0.2vw, 0.92rem);
 }
 
+/* An empty conversation history is a starting point, not a fault (ORB-75).
+   Given room and a second line so it reads as a deliberate state rather than
+   a card that failed to load — this is where every contact added through
+   ORB-73 begins, so it is a normal view and not an edge case. */
+.empty-first {
+  padding: 1.1rem 0 0.6rem;
+  display: grid;
+  gap: 0.25rem;
+}
+.empty-first .empty-lead {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--convo-body);
+}
+.empty-first p:last-child { margin: 0; }
+
 .workspace-content,
 .network-content,
 .contact-content,

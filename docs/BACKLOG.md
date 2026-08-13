@@ -83,6 +83,68 @@ with no access to this repo.
 
 ---
 
+## ORB-75 — a person you have not spoken to reads as a starting point, shipped Aug 13
+
+Phase 2 of ORB-73. Phase 1 made the state reachable; this makes it legible.
+
+**"Overdue" was the wrong word.** Overdue means a rhythm lapsed, and there is no
+rhythm to lapse before the first conversation — it reads as an accusation about
+a relationship that has not started. A never-contacted person now reads
+**"Not contacted yet"**, and past the grace window the detail says *"waiting 14
+days"* rather than *"14 days over"*.
+
+**Only the words changed.** The tempting fix was a fifth health band, and it
+would have been wrong: the band drives colour, ordering and the dashboard
+counts, so a new one would have quietly moved these people out of Reach out
+next — solving the wording by hiding the person. `getHealth` returns a
+`firstContact` flag instead, and a `bandWords()` helper picks the vocabulary.
+The tests assert both halves: the words are different **and** the placement is
+identical.
+
+**ORB-75 shipped before ORB-54, so it owns this vocabulary.** ORB-54 should
+reuse `FIRST_CONTACT_META` and `bandWords()` when it reframes "overdue" for
+dormant ties rather than inventing a parallel set of words.
+
+**Three surfaces:**
+
+| Surface | Was | Now |
+|---|---|---|
+| Status chip / health bar | Overdue · 14 days over | Not contacted yet · waiting 14 days |
+| Reach-out row | Last connected **no date** | Not contacted yet |
+| Profile history | "No conversations logged yet." | "No conversations yet." plus when you met them and what happens next |
+
+**The `dateMet` fallback finally had to be dealt with, and was — locally.**
+`normalizeContact` derives `lastContacted` from `dateMet`, so recording a known
+meeting date filed the meeting as a conversation: the contact showed *"Last
+connected 30 days ago"* about someone never spoken to, and lost the
+`firstContact` flag. The fallback is **still correct for every other caller** —
+they only reach it with a real conversation date — so it was left alone and the
+add path clears `lastContacted` after normalising instead. Weakening it for
+everyone would have been a cadence change smuggled inside a wording ticket, and
+it would have broken two assertions in `grace.test.mjs` and `health.test.mjs`
+that document the old behaviour on purpose. **This also makes ORB-73's stated
+guardrail literally true** — it was previously only true when no meeting date
+was given.
+
+**Over-claiming is guarded explicitly.** A contact whose only conversation was
+deleted under **ORB-64** also has an empty array, but a real `lastContacted`
+behind it. Calling them "not contacted yet" would state something the data
+cannot support, so the flag requires *both* no conversations and no contact
+date. That case has its own assertion.
+
+**Known edge, not fixed:** editing an unrelated field on the profile re-runs
+`normalizeContact`, which re-derives `lastContacted` from `dateMet` and drops
+the flag. Fixing it properly means changing the fallback, which is the thing
+this ticket deliberately did not do. Worth a ticket if it shows up in use.
+
+45 new assertions; 999 across 32 suites.
+
+| Requirement | User Story | Importance | Jira Issue | Dependencies |
+|---|---|---|---|---|
+| A profile with no conversations reads as a starting point | As a user, I want someone I have added but not yet spoken to to look deliberate rather than broken, so an empty history reads as a beginning and not a fault | Should have | ORB-75 | Depends on **ORB-73**, which created the state this describes. Vocabulary and empty states only — no schema. Deliberately **not** a fifth health band: the band drives colour, ordering and counts, so adding one would move these contacts out of Reach out next and solve the wording by hiding the person. Shipped before **ORB-54**, so it owns the first-contact vocabulary and ORB-54 reuses `bandWords()` rather than inventing a parallel set. Closes Phase 2 of ORB-73; **ORB-76** runs the metrics on Aug 27 |
+
+---
+
 ## ORB-74 — every label agrees with what it opens, shipped Aug 13
 
 Phase 1 of ORB-73 left one mismatch on purpose: the **+** still announced *"Add a
