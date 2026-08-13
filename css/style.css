@@ -22,6 +22,18 @@
   --text-muted:       #78716C;
   --text-faint:       #A8A29E;
 
+  /* ── Conversation type scale (ORB-65) ──────────────────────────────────
+     A conversation is written in one place and read in three, and the same
+     sentence used to render at 0.82rem in the timeline and 0.88rem in every
+     box that could edit it. Defined once here so the next surface that shows
+     a note inherits the decision instead of picking a number.
+     Body is deliberately larger than either was: these are paragraphs someone
+     wrote, not UI chrome. */
+  --convo-body:       0.9rem;
+  --convo-body-lh:    1.6;
+  --convo-title:      1.05rem;   /* dialog and card headings */
+  --convo-meta:       0.78rem;   /* dates, types, counts */
+
   --bg-start:         #FAF6F0;
   --bg-mid:           #F5EDE3;
   --bg-end:           #FBF7F3;
@@ -741,7 +753,9 @@ body.dark .contact-avatar-sm { background: linear-gradient(135deg, #b86b2a 0%, #
   gap: 1.1rem;
 }
 body.dark .modal-card { background: rgba(28,21,13,0.97); border-color: rgba(255,255,255,0.08); }
-.modal-card h3 { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.02em; }
+/* Size lives in the conversation scale; the 1.05rem override further down
+   used to silently win, so the value here was decorative. */
+.modal-card h3 { font-size: var(--convo-title); font-weight: 700; letter-spacing: -0.02em; }
 .modal-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; }
 .modal-email { display: grid; gap: 0.5rem; padding-top: 0.75rem; border-top: 1px solid var(--glass-border); }
 .email-draft { resize: none; font-size: 0.83rem; line-height: 1.65; }
@@ -2738,7 +2752,7 @@ body.dark .filter-icon-btn.filter-active { color: var(--accent); }
 .convo-summary {
   display: flex; align-items: center; gap: 0.55rem;
   padding: 0.7rem 0.9rem; cursor: pointer;
-  list-style: none; font-size: 0.82rem;
+  list-style: none; font-size: var(--convo-meta);
 }
 .convo-summary::-webkit-details-marker { display: none; }
 .convo-summary:hover { background: var(--row-hover); }
@@ -2747,7 +2761,8 @@ body.dark .filter-icon-btn.filter-active { color: var(--accent); }
 .convo-date { font-weight: 700; color: var(--text); }
 .convo-note {
   margin: 0; padding: 0 0.9rem 0.9rem 2.05rem;
-  font-size: 0.82rem; line-height: 1.55; color: var(--text-muted);
+  font-size: var(--convo-body); line-height: var(--convo-body-lh);
+  color: var(--text-muted);
   white-space: pre-wrap;
 }
 
@@ -3199,7 +3214,6 @@ label {
 .card-title { font-size: 0.98rem; }
 .section-title { font-size: 0.9rem; }
 .chart-title { font-size: 0.9rem; }
-.modal-card h3 { font-size: 1.05rem; }
 
 /* ── Contact profile: bottom row aligns with the text above ──── */
 :root { --avatar-col: 60px; --identity-gap: 1.15rem; }
@@ -3401,7 +3415,25 @@ body.dark .kpi-empty a { color: var(--accent); }
   gap: 0.7rem 0.85rem; margin-bottom: 0.85rem;
 }
 .cw-convo-head .field-group { margin: 0; }
-.cw-notes { min-height: 7rem; }
+.cw-notes { min-height: 11rem; }
+
+/* ── One scale for every box a conversation is written in (ORB-65) ────────
+   The logger, the edit dialog, the profile's inline log and the calendar
+   review all take the same kind of text, so they render it the same way.
+   Listed together rather than each near its own component, because the
+   whole point is that they cannot drift apart unnoticed. */
+.cw-notes,
+.convo-edit-notes,
+#cpIntNotes,
+.cal-notes {
+  font-size: var(--convo-body);
+  line-height: var(--convo-body-lh);
+  resize: vertical;
+}
+/* Room to write. A note is paragraphs, and every one of these was sized for
+   a sentence. The calendar review stays short on purpose — it sits inline in
+   a list of meetings, and growing it would push the next one off screen. */
+#cpIntNotes { min-height: 9rem; }
 
 /* ── Name combobox ───────────────────────────────────────────── */
 .combo { position: relative; }
@@ -3647,7 +3679,7 @@ body.dark .convo-file { background: rgba(255,255,255,0.05); }
   background: none;
   padding: 0;
   font: inherit;
-  font-size: 0.75rem;
+  font-size: var(--convo-meta);
   font-weight: 600;
   color: var(--primary-deep);
   cursor: pointer;
@@ -3657,8 +3689,10 @@ body.dark .convo-file { background: rgba(255,255,255,0.05); }
 body.dark .convo-edit { color: var(--accent); }
 
 .convo-editor { margin-top: 0.4rem; }
-.convo-textarea { font-size: 0.82rem; line-height: 1.5; resize: vertical; }
-.convo-editor-actions { display: flex; gap: 0.4rem; margin-top: 0.45rem; }
+/* .convo-textarea and .convo-editor-actions were the inline editor ORB-64
+   replaced with a dialog. Removed rather than left behind — dead CSS that
+   still looks authoritative is how the next person reintroduces a second
+   type scale. */
 
 /* Notes captured at review time, while the meeting is still fresh. */
 .cal-notes-wrap { padding: 0 0.85rem 0.6rem 2.05rem; }
@@ -3674,7 +3708,10 @@ body.dark .convo-edit { color: var(--accent); }
 }
 .cal-notes-toggle:hover { text-decoration: underline; }
 body.dark .cal-notes-toggle { color: var(--accent); }
-.cal-notes { margin-top: 0.4rem; font-size: 0.82rem; resize: vertical; }
+/* Size and line height come from the conversation scale above; this rule was
+   redeclaring 0.82rem and, being later in the file, quietly winning. Exactly
+   the drift ORB-65 exists to stop. */
+.cal-notes { margin-top: 0.4rem; }
 
 /* Photos of handwritten notes preview as real images; PDFs keep the <object>. */
 .doc-preview-img {
@@ -3752,7 +3789,7 @@ body.dark .upcoming-link { color: var(--accent); }
   color: var(--text-muted);
   font-weight: 400;
 }
-.convo-source { flex-shrink: 0; font-size: 0.75rem; opacity: 0.75; }
+.convo-source { flex-shrink: 0; font-size: var(--convo-meta); opacity: 0.75; }
 .convo-actions { display: flex; gap: 0.75rem; align-items: center; margin-top: 0.35rem; }
 .convo-delete {
   border: none;
