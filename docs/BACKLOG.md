@@ -58,6 +58,48 @@ with no access to this repo.
 
 ---
 
+## ORB-73 — add someone you have not spoken to yet (opened Aug 13)
+
+**The only way in fabricates a conversation.** The **+** on My Network and the
+dashboard is labelled *"Add a new connection"* — that is its `aria-label` and
+its `title` — and it opens a dialog headed **"Log a conversation"** whose first
+question is *"Who did you speak with?"*. There is no path that adds a person
+without also writing an interaction.
+
+**This is a data problem before it is a UX one.** Saving always builds a
+`normalizeInteraction` and sets `lastContacted` to its date, so adding someone
+you have never spoken to records a conversation that did not happen and starts
+their cadence from it. A relationship with no contact yet immediately reads as
+freshly touched — the *"makes a cold relationship look healthy"* failure that
+`MAX_ATTENDEES` and **ORB-47** are both written to avoid, arriving through the
+front door.
+
+It bites hardest at exactly the moment **ORB-33** cares about: someone filling in
+their network on day one has thirty people and no conversations, and the app
+requires a date for each of them.
+
+**Scope:** a way to add a contact with name, role, company, email and a tier,
+writing no interaction and leaving `lastContacted` empty. **ORB-69** already made
+that state coherent — a cadence with no anchor date is scheduled against the
+grace window rather than reading as "No schedule" — so the contact still appears
+in Reach out next, which is where a person you have not spoken to belongs.
+
+**Open questions:**
+
+- One dialog with a mode, or two entry points? The **+** is a single button on
+  two pages, and the honest reading of *"Add a new connection"* is that adding a
+  person is the primary action and logging a conversation is the variant.
+- Does the label move? If **+** becomes add-a-contact, logging needs its own
+  reachable entry — the profile already has one, the dashboard does not.
+- Bulk paste is tempting for the day-one case and is **ORB-33**'s territory, not
+  this ticket's.
+
+Whatever the shape, the `aria-label` and the dialog heading have to agree. A
+screen reader user is currently told "Add a new connection" and dropped into a
+conversation logger.
+
+---
+
 ## ORB-66 — the meeting name beside the conversation, shipped Aug 13
 
 A synced conversation stored `title + "\n\n" + notes` in one field, so Orbit's
