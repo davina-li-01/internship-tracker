@@ -117,6 +117,8 @@ const EXPORTS = [
   "cadenceKey", "matchesConnectionFilters",
   // rendering
   "ringHtml", "splitBarHtml", "personRowHtml", "wirePersonRows",
+  "renderNotes", "stripNoteMarks", "toggleNoteMark", "noteToolbarHtml",
+  "wireNoteToolbar", "cadenceSentence",
   "renderInteractionTimeline", "conversationPreview", "renderStorageFileCard",
   "renderUpcomingMeetings", "healthBarHtml",
   // behaviour

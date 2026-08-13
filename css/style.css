@@ -4221,3 +4221,36 @@ body.dark .view-emails a:hover { color: var(--accent); }
   gap: 0.4rem;
 }
 .cadence-result .link-btn { font-size: inherit; }
+
+/* Formatting toolbar for conversation notes (ORB-63). Markers are stored as
+   plain text; these buttons just wrap the selection so nobody has to learn the
+   syntax to use it. */
+.note-toolbar {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.4rem;
+}
+.note-tool {
+  min-width: 1.9rem;
+  padding: 0.25rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  line-height: 1;
+}
+.note-tool:hover { background: var(--surface-alt, var(--bg)); }
+.note-tool.is-bold      { font-weight: 700; }
+.note-tool.is-italic    { font-style: italic; }
+.note-tool.is-underline { text-decoration: underline; }
+.note-tool.is-highlight { background: #FEF08A; color: #1C1917; }
+
+/* Rendered marks inside a saved note. */
+.convo-note mark {
+  background: #FEF08A;
+  color: inherit;
+  padding: 0 0.1em;
+  border-radius: 2px;
+}
+body.dark .convo-note mark { background: #A16207; color: #FFFBEB; }

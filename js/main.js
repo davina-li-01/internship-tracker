@@ -88,6 +88,124 @@ function escapeHtml(value = "") {
     .replaceAll("'", "&#39;");
 }
 
+/**
+ * Notes with light formatting (ORB-63).
+ *
+ * Notes are stored as plain text with markers, never as HTML. Notes are the one
+ * field where other people's words get pasted in, so the injection surface has
+ * to stay closed — and CSV export in ORB-12 would start emitting tags the day
+ * we stored markup.
+ *
+ * The order below is the whole security argument: escape FIRST, then translate
+ * a fixed set of markers into a fixed set of tags. Nothing the user types can
+ * become a tag, because by the time markers are read every `<` is already
+ * `&lt;`. Reversing these two lines would undo that.
+ *
+ *   **bold**   __underline__   *italic*   ==highlight==
+ *
+ * Bold is matched before italic; `**x**` would otherwise be read as an italic
+ * `*` wrapping `x*`.
+ */
+const NOTE_MARKS = [
+  [/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>"],
+  [/__([^_\n]+)__/g, "<u>$1</u>"],
+  [/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1<em>$2</em>"],
+  [/==([^=\n]+)==/g, "<mark>$1</mark>"]
+];
+
+function renderNotes(value = "") {
+  let out = escapeHtml(value);
+  for (const [pattern, replacement] of NOTE_MARKS) out = out.replace(pattern, replacement);
+  return out;
+}
+
+/**
+ * The formatting toolbar (ORB-63).
+ *
+ * Buttons that wrap the selection, so the markers are something you get rather
+ * than something you have to learn. Typing them by hand still works.
+ */
+const NOTE_TOOLS = [
+  { mark: "**", label: "B", title: "Bold", cls: "is-bold" },
+  { mark: "*",  label: "I", title: "Italic", cls: "is-italic" },
+  { mark: "__", label: "U", title: "Underline", cls: "is-underline" },
+  { mark: "==", label: "H", title: "Highlight", cls: "is-highlight" }
+];
+
+function noteToolbarHtml() {
+  return '<div class="note-toolbar" role="group" aria-label="Formatting">'
+    + NOTE_TOOLS.map((t) =>
+        '<button type="button" class="note-tool ' + t.cls + '"'
+        + ' data-mark="' + escapeHtml(t.mark) + '"'
+        + ' title="' + escapeHtml(t.title) + '" aria-label="' + escapeHtml(t.title) + '">'
+        + t.label + '</button>').join("")
+    + '</div>';
+}
+
+/**
+ * Wrap the selection in `mark`, or unwrap it if it is already wrapped.
+ *
+ * Pure so the awkward parts — an empty selection, a double click — are testable
+ * without a browser. Returns the new value and where the selection should land,
+ * because leaving the caret after the closing marker makes the second word you
+ * bold feel broken.
+ */
+function toggleNoteMark(value, start, end, mark) {
+  const before = value.slice(0, start);
+  const selected = value.slice(start, end);
+  const after = value.slice(end);
+  const m = mark.length;
+
+  // Already wrapped, either inside the selection or immediately around it.
+  if (selected.length > 2 * m && selected.startsWith(mark) && selected.endsWith(mark)) {
+    const inner = selected.slice(m, -m);
+    return { value: before + inner + after, start, end: start + inner.length };
+  }
+  if (before.endsWith(mark) && after.startsWith(mark)) {
+    return {
+      value: before.slice(0, -m) + selected + after.slice(m),
+      start: start - m,
+      end: end - m
+    };
+  }
+  // Nothing selected: drop in the markers and put the caret between them, so
+  // typing continues inside the formatting rather than after it.
+  if (!selected) {
+    return { value: before + mark + mark + after, start: start + m, end: start + m };
+  }
+  return {
+    value: before + mark + selected + mark + after,
+    start: start + m,
+    end: end + m
+  };
+}
+
+/** Wire a toolbar to the textarea it belongs to. */
+function wireNoteToolbar(scope, textarea) {
+  scope.querySelectorAll(".note-tool").forEach((tool) => {
+    // mousedown, not click: the textarea loses its selection on blur, and by
+    // click time selectionStart and selectionEnd are both sitting at zero.
+    tool.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      const next = toggleNoteMark(
+        textarea.value, textarea.selectionStart, textarea.selectionEnd, tool.dataset.mark);
+      textarea.value = next.value;
+      textarea.focus();
+      textarea.setSelectionRange(next.start, next.end);
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  });
+}
+
+/** The same text with markers removed, for previews and anywhere plain. */
+function stripNoteMarks(value = "") {
+  return String(value)
+    .replace(/\*\*([^*\n]+)\*\*/g, "$1")
+    .replace(/__([^_\n]+)__/g, "$1")
+    .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1$2")
+    .replace(/==([^=\n]+)==/g, "$1");
+}
+
 /** Whole days between a date-only string and today. Negative means future. */
 function daysSince(value) {
   const date = parseDateOnly(value);
@@ -697,7 +815,8 @@ function conversationPreview(contact, limit = 150) {
     + (latest ? '<span class="convo-count">' + count
         + (count === 1 ? " conversation" : " conversations") + '</span> ' : '')
     + (clips ? '<span class="convo-count">📎 ' + clips + '</span> ' : '')
-    + escapeHtml(text.slice(0, limit)) + (text.length > limit ? "…" : "")
+    + escapeHtml(stripNoteMarks(text).slice(0, limit))
+    + (stripNoteMarks(text).length > limit ? "…" : "")
     + '</p>';
 }
 
@@ -1120,7 +1239,7 @@ function renderInteractionTimeline(interactions, files = []) {
     // as nothing but the event title and could never be filled in.
     const body = '<div class="convo-body" data-convo-id="' + escapeHtml(item.id) + '">'
       + (item.notes
-        ? '<p class="convo-note">' + escapeHtml(item.notes) + '</p>'
+        ? '<p class="convo-note">' + renderNotes(item.notes) + '</p>'
         : '<p class="convo-note muted">No notes yet — what did you talk about?</p>')
       + '<div class="convo-actions">'
       + '<button class="convo-edit" type="button" data-edit-convo="' + escapeHtml(item.id) + '">'
@@ -2927,14 +3046,21 @@ async function initContactPage() {
     });
 
     root.querySelectorAll("[data-edit-convo]").forEach((btn) => {
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", async () => {
         const wrap = btn.closest(".convo-body");
         const noteEl = wrap.querySelector(".convo-note");
-        const original = noteEl.classList.contains("muted") ? "" : noteEl.textContent;
+        // Read the stored text, NOT the rendered element. Since ORB-63 the note
+        // is marked-up HTML, so `textContent` would hand the editor a copy with
+        // every marker already stripped — and saving it would silently delete
+        // the user's formatting.
+        const stored = await freshContact();
+        const original = (stored?.interactions || [])
+          .find((i) => i.id === btn.dataset.editConvo)?.notes || "";
 
         const editor = document.createElement("div");
         editor.className = "convo-editor";
-        editor.innerHTML = '<textarea class="convo-textarea" rows="4"'
+        editor.innerHTML = noteToolbarHtml()
+          + '<textarea class="convo-textarea" rows="4"'
           + ' placeholder="What did you talk about? What should you follow up on?"></textarea>'
           // A transcript is the other half of "what was said", and this is where
           // you are standing when you remember you have one. It goes through the
@@ -2955,6 +3081,7 @@ async function initContactPage() {
 
         const area = editor.querySelector(".convo-textarea");
         area.value = original;
+        wireNoteToolbar(editor, area);
         area.focus();
 
         const restore = () => { editor.remove(); noteEl.hidden = false; btn.hidden = false; };
