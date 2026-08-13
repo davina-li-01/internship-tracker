@@ -4421,3 +4421,17 @@ body.dark .notes-input mark { background: #A16207; color: #FFFBEB; }
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.75rem), transparent);
           mask-image: linear-gradient(to bottom, #000 calc(100% - 1.75rem), transparent);
 }
+
+
+/* The meeting name, above the note rather than inside it (ORB-66). Sized off
+   the conversation scale and weighted so it reads as a heading for what
+   follows, not as the first sentence of it. */
+.convo-title {
+  margin: 0 0 0.35rem;
+  padding: 0 0.9rem 0 2.05rem;
+  font-size: var(--convo-body);
+  line-height: var(--convo-body-lh);
+  font-weight: 700;
+  color: var(--text);
+}
+.convo-body .convo-title { padding: 0; }

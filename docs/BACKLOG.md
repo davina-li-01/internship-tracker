@@ -58,6 +58,38 @@ with no access to this repo.
 
 ---
 
+## ORB-66 — the meeting name beside the conversation, shipped Aug 13
+
+A synced conversation stored `title + "\n\n" + notes` in one field, so Orbit's
+words and the user's words were the same string. The event title was read back
+as a note preview, and editing your notes could delete the heading.
+
+`title` is its own key on the interaction — jsonb, so no migration. A synced
+meeting with nothing typed now saves **empty** notes rather than saving Orbit's
+own text back as though it were an answer.
+
+**No back-fill, deliberately.** Every row already written still has the title
+baked in, and the split happens at display time. A migration would have had to
+guess on exactly the ambiguous rows the runtime check can decline to touch.
+
+**The guard that matters:** the split only applies to rows with a
+`sourceEventId`, and only when the notes have the shape the old writer actually
+produced — a first line alone, or a first line followed by a blank one. A
+hand-written note whose first line happens to be short is not a title, and
+carving one out would hide the user's own first sentence behind a heading they
+never wrote. Both shapes are asserted, along with the synced-but-wrong-shape
+case where consecutive lines must be left whole.
+
+**Editing migrates the row for good.** Opening a legacy conversation hands the
+editor the note without the heading, and saving writes `title` as a real field —
+so the split stops being re-derived on every render for that conversation's
+remaining life. Where an existing title and a calendar title disagree, the
+existing one wins: a name the user set is an answer, the event's is a default.
+
+Thirty-two assertions in `tests/meeting-title.test.mjs`; 862 passing.
+
+---
+
 ## ORB-62 — conversation history holds its height, shipped Aug 13
 
 Three conversations, then the list scrolls inside itself. Same pattern as

@@ -120,6 +120,7 @@ const EXPORTS = [
   "renderNotes", "stripNoteMarks", "noteToolbarHtml", "cadenceSentence",
   "openConversationEditor", "editorToMarks", "notesEditorHtml", "wireNotesEditor",
   "renderInteractionTimeline", "conversationPreview", "renderStorageFileCard",
+  "conversationTitle", "conversationNotes",
   "renderUpcomingMeetings", "healthBarHtml",
   // behaviour
   "markReachedOut", "showToast",

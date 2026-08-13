@@ -92,9 +92,12 @@ modal().querySelector('[data-notes-index="0"]').value = "Talked about the Ramsey
 saveBtn().click();
 await tick(); await tick();
 eq("with notes, one click is enough", state.saves.length, 1);
-ok("the notes are kept under the meeting title, not instead of it",
-  /Coffee with Marcus\n\nTalked about the Ramsey referral\./
-    .test(state.saves[0].interactions[0].notes));
+// ORB-66: the meeting name is its own field now. It used to be prepended to
+// the notes, which made Orbit's text and the user's text the same string.
+eq("the meeting name is stored beside the notes",
+  state.saves[0].interactions[0].title, "Coffee with Marcus");
+eq("and the notes hold only what was typed",
+  state.saves[0].interactions[0].notes, "Talked about the Ramsey referral.");
 
 // ── A bulk historical sync is not nagged ──────────────────────────────────────
 

@@ -801,6 +801,10 @@ function normalizeInteraction(item = {}) {
     id: item.id || makeId(),
     date: item.date || todayDateString(),
     type: item.type || "check-in",
+    // The meeting name, when there was one (ORB-66). Kept beside the notes
+    // rather than inside them, so Orbit's text and the user's text are not the
+    // same string — and so editing your notes cannot delete the heading.
+    title: (item.title || "").trim(),
     notes: (item.notes || "").trim(),
     outcome: (item.outcome || "").trim(),
     // Ids into storage_files (ORB-20). Held on the interaction rather than as a
@@ -1428,6 +1432,37 @@ function attachStorageFileCardListeners(container, onChange) {
  *               are skipped — deleting a PDF from the Files page should leave the
  *               conversation intact, not a broken link.
  */
+/**
+ * The meeting name for a conversation (ORB-66).
+ *
+ * Synced conversations used to store `title + "\n\n" + notes` in one field, so
+ * Orbit's words and the user's words were the same string: the title was read
+ * back as a note preview, and editing your notes could delete the heading.
+ *
+ * `title` is its own key now — jsonb, so no migration. Rows written before this
+ * still have it baked in, and there is no back-fill: the split happens at
+ * display time and only for calendar-logged rows, because a hand-written note
+ * whose first line is short is not a title.
+ */
+function conversationTitle(item) {
+  if (item?.title) return item.title;
+  if (!item?.sourceEventId) return "";
+  const notes = item.notes || "";
+  // The old writer produced either a bare title, or a title, a blank line, then
+  // the note. Anything else is a note that merely starts with a short line.
+  if (!notes.includes("\n")) return notes.trim();
+  return /^[^\n]*\n\s*\n/.test(notes) ? notes.split("\n")[0].trim() : "";
+}
+
+/** The note text, with a legacy baked-in title taken back off the front. */
+function conversationNotes(item) {
+  const notes = item?.notes || "";
+  if (item?.title) return notes;              // already separate
+  const title = conversationTitle(item);
+  if (!title) return notes;
+  return notes.slice(title.length).replace(/^\s*\n\s*\n?/, "");
+}
+
 function renderInteractionTimeline(interactions, files = []) {
   if (!interactions || !interactions.length) return '<p class="empty">No conversations logged yet.</p>';
   const byId = new Map(files.map((f) => [f.id, f]));
@@ -1435,13 +1470,14 @@ function renderInteractionTimeline(interactions, files = []) {
   return interactions.map((item, i) => {
     const attached = (item.fileIds || []).map((id) => byId.get(id)).filter(Boolean);
 
-    // The first line, shown on the closed row. For anything the calendar logged
-    // that is the meeting title, which is the thing worth seeing without having
-    // to open every entry to find the one you meant.
-    // Markers stripped: the closed row shows words, not syntax. A note that
-    // opens with **Coffee with Marcus** should read as the meeting, not as
+    // What the closed row shows: the meeting name if there is one, otherwise
+    // the first line of the notes. Markers are stripped either way — a note
+    // opening with **Coffee with Marcus** should read as the meeting, not as
     // punctuation someone forgot to close.
-    const headline = stripNoteMarks((item.notes || "").split("\n")[0]).trim();
+    const shownTitle = conversationTitle(item);
+    const shownNotes = conversationNotes(item);
+    const headline = stripNoteMarks(
+      shownTitle || (shownNotes || "").split("\n")[0]).trim();
 
     const summary = '<summary class="convo-summary">'
       + '<span class="convo-caret" aria-hidden="true">▸</span>'
@@ -1464,8 +1500,10 @@ function renderInteractionTimeline(interactions, files = []) {
     // sealed — which mattered most for calendar-synced ones, whose notes start
     // as nothing but the event title and could never be filled in.
     const body = '<div class="convo-body" data-convo-id="' + escapeHtml(item.id) + '">'
-      + (item.notes
-        ? '<p class="convo-note">' + renderNotes(item.notes) + '</p>'
+      + (shownTitle
+        ? '<p class="convo-title">' + escapeHtml(shownTitle) + '</p>' : '')
+      + (shownNotes
+        ? '<p class="convo-note">' + renderNotes(shownNotes) + '</p>'
         : '<p class="convo-note muted">No notes yet — what did you talk about?</p>')
       // Delete used to sit here, one slip away from the note it destroys. It
       // lives in the dialog now (ORB-64), where opening it is a deliberate act
@@ -3281,8 +3319,14 @@ async function initContactPage() {
         const item = (current?.interactions || []).find((i) => i.id === id);
         if (!item) return;
 
-        openConversationEditor(item, {
-          title: item.title || (item.type
+        // A legacy synced row still carries its title inside the notes, so the
+        // editor is handed the split version — otherwise you would open it and
+        // find Orbit's heading sitting in your own text.
+        const shownTitle = conversationTitle(item);
+        openConversationEditor(
+          { ...item, title: shownTitle, notes: conversationNotes(item) },
+          {
+          title: shownTitle || (item.type
             ? item.type.charAt(0).toUpperCase() + item.type.slice(1)
             : "Conversation") + " · " + formatDate(item.date),
 
@@ -3301,7 +3345,11 @@ async function initContactPage() {
               const next = (cur.interactions || []).map((i) =>
                 i.id === id
                   ? normalizeInteraction({
+                      // Saving migrates a legacy row: the title becomes its own
+                      // field for good, rather than being re-derived on every
+                      // render for the rest of the conversation's life.
                       ...i, date: date || i.date, type, notes,
+                      title: shownTitle,
                       fileIds: newFileId ? [...(i.fileIds || []), newFileId] : (i.fileIds || [])
                     })
                   : i);
@@ -3346,7 +3394,8 @@ async function initContactPage() {
             await renderPage();
             showToast("Conversation deleted.");
           }
-        });
+        }
+        );
       });
     });
   }
@@ -4599,10 +4648,14 @@ async function applyCalendarCandidates(picked, contacts) {
     let interactions = (contact.interactions || []).map((existing) => {
       const match = toMerge.find((m) => m.existing.id === existing.id);
       if (!match) return existing;
-      const parts = [match.title, existing.notes, match.notes].filter(Boolean);
+      const parts = [existing.notes, match.notes].filter(Boolean);
       const fileId = uploadedFor.get(match.eventId);
       return normalizeInteraction({
         ...existing,
+        // An existing conversation may already carry a title; the calendar's
+        // wins only when there is none, since a name the user set is an answer
+        // and the event's is a default.
+        title: existing.title || match.title || "",
         notes: parts.join("\n\n"),
         fileIds: fileId ? [...(existing.fileIds || []), fileId] : (existing.fileIds || []),
         sourceEventId: match.eventId
@@ -4612,9 +4665,11 @@ async function applyCalendarCandidates(picked, contacts) {
     const added = toAdd.map((item) => normalizeInteraction({
       date: item.date,
       type: item.type,
-      // Anything typed goes under the meeting name rather than replacing it —
-      // "Coffee with Marcus" is worth keeping as the heading for what follows.
-      notes: item.notes ? item.title + "\n\n" + item.notes : item.title,
+      // The meeting name is its own field now. Notes hold only what the user
+      // wrote, which is why a synced meeting with nothing typed saves empty
+      // rather than saving Orbit's own text back as if it were an answer.
+      title: item.title,
+      notes: item.notes || "",
       fileIds: uploadedFor.has(item.eventId) ? [uploadedFor.get(item.eventId)] : [],
       sourceEventId: item.eventId
     }));
