@@ -33,6 +33,31 @@ Correct form:
 
 `#dfd8fd` is Core Functionality, `#c6edfb` is Integrations.
 
+---
+
+## Writing the Backlog: never send markdown, send HTML
+
+**Write Confluence tables as `contentFormat: "html"`.** Markdown is converted on
+the way in, and a cell containing a literal `\n` inside a backtick span ends the
+row there — everything after it, including all the rows that followed, is dumped
+after `</table>` as one paragraph of raw pipe syntax.
+
+That is what happened to the Backlog on Aug 13. ORB-66's cell held
+``​`title + "\n\n" + notes`​``; the row broke at the `\n`, and ORB-66 through
+ORB-73 spilled out of the table. It survived a write because the response was
+`200` and the version number incremented — the page reported success and was
+visibly wrong. Found the next time the page was fetched, and repaired in v24.
+
+**Two rules that follow:**
+
+- **HTML in, always.** Then a `\n`, a quote or a `**` inside a code span is just
+  text. Confluence re-encodes `"` to `&quot;` and may lift a `<code>` out of a
+  `<strong>` on read; both are cosmetic and neither loses content.
+- **Verify by comparing visible text, not markup.** A byte diff against what you
+  sent is all false positives — entity encoding and tag nesting both change on
+  the round trip. Strip tags, unescape, compare cell by cell. That check is what
+  proved the v24 repair lost nothing, and a markup diff could not have.
+
 Always verify after any Roadmap write — a full-body replacement is the only
 update the API offers, so every write puts all 50 cells at risk:
 
