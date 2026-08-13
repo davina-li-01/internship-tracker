@@ -58,6 +58,35 @@ with no access to this repo.
 
 ---
 
+## Evidence for ORB-32, from real use (Aug 12)
+
+The first day of tiers against a real network produced two observations. Neither
+changes anything shipped; both are input to **ORB-32** (season or location
+condition), which **ORB-51** absorbs as a sub-case.
+
+**A cadence is not always the right shape.** Three contacts — Tim, Assaf, Hunter
+— are based in Hawaii, and the honest trigger for reaching out is *being home*,
+not a number of elapsed days. A time-based deadline for them manufactures guilt
+about a reach-out that is not situationally possible, which is the failure
+**ORB-54** is about, arriving from a direction that ticket does not cover. This
+is a **location** condition, not a seasonal one; ORB-32's row already names both,
+and this is a concrete instance rather than a hypothetical.
+
+**The tiers conflate warmth with professional relevance.** Chris is a valued
+mentor for career progression and not someone to ask about day-to-day work. Both
+facts are true and the four tiers can only record one of them. Not worth a fifth
+tier — the answer for now is that the interval is the override, which is what the
+Adjust control exists for.
+
+**Defaults stay research-driven.** Explicitly ruled: the tier defaults follow
+*User Research: Cadence Structure*, not one user's preference. The custom
+interval is how a person departs from them, and ORB-57's "changed from the
+default" metric is how often that happens gets measured. If overrides turn out to
+be the norm rather than the exception, that is the signal to revisit the
+defaults — not a reason to pre-emptively loosen them now.
+
+---
+
 ## ORB-52 — the tier picker, shipped Aug 12
 
 Schema landed Aug 11; this is the rest. `tier` existed in the database and
