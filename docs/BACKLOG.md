@@ -35,6 +35,46 @@ Correct form:
 
 ---
 
+## Editing Confluence: use `scripts/confluence.py`, not the MCP
+
+**Superseded by tooling, 13 Aug.** Both traps below were symptoms of the same
+thing: writes went through the MCP as HTML or markdown, which meant a conversion
+step that could silently mangle the page, and the whole document had to pass
+through the model as text — about 35,000 tokens to change one cell.
+
+`scripts/confluence.py` does the same full-document `PUT` — Confluence has no
+partial-update endpoint, in the REST API or the MCP — but the bytes stay on
+disk. A one-cell edit costs a few hundred tokens instead of tens of thousands.
+
+**It works in ADF, which removes both traps rather than avoiding them:**
+
+- **No conversion step.** The markdown table-break below cannot happen; JSON has
+  nothing to misparse.
+- **No Team-column order trap.** In ADF the colours are two independent marks on
+  a text node, so "declare `color` before `background-color`" is meaningless —
+  there is no HTML serialisation to get backwards.
+- **Concurrent edits 409 instead of overwriting**, because the version read is
+  the version incremented.
+
+Credentials come from `~/.netrc` via `curl -n`, so no token appears in a
+command, in shell history, or in this repo. Homebrew's Python has no CA bundle,
+which is why the transport shells out to `curl` rather than using `urllib`.
+
+```
+python3 scripts/confluence.py rows 1343550           # list ticket rows
+python3 scripts/confluence.py cell 1343550 ORB-74 4  # read one cell
+python3 scripts/confluence.py get  1343550           # fetch to /tmp
+python3 scripts/confluence.py put  1343550 FILE -m "why"
+```
+
+Page ids: Backlog `1343550`, Roadmap `1147139`, ORB-73 PRD `6520834`.
+
+**Still verify after every write.** The tooling removes the conversion faults,
+not the possibility of a bad patch — and a `200` has already been shown twice to
+mean nothing about whether the page is intact.
+
+---
+
 ## Writing the Backlog: never send markdown, send HTML
 
 **Write Confluence tables as `contentFormat: "html"`.** Markdown is converted on
