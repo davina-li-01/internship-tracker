@@ -19,7 +19,7 @@ import { loadMain } from "./helpers/load-main.mjs";
 import { eq, ok, group, done } from "./helpers/assert.mjs";
 
 const main = await loadMain();
-const { renderNotes, stripNoteMarks, toggleNoteMark, noteToolbarHtml, wireNoteToolbar } = main;
+const { renderNotes, stripNoteMarks, noteToolbarHtml, editorToMarks } = main;
 const dom = globalThis.__dom;
 
 group("Escaping happens before formatting, and cannot be got round");
@@ -67,64 +67,64 @@ eq("marks are stripped", stripNoteMarks("**a** *b* __c__ ==d=="), "a b c d");
 eq("plain text is unchanged", stripNoteMarks("nothing to do"), "nothing to do");
 eq("an unmatched marker stays", stripNoteMarks("2 * 3"), "2 * 3");
 
-// ── The toolbar ──────────────────────────────────────────────────────────────
-// Pure, because the awkward cases are selection maths and they should not need
-// a browser to check.
+// ── Back out of the editor ───────────────────────────────────────────────────
+// You type into something that shows real bold (ORB-72); what gets stored is
+// still plain text with markers. This is that boundary, and it is pure, so the
+// cases a browser would make awkward are cheap to state.
 
-group("Wrapping a selection");
-{
-  const r = toggleNoteMark("hello world", 6, 11, "**");
-  eq("the selection is wrapped", r.value, "hello **world**");
-  eq("and stays selected", [r.start, r.end], [8, 13]);
-}
-{
-  const r = toggleNoteMark("hi", 0, 2, "==");
-  eq("highlight wraps too", r.value, "==hi==");
-}
+const marksOf = (html) => {
+  const el = document.createElement("div");
+  el.innerHTML = html;
+  return editorToMarks(el);
+};
 
-group("Pressing the same button again unwraps");
-{
-  // Selection includes the markers — what you get by selecting the rendered word
-  // plus its syntax.
-  const r = toggleNoteMark("say **this** now", 4, 12, "**");
-  eq("the markers come off", r.value, "say this now");
-  eq("and the bare word stays selected", [r.start, r.end], [4, 8]);
-}
-{
-  // Selection is just the word, markers sit immediately outside it.
-  const r = toggleNoteMark("say **this** now", 6, 10, "**");
-  eq("markers outside the selection are also removed", r.value, "say this now");
-  eq("selection follows the text left", [r.start, r.end], [4, 8]);
-}
+group("Every tag a browser might produce comes back as a marker");
+eq("strong", marksOf("<strong>loud</strong>"), "**loud**");
+// Safari and old execCommand emit <b> and <i> where others emit <strong>/<em>.
+eq("b is treated as strong", marksOf("<b>loud</b>"), "**loud**");
+eq("em", marksOf("<em>soft</em>"), "*soft*");
+eq("i is treated as em", marksOf("<i>soft</i>"), "*soft*");
+eq("u", marksOf("<u>under</u>"), "__under__");
+eq("mark", marksOf("<mark>lit</mark>"), "==lit==");
+// execCommand renders a highlight as a styled span rather than a <mark>.
+eq("a span with a background colour is a highlight",
+  marksOf('<span style="background-color: rgb(253, 224, 71)">lit</span>'), "==lit==");
 
-group("Nothing selected puts the caret inside the markers");
-{
-  const r = toggleNoteMark("", 0, 0, "**");
-  eq("markers are inserted", r.value, "****");
-  eq("and the caret sits between them so typing lands inside",
-    [r.start, r.end], [2, 2]);
-}
+group("Structure survives the trip");
+eq("plain text", marksOf("just words"), "just words");
+eq("mixed marks in a line",
+  marksOf("<strong>a</strong> and <em>b</em>"), "**a** and *b*");
+eq("a line break", marksOf("one<br>two"), "one\ntwo");
+eq("divs are lines, which is what Enter produces",
+  marksOf("<div>one</div><div>two</div>"), "one\ntwo\n");
+eq("paragraphs too", marksOf("<p>one</p><p>two</p>"), "one\ntwo\n");
+eq("nesting composes rather than dropping one",
+  marksOf("<strong><em>both</em></strong>"), "***both***");
+eq("empty", marksOf(""), "");
 
-group("The toolbar is wired to the box it belongs to");
-{
-  document.body.innerHTML = '<div id="w">' + noteToolbarHtml()
-    + '<textarea class="convo-textarea"></textarea></div>';
-  const scope = document.getElementById("w");
-  const area = scope.querySelector("textarea");
-  eq("one button per mark", scope.querySelectorAll(".note-tool").length, 4);
+group("Nothing unexpected becomes a marker");
+// A pasted table, a link, a heading: unknown tags contribute their text and
+// nothing else, so no formatting can enter that the four marks cannot express.
+eq("a link keeps its words only", marksOf('<a href="http://x">click</a>'), "click");
+eq("a heading is just text", marksOf("<h1>Title</h1>"), "Title");
+eq("a table contributes cells, not structure",
+  marksOf("<table><tr><td>a</td><td>b</td></tr></table>"), "ab");
+eq("an empty tag adds no stray markers", marksOf("<strong></strong>"), "");
+eq("a whitespace-only tag adds none either", marksOf("<strong>   </strong>"), "   ");
 
-  area.value = "keep this";
-  area.setSelectionRange(5, 9);
-  wireNoteToolbar(scope, area);
-
-  // mousedown, not click: by click time the textarea has blurred and the
-  // selection has collapsed to zero, which is the bug this guards.
-  scope.querySelector('[data-mark="**"]')
-    .dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true, cancelable: true }));
-  eq("the selected words are wrapped", area.value, "keep **this**");
-
-  ok("and the note renders as bold",
-    renderNotes(area.value) === "keep <strong>this</strong>");
+group("A note survives a round trip unchanged");
+// The property that matters: open a saved note, change nothing, save it back,
+// and get the same string. Anything else silently rewrites people's notes.
+for (const original of [
+  "plain words",
+  "**bold**",
+  "*italic*",
+  "__under__",
+  "==lit==",
+  "**a** and *b* and ==c==",
+  "line one\nline two"
+]) {
+  eq(JSON.stringify(original), marksOf(renderNotes(original)), original);
 }
 
 // ── Every box you can write a note in ────────────────────────────────────────
@@ -144,21 +144,56 @@ group("And it is wired, not just drawn");
 {
   // A toolbar that renders and does nothing is worse than no toolbar: it
   // promises a feature and silently drops the click.
+  //
+  // Bold, italic and underline go through document.execCommand, which jsdom
+  // does not implement — so those are verified in a browser, not here, and
+  // this asserts the wiring and the one tool that does not need it. The
+  // serialisation that turns any of them back into markers is covered below
+  // and is where the real risk lives.
   document.body.innerHTML = '<div id="root">' + main.conversationWidgetHtml() + "</div>";
   const host = document.getElementById("root");
   main.wireConversationWidget(host, () => [], async () => {});
 
-  const area = host.querySelector(".cw-notes");
-  area.value = "the platform team";
-  area.setSelectionRange(4, 17);
-  host.querySelector('.note-toolbar [data-mark="**"]')
-    .dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true, cancelable: true }));
-  eq("bold wraps the selection in the logger", area.value, "the **platform team**");
+  const box = host.querySelector(".cw-notes");
+  ok("the notes box is editable", box.getAttribute("contenteditable") === "true");
+  ok("and announces itself as a text box", box.getAttribute("role") === "textbox");
 
-  area.setSelectionRange(0, 3);
+  box.textContent = "the platform team";
+  const range = document.createRange();
+  range.setStart(box.firstChild, 4);
+  range.setEnd(box.firstChild, 17);
+  const sel = dom.window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+
   host.querySelector('.note-toolbar [data-mark="=="]')
     .dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true, cancelable: true }));
-  eq("and so does highlight", area.value, "==the== **platform team**");
+  eq("highlight wraps the selection in the logger",
+    main.editorToMarks(box), "the ==platform team==");
+}
+
+group("Pasting brings words, never markup");
+{
+  // The reason markers are safe is that nothing else can get in. A note is
+  // exactly where someone pastes a styled email or half a Google Doc, and a
+  // contenteditable will happily accept all of it unless stopped.
+  document.body.innerHTML = '<div id="p">'
+    + main.notesEditorHtml({ className: "cw-notes" }) + "</div>";
+  const scope = document.getElementById("p");
+  const box = scope.querySelector(".notes-input");
+  main.wireNotesEditor(scope, box);
+
+  const paste = (html, text) => {
+    const e = new dom.window.Event("paste", { bubbles: true, cancelable: true });
+    e.clipboardData = { getData: (t) => (t === "text/plain" ? text : html) };
+    box.dispatchEvent(e);
+  };
+
+  paste('<b>bold</b> <script>alert(1)</script>', "bold alert(1)");
+  ok("no tags came through", !/<[a-z]/i.test(box.innerHTML));
+  ok("the words did", box.textContent.includes("bold"));
+  eq("and it serialises to plain text with no markers",
+    main.editorToMarks(box), "bold alert(1)");
 }
 
 group("The highlighter is drawn, not an emoji");

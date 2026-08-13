@@ -48,10 +48,15 @@ group("It carries the same fields as logging a conversation");
   ok("a dialog opened", modal());
   eq("the date is prefilled", $("#convoEditDate").value, "2026-08-07");
   eq("the type is prefilled", $("#convoEditType").value, "coffee chat");
-  eq("the notes arrive with their markers intact, not the rendered text",
-    $("#convoEditNotes").value, "Talked about **the platform team**.");
-  ok("there is room to write — not a four-row box",
-    Number($("#convoEditNotes").getAttribute("rows")) >= 10);
+  // Since ORB-72 the box shows real bold rather than asterisks, so the note
+  // arrives rendered — and must serialise back to exactly what was stored, or
+  // opening a note and saving it unchanged would rewrite it.
+  eq("the note arrives formatted, not as syntax",
+    $("#convoEditNotes").innerHTML, "Talked about <strong>the platform team</strong>.");
+  eq("and converts back to the stored markers untouched",
+    main.editorToMarks($("#convoEditNotes")), "Talked about **the platform team**.");
+  ok("it is an editable box, not a textarea",
+    $("#convoEditNotes").getAttribute("contenteditable") === "true");
   ok("the formatting toolbar is here too", modal().querySelectorAll(".note-tool").length === 4);
   ok("a transcript can be attached", $("#convoEditFile"));
 }
@@ -74,7 +79,7 @@ group("Delete is as far from Save as the footer allows");
 group("Saving reports what was entered");
 {
   const calls = open();
-  $("#convoEditNotes").value = "Rewritten.";
+  $("#convoEditNotes").textContent = "Rewritten.";
   $("#convoEditType").value = "phone call";
   $("#convoEditDate").value = "2026-08-09";
   click("#convoEditSave");
@@ -129,7 +134,7 @@ group("Deleting asks first");
 group("Closing without saving changes nothing");
 {
   let calls = open();
-  $("#convoEditNotes").value = "typed but abandoned";
+  $("#convoEditNotes").textContent = "typed but abandoned";
   click("#convoEditCancel");
   await tick();
   eq("cancel submits nothing", calls.submitted.length, 0);

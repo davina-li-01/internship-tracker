@@ -74,7 +74,7 @@ console.log("\nORB-20 — attaching to an existing person");
   __t.wireConversationWidget(document.getElementById("root"), () => [existing],
     async (s) => { savedArg = s; });
   form.querySelector(".cw-name").value = "Marcus Chen";
-  form.querySelector(".cw-notes").value = "Talked about the new team.";
+  form.querySelector(".cw-notes").textContent = "Talked about the new team.";
   attachFakeFile(form);
   // Simulate having picked the existing person from the combobox.
   form.querySelector(".cw-name").dispatchEvent(new window.Event("input", { bubbles: true }));
@@ -97,7 +97,7 @@ console.log("\nORB-20 — attaching while creating a brand-new person");
   const form = mountWidget();
   __t.wireConversationWidget(document.getElementById("root"), () => [], async () => {});
   form.querySelector(".cw-name").value = "Priya Raghunathan";
-  form.querySelector(".cw-notes").value = "Met at the meetup.";
+  form.querySelector(".cw-notes").textContent = "Met at the meetup.";
   attachFakeFile(form, "deck.pdf");
   await submit(form);
 
@@ -116,7 +116,7 @@ console.log("\nORB-20 — a failed upload must never cost the conversation");
   const form = mountWidget();
   __t.wireConversationWidget(document.getElementById("root"), () => [], async () => {});
   form.querySelector(".cw-name").value = "Sam Patel";
-  form.querySelector(".cw-notes").value = "Important context I do not want to lose.";
+  form.querySelector(".cw-notes").textContent = "Important context I do not want to lose.";
   attachFakeFile(form);
   await submit(form);
 

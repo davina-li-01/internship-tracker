@@ -154,61 +154,6 @@ function noteToolbarHtml() {
 }
 
 /**
- * Wrap the selection in `mark`, or unwrap it if it is already wrapped.
- *
- * Pure so the awkward parts — an empty selection, a double click — are testable
- * without a browser. Returns the new value and where the selection should land,
- * because leaving the caret after the closing marker makes the second word you
- * bold feel broken.
- */
-function toggleNoteMark(value, start, end, mark) {
-  const before = value.slice(0, start);
-  const selected = value.slice(start, end);
-  const after = value.slice(end);
-  const m = mark.length;
-
-  // Already wrapped, either inside the selection or immediately around it.
-  if (selected.length > 2 * m && selected.startsWith(mark) && selected.endsWith(mark)) {
-    const inner = selected.slice(m, -m);
-    return { value: before + inner + after, start, end: start + inner.length };
-  }
-  if (before.endsWith(mark) && after.startsWith(mark)) {
-    return {
-      value: before.slice(0, -m) + selected + after.slice(m),
-      start: start - m,
-      end: end - m
-    };
-  }
-  // Nothing selected: drop in the markers and put the caret between them, so
-  // typing continues inside the formatting rather than after it.
-  if (!selected) {
-    return { value: before + mark + mark + after, start: start + m, end: start + m };
-  }
-  return {
-    value: before + mark + selected + mark + after,
-    start: start + m,
-    end: end + m
-  };
-}
-
-/** Wire a toolbar to the textarea it belongs to. */
-function wireNoteToolbar(scope, textarea) {
-  scope.querySelectorAll(".note-tool").forEach((tool) => {
-    // mousedown, not click: the textarea loses its selection on blur, and by
-    // click time selectionStart and selectionEnd are both sitting at zero.
-    tool.addEventListener("mousedown", (e) => {
-      e.preventDefault();
-      const next = toggleNoteMark(
-        textarea.value, textarea.selectionStart, textarea.selectionEnd, tool.dataset.mark);
-      textarea.value = next.value;
-      textarea.focus();
-      textarea.setSelectionRange(next.start, next.end);
-      textarea.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-  });
-}
-
-/**
  * Editing a conversation, in a dialog (ORB-64).
  *
  * The inline version was a four-row textarea wedged into a timeline entry: no
@@ -244,10 +189,13 @@ function openConversationEditor(interaction, { title = "", onSubmit, onDelete } 
     + '</select></div>'
     + '</div>'
 
-    + '<div class="field-group"><label for="convoEditNotes">What did you talk about?</label>'
-    + noteToolbarHtml()
-    + '<textarea id="convoEditNotes" class="convo-edit-notes" rows="12"'
-    + ' placeholder="What they are working on, what they said, anything you want to bring up next time…"></textarea></div>'
+    + '<div class="field-group"><label>What did you talk about?</label>'
+    + notesEditorHtml({
+        id: "convoEditNotes",
+        className: "convo-edit-notes",
+        placeholder: "What they are working on, what they said, anything you want to bring up next time…"
+      })
+    + '</div>'
 
     + '<div class="field-group"><label for="convoEditFile">Attach a transcript or PDF'
     + ' <span class="opt-label">(optional)</span></label>'
@@ -270,8 +218,8 @@ function openConversationEditor(interaction, { title = "", onSubmit, onDelete } 
   document.body.appendChild(modal);
 
   const area = modal.querySelector("#convoEditNotes");
-  area.value = interaction?.notes || "";
-  wireNoteToolbar(modal, area);
+  const notes = wireNotesEditor(modal, area);
+  notes.setMarks(interaction?.notes || "");
 
   const errEl = modal.querySelector(".convo-edit-err");
   const close = () => { modal.remove(); document.removeEventListener("keydown", onKey); };
@@ -295,7 +243,7 @@ function openConversationEditor(interaction, { title = "", onSubmit, onDelete } 
     await onSubmit?.({
       date: modal.querySelector("#convoEditDate").value || interaction?.date || "",
       type: modal.querySelector("#convoEditType").value,
-      notes: area.value.trim(),
+      notes: notes.getMarks().trim(),
       file
     });
     close();
@@ -311,6 +259,147 @@ function openConversationEditor(interaction, { title = "", onSubmit, onDelete } 
 
   area.focus();
   return modal;
+}
+
+/**
+ * The editable side of a note (ORB-72).
+ *
+ * You type into something that shows real bold; what gets stored is still plain
+ * text with markers. Storage and display are separable, and conflating them is
+ * why the first version made people read `**asterisks**` while writing.
+ *
+ * The storage decision from ORB-63 is unchanged and load-bearing: markers keep
+ * the injection surface shut and keep CSV export free of tags. So this converts
+ * at the boundary — markers in on open, markers out on save — and the only HTML
+ * that ever exists is inside a contenteditable that never reaches the database.
+ *
+ * `editorToMarks` is the half that matters and it is pure, so the awkward cases
+ * — nested tags, a pasted table, a browser that emits `<b>` where another emits
+ * `<strong>` — are testable without a browser.
+ */
+const EDITOR_TAG_MARKS = {
+  STRONG: "**", B: "**",
+  EM: "*", I: "*",
+  U: "__",
+  MARK: "=="
+};
+
+/** Serialise a contenteditable's children back to marked-up plain text. */
+function editorToMarks(node) {
+  let out = "";
+  for (const child of node.childNodes) {
+    if (child.nodeType === 3) {                       // text
+      out += child.nodeValue;
+      continue;
+    }
+    if (child.nodeType !== 1) continue;               // comments and the rest
+    const tag = child.tagName;
+    if (tag === "BR") { out += "\n"; continue; }
+
+    const inner = editorToMarks(child);
+    // A browser may wrap a highlight as a styled span rather than <mark>;
+    // treat any background colour as the highlight we meant.
+    const styled = (child.getAttribute?.("style") || "").includes("background");
+    const mark = EDITOR_TAG_MARKS[tag] || (styled ? "==" : "");
+
+    if (mark && inner.trim()) out += mark + inner + mark;
+    else out += inner;
+
+    // Block-level children end a line. `div` is what contenteditable produces
+    // for Enter in most browsers; `p` in the rest.
+    if (tag === "DIV" || tag === "P") out += "\n";
+  }
+  return out;
+}
+
+/** Everything an editable note needs: the toolbar and the box itself. */
+function notesEditorHtml({ id = "", className = "", placeholder = "" } = {}) {
+  return noteToolbarHtml()
+    + '<div class="notes-input ' + escapeHtml(className) + '"'
+    + (id ? ' id="' + escapeHtml(id) + '"' : "")
+    + ' contenteditable="true" role="textbox" aria-multiline="true"'
+    + ' data-placeholder="' + escapeHtml(placeholder) + '"></div>';
+}
+
+/**
+ * Wire an editable note. Returns { getMarks, setMarks } so callers never touch
+ * the DOM representation — which is the whole point of the boundary.
+ */
+function wireNotesEditor(scope, box) {
+  const trim = (s) => s.replace(/\n+$/, "");
+
+  // Paste arrives as whatever the source was — a styled email, a Google Doc,
+  // a whole page. Only its text is taken, so the four marks stay the only
+  // formatting that can exist in a note.
+  box.addEventListener("paste", (e) => {
+    e.preventDefault();
+    const text = e.clipboardData?.getData("text/plain") || "";
+    // Only honour a selection that is actually inside this box. A stale range
+    // left in another field would otherwise have the paste land there instead.
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount || !box.contains(sel.anchorNode)) {
+      box.textContent += text;
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    range.insertNode(document.createTextNode(text));
+    sel.collapseToEnd();
+    box.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+
+  scope.querySelectorAll(".note-tool").forEach((tool) => {
+    tool.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      // Save the range before focusing. preventDefault keeps focus in the box
+      // when it already has it, but if the user selected text and then clicked
+      // away, focus() moves the caret and collapses the selection — the tool
+      // would then mark nothing at all.
+      const sel = window.getSelection();
+      const saved = sel && sel.rangeCount && box.contains(sel.anchorNode)
+        ? sel.getRangeAt(0).cloneRange()
+        : null;
+      if (document.activeElement !== box) box.focus();
+      if (saved) { sel.removeAllRanges(); sel.addRange(saved); }
+      applyEditorMark(tool.dataset.mark);
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  });
+
+  return {
+    getMarks: () => trim(editorToMarks(box)),
+    setMarks: (text) => { box.innerHTML = renderNotes(text || ""); }
+  };
+}
+
+/**
+ * Apply a mark to the current selection.
+ *
+ * bold/italic/underline go through execCommand. It is deprecated and it is also
+ * the only thing that gets selection edge cases right across browsers without
+ * hundreds of lines of Range surgery; the replacement API does not exist yet.
+ * Highlight is done by hand because execCommand renders it as a styled span,
+ * and a <mark> is what the serialiser and the reader both want.
+ */
+function applyEditorMark(mark) {
+  if (mark === "**") return void document.execCommand?.("bold");
+  if (mark === "*") return void document.execCommand?.("italic");
+  if (mark === "__") return void document.execCommand?.("underline");
+
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount || sel.isCollapsed) return;
+  const range = sel.getRangeAt(0);
+  // Already highlighted: unwrap rather than nest a second <mark>.
+  const existing = sel.anchorNode?.parentElement?.closest?.("mark");
+  if (existing) {
+    const parent = existing.parentNode;
+    while (existing.firstChild) parent.insertBefore(existing.firstChild, existing);
+    parent.removeChild(existing);
+    return;
+  }
+  const el = document.createElement("mark");
+  try { range.surroundContents(el); }
+  catch { el.appendChild(range.extractContents()); range.insertNode(el); }
 }
 
 /** The same text with markers removed, for previews and anywhere plain. */
@@ -1588,8 +1677,11 @@ function conversationWidgetHtml() {
     + '</select></div>'
     + '</div>'
     + '<div class="field-group"><label>What did you talk about?</label>'
-    + noteToolbarHtml()
-    + '<textarea class="cw-notes" rows="5" placeholder="What they are working on, what they said, anything you want to bring up next time…"></textarea></div>'
+    + notesEditorHtml({
+        className: "cw-notes",
+        placeholder: "What they are working on, what they said, anything you want to bring up next time…"
+      })
+    + '</div>'
     + '<div class="field-group"><label>Attach a PDF <span class="opt-label">(optional)</span></label>'
     + '<input type="file" class="cw-file" accept="' + ATTACH_ACCEPT + '" /></div>'
     + '</div>'
@@ -1623,7 +1715,7 @@ function wireConversationWidget(root, getContacts, onSaved) {
   // covers both the Networking Log page and the quick-add modal, which are the
   // same markup rendered twice.
   const notesEl = $(".cw-notes");
-  if (notesEl) wireNoteToolbar(form, notesEl);
+  const notesApi = notesEl ? wireNotesEditor(form, notesEl) : null;
 
   let linkedId = null;   // set once an existing contact is chosen
   let active = -1;       // highlighted row in the dropdown
@@ -1786,7 +1878,7 @@ function wireConversationWidget(root, getContacts, onSaved) {
       frequency = "custom:" + days;
     }
 
-    const notes = $(".cw-notes").value.trim();
+    const notes = (notesApi ? notesApi.getMarks() : "").trim();
 
     const docFile = $(".cw-file")?.files?.[0] || null;
     if (docFile && !isAllowedAttachment(docFile)) {
@@ -1863,6 +1955,9 @@ function wireConversationWidget(root, getContacts, onSaved) {
     }
 
     form.reset();
+    // form.reset() knows nothing about a contenteditable, so without this the
+    // note you just saved stays on screen and gets sent again with the next one.
+    notesApi?.setMarks("");
     dateEl.value = todayDateString();
     customWrap.classList.add("hidden");
     setLinked(null);
@@ -2704,9 +2799,12 @@ async function initContactPage() {
       + INTERACTION_TYPES.map((t) => '<option value="' + t + '">' + t.charAt(0).toUpperCase() + t.slice(1) + '</option>').join("")
       + '</select></div>'
       + '</div>'
-      + '<div class="field-group"><label for="cpIntNotes">Notes</label>'
-      + noteToolbarHtml()
-      + '<textarea id="cpIntNotes" rows="5" placeholder="What did you talk about? What should you follow up on?"></textarea></div>'
+      + '<div class="field-group"><label>Notes</label>'
+      + notesEditorHtml({
+          id: "cpIntNotes",
+          placeholder: "What did you talk about? What should you follow up on?"
+        })
+      + '</div>'
       + '<div class="field-group"><label for="cpIntDocInput">Attach a PDF <span class="opt-label">(optional)</span></label>'
       + '<input type="file" id="cpIntDocInput" accept="' + ATTACH_ACCEPT + '" /></div>'
       + '<p id="cpIntError" class="error" aria-live="polite"></p>'
@@ -3030,7 +3128,8 @@ async function initContactPage() {
     // Third notes box, same treatment — logging from the profile should not be
     // the one place formatting is missing.
     const intNotesEl = $("#cpIntNotes");
-    if (intNotesEl) wireNoteToolbar(intNotesEl.closest(".field-group"), intNotesEl);
+    const intNotes = intNotesEl
+      ? wireNotesEditor(intNotesEl.closest(".field-group"), intNotesEl) : null;
 
     $("#cpAddIntBtn").addEventListener("click", async () => {
       const errEl = $("#cpIntError");
@@ -3044,7 +3143,8 @@ async function initContactPage() {
       }
 
       const interaction = normalizeInteraction({
-        date, type: $("#cpIntType").value, notes: $("#cpIntNotes").value.trim()
+        date, type: $("#cpIntType").value,
+        notes: (intNotes ? intNotes.getMarks() : "").trim()
       });
 
       // Upload before saving so the interaction carries the id from the start.
