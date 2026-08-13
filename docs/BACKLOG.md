@@ -83,6 +83,46 @@ with no access to this repo.
 
 ---
 
+## ORB-74 — every label agrees with what it opens, shipped Aug 13
+
+Phase 1 of ORB-73 left one mismatch on purpose: the **+** still announced *"Add a
+new connection"* while opening a chooser offering two actions, so the label named
+one of the two things behind it. A screen reader user was told about adding and
+then offered logging as an equal option.
+
+**The fix is four characters of markup.** `aria-label` and `title` on both pages
+are now **"Add to your network"**, matching the chooser heading they open. The
+rest already agreed — each chooser option is headed by the words it was chosen
+with.
+
+| Control | Says | Opens | Heading |
+|---|---|---|---|
+| **+** (index, contacts) | Add to your network | chooser | Add to your network |
+| Chooser option 1 | Add a connection | add dialog | Add a connection |
+| Chooser option 2 | Log a conversation | log dialog | Log a conversation |
+
+**The test is the actual deliverable.** The label lives in markup and the heading
+lives in a JS string, in different files, with nothing making them move together
+— which is exactly how the original mismatch arose. So `labels.test.mjs`
+**discovers** the pages carrying a **+** by globbing the HTML rather than listing
+them, then asserts the label equals the heading it opens and each option equals
+its dialog's. A third page that grows a **+** is held to the same rule instead of
+drifting unnoticed. That is the ORB-63 and ORB-65 lesson applied on purpose: a
+component test proves a thing works, not that it is present everywhere.
+
+**Both failure directions were verified by breaking them.** Restoring the old
+`aria-label` fails 2 assertions; renaming a chooser option without its dialog
+heading fails 1. A test for label drift that has never been seen to fail is the
+ORB-57 mistake — a metric that cannot fail is not measuring anything.
+
+20 new assertions; 954 across 31 suites.
+
+| Requirement | User Story | Importance | Jira Issue | Dependencies |
+|---|---|---|---|---|
+| Every label agrees with what it opens | As someone using a screen reader, I want a control to announce the thing it actually does, so I am not told "Add a new connection" and dropped into a conversation logger | Should have | ORB-74 | Depends on **ORB-73** having settled what the surfaces are — reconciling labels against a chooser that did not exist yet was not possible. Markup only: two `aria-label`/`title` pairs, no logic and no schema. The lasting part is the test, which discovers pages rather than listing them, so the rule survives a page being added. Phase 1 of ORB-73's rollout closes here; **ORB-75** is Phase 2 |
+
+---
+
 ## ORB-73 — add someone you have not spoken to yet, shipped Aug 13 (Phase 1)
 
 Built to the PRD *"Adding a connection you have not spoken to"*, frozen the same
