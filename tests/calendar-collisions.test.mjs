@@ -67,7 +67,12 @@ group("The collapsed row carries the meeting name");
   ok("while the body keeps everything", html.includes("Talked about the platform team"));
   ok("calendar-logged entries are marked as such", html.includes("convo-source"));
   eq("and only those", (html.match(/convo-source/g) || []).length, 1);
-  ok("every conversation can be deleted", (html.match(/data-delete-convo/g) || []).length === 2);
+  // ORB-64 moved Delete into the edit dialog, so the row offers one action and
+  // it is the safe one. Reaching a delete now means opening the conversation
+  // you are about to destroy.
+  ok("every conversation can be opened", (html.match(/data-edit-convo/g) || []).length === 2);
+  ok("and none can be deleted straight from the row",
+     !html.includes("data-delete-convo"));
 }
 
 group("An empty conversation still says so");

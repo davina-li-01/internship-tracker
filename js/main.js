@@ -197,6 +197,111 @@ function wireNoteToolbar(scope, textarea) {
   });
 }
 
+/**
+ * Editing a conversation, in a dialog (ORB-64).
+ *
+ * The inline version was a four-row textarea wedged into a timeline entry: no
+ * room to write, no way to correct the type or the date, and Delete sitting
+ * next to the note it would destroy. This carries the same fields as *log a
+ * conversation*, so the two are one thing seen twice rather than two
+ * half-features.
+ *
+ * `onSubmit({ date, type, notes, file })` and `onDelete()` do the writing — this
+ * function owns the dialog and nothing else, which is what makes it testable
+ * without a contact, a database or a page around it.
+ */
+function openConversationEditor(interaction, { title = "", onSubmit, onDelete } = {}) {
+  document.getElementById("convoEditModal")?.remove();
+
+  const modal = document.createElement("div");
+  modal.id = "convoEditModal";
+  modal.className = "modal-overlay";
+  modal.innerHTML = '<div class="modal-card convo-edit-card">'
+    + '<div class="convo-edit-header">'
+    + '<h3>' + escapeHtml(title || "Edit conversation") + '</h3>'
+    + '<button class="icon-btn" id="convoEditClose" type="button" aria-label="Close">✕</button>'
+    + '</div>'
+
+    + '<div class="convo-edit-head-row">'
+    + '<div class="field-group"><label for="convoEditDate">When</label>'
+    + '<input type="date" id="convoEditDate" value="' + escapeHtml(interaction?.date || "") + '" /></div>'
+    + '<div class="field-group"><label for="convoEditType">Type</label>'
+    + '<select id="convoEditType">'
+    + INTERACTION_TYPES.map((t) => '<option value="' + escapeHtml(t) + '"'
+        + (interaction?.type === t ? " selected" : "") + '>'
+        + escapeHtml(t.charAt(0).toUpperCase() + t.slice(1)) + '</option>').join("")
+    + '</select></div>'
+    + '</div>'
+
+    + '<div class="field-group"><label for="convoEditNotes">What did you talk about?</label>'
+    + noteToolbarHtml()
+    + '<textarea id="convoEditNotes" class="convo-edit-notes" rows="12"'
+    + ' placeholder="What they are working on, what they said, anything you want to bring up next time…"></textarea></div>'
+
+    + '<div class="field-group"><label for="convoEditFile">Attach a transcript or PDF'
+    + ' <span class="opt-label">(optional)</span></label>'
+    + '<input type="file" id="convoEditFile" accept="' + ATTACH_ACCEPT + '" /></div>'
+
+    + '<p class="convo-edit-err error" aria-live="polite"></p>'
+
+    // Save leads on the left; Delete is pushed to the far right by the footer's
+    // own layout, so the destructive action is never adjacent to the safe one.
+    + '<div class="convo-edit-footer">'
+    + '<div class="convo-edit-primary">'
+    + '<button class="btn" id="convoEditSave" type="button">Save</button>'
+    + '<button class="btn btn-secondary" id="convoEditCancel" type="button">Cancel</button>'
+    + '</div>'
+    + '<button class="btn danger-btn convo-edit-delete" id="convoEditDelete" type="button">'
+    + 'Delete conversation</button>'
+    + '</div>'
+    + '</div>';
+
+  document.body.appendChild(modal);
+
+  const area = modal.querySelector("#convoEditNotes");
+  area.value = interaction?.notes || "";
+  wireNoteToolbar(modal, area);
+
+  const errEl = modal.querySelector(".convo-edit-err");
+  const close = () => { modal.remove(); document.removeEventListener("keydown", onKey); };
+  function onKey(e) { if (e.key === "Escape") close(); }
+  document.addEventListener("keydown", onKey);
+
+  modal.querySelector("#convoEditClose").addEventListener("click", close);
+  modal.querySelector("#convoEditCancel").addEventListener("click", close);
+  modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+
+  modal.querySelector("#convoEditSave").addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    const file = modal.querySelector("#convoEditFile")?.files?.[0] || null;
+    errEl.textContent = "";
+    if (file && !isAllowedAttachment(file)) {
+      errEl.textContent = "That file type is not supported — PDF or an image.";
+      return;
+    }
+    btn.disabled = true;
+    if (file) btn.textContent = "Uploading…";
+    await onSubmit?.({
+      date: modal.querySelector("#convoEditDate").value || interaction?.date || "",
+      type: modal.querySelector("#convoEditType").value,
+      notes: area.value.trim(),
+      file
+    });
+    close();
+  });
+
+  // Confirmed here rather than by the caller, so no path reaches a delete
+  // without one. The note is on screen while the question is asked.
+  modal.querySelector("#convoEditDelete").addEventListener("click", async () => {
+    if (!window.confirm("Delete this conversation? This cannot be undone.")) return;
+    await onDelete?.();
+    close();
+  });
+
+  area.focus();
+  return modal;
+}
+
 /** The same text with markers removed, for previews and anywhere plain. */
 function stripNoteMarks(value = "") {
   return String(value)
@@ -1241,11 +1346,12 @@ function renderInteractionTimeline(interactions, files = []) {
       + (item.notes
         ? '<p class="convo-note">' + renderNotes(item.notes) + '</p>'
         : '<p class="convo-note muted">No notes yet — what did you talk about?</p>')
+      // Delete used to sit here, one slip away from the note it destroys. It
+      // lives in the dialog now (ORB-64), where opening it is a deliberate act
+      // and the button is the furthest thing from Save.
       + '<div class="convo-actions">'
       + '<button class="convo-edit" type="button" data-edit-convo="' + escapeHtml(item.id) + '">'
       + (item.notes ? 'Edit notes' : 'Add notes') + '</button>'
-      + '<button class="convo-delete" type="button" data-delete-convo="' + escapeHtml(item.id) + '">'
-      + 'Delete</button>'
       + '</div>'
       + '</div>';
 
@@ -3006,135 +3112,84 @@ async function initContactPage() {
    * the text actually changed, so opening an editor by accident costs nothing.
    */
   function attachConversationEditors() {
+    // One dialog does both (ORB-64). Delete lives inside it, so removing a
+    // conversation now takes opening the thing you are about to destroy.
+    //
     // Deleting is confirmed rather than undoable: unlike a reach-out, a
     // conversation carries notes you cannot reconstruct, and an undo toast that
     // vanishes after eight seconds is a poor guardian of the only copy.
-    root.querySelectorAll("[data-delete-convo]").forEach((btn) => {
+    root.querySelectorAll("[data-edit-convo]").forEach((btn) => {
       btn.addEventListener("click", async () => {
-        const id = btn.dataset.deleteConvo;
+        const id = btn.dataset.editConvo;
         const current = await freshContact();
         const item = (current?.interactions || []).find((i) => i.id === id);
         if (!item) return;
 
-        const headline = (item.notes || "").split("\n")[0].trim();
-        const label = headline ? `"${headline.slice(0, 60)}"` : "this conversation";
-        if (!window.confirm(
-          `Delete ${label} from ${formatDate(item.date)}?\n\nThis cannot be undone.`
-        )) return;
+        openConversationEditor(item, {
+          title: item.title || (item.type
+            ? item.type.charAt(0).toUpperCase() + item.type.slice(1)
+            : "Conversation") + " · " + formatDate(item.date),
 
-        btn.disabled = true;
-        await save((cur) => {
-          const kept = (cur.interactions || []).filter((i) => i.id !== id);
-          const newest = [...kept].sort((a, b) => b.date.localeCompare(a.date))[0];
-          return {
-            ...cur,
-            interactions: kept,
-            // Removing the most recent conversation has to move the relationship
-            // back to whatever is now newest, or the health bar keeps counting
-            // from a touchpoint that no longer exists.
-            lastContacted: newest ? newest.date : (cur.dateMet || ""),
-            nextReminder: !cur.reminderEnabled || cur.followUpFrequency === "none"
-              ? cur.nextReminder
-              : calculateNextReminder(
-                  newest ? newest.date : (cur.dateMet || todayDateString()),
-                  cur.followUpFrequency)
-          };
-        });
-        await renderPage();
-        showToast("Conversation deleted.");
-      });
-    });
+          onSubmit: async ({ date, type, notes, file }) => {
+            // Upload first, but never let it cost the notes: a failed
+            // attachment still saves the text and says so.
+            let newFileId = null;
+            let attachmentFailed = false;
+            if (file) {
+              const uploaded = await db.uploadFileToStorage(file, { contactId });
+              if (uploaded) newFileId = uploaded.id;
+              else attachmentFailed = true;
+            }
 
-    root.querySelectorAll("[data-edit-convo]").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const wrap = btn.closest(".convo-body");
-        const noteEl = wrap.querySelector(".convo-note");
-        // Read the stored text, NOT the rendered element. Since ORB-63 the note
-        // is marked-up HTML, so `textContent` would hand the editor a copy with
-        // every marker already stripped — and saving it would silently delete
-        // the user's formatting.
-        const stored = await freshContact();
-        const original = (stored?.interactions || [])
-          .find((i) => i.id === btn.dataset.editConvo)?.notes || "";
+            await save((cur) => {
+              const next = (cur.interactions || []).map((i) =>
+                i.id === id
+                  ? normalizeInteraction({
+                      ...i, date: date || i.date, type, notes,
+                      fileIds: newFileId ? [...(i.fileIds || []), newFileId] : (i.fileIds || [])
+                    })
+                  : i);
+              // The date is editable here, so the most recent conversation can
+              // change identity on save — the same recalculation delete needs.
+              const newest = [...next].sort((a, b) => b.date.localeCompare(a.date))[0];
+              return {
+                ...cur,
+                interactions: next,
+                lastContacted: newest ? newest.date : (cur.dateMet || ""),
+                nextReminder: !cur.reminderEnabled || cur.followUpFrequency === "none"
+                  ? cur.nextReminder
+                  : calculateNextReminder(
+                      newest ? newest.date : (cur.dateMet || todayDateString()),
+                      cur.followUpFrequency)
+              };
+            });
+            await renderPage();
+            showToast(attachmentFailed
+              ? "Saved — the file could not be attached."
+              : newFileId ? "Conversation and transcript saved." : "Conversation saved.");
+          },
 
-        const editor = document.createElement("div");
-        editor.className = "convo-editor";
-        editor.innerHTML = noteToolbarHtml()
-          + '<textarea class="convo-textarea" rows="4"'
-          + ' placeholder="What did you talk about? What should you follow up on?"></textarea>'
-          // A transcript is the other half of "what was said", and this is where
-          // you are standing when you remember you have one. It goes through the
-          // same upload as everywhere else, so it lands on the Files page too —
-          // attached to the conversation, not floating loose against the person.
-          + '<div class="field-group convo-attach">'
-          + '<label>Attach a transcript or PDF <span class="tiny muted">optional</span></label>'
-          + '<input type="file" class="convo-file" accept="' + ATTACH_ACCEPT + '" /></div>'
-          + '<p class="convo-edit-err error" aria-live="polite"></p>'
-          + '<div class="convo-editor-actions">'
-          + '<button class="btn btn-sm convo-save" type="button">Save</button>'
-          + '<button class="btn btn-secondary btn-sm convo-cancel" type="button">Cancel</button>'
-          + '</div>';
-
-        noteEl.hidden = true;
-        btn.hidden = true;
-        wrap.appendChild(editor);
-
-        const area = editor.querySelector(".convo-textarea");
-        area.value = original;
-        wireNoteToolbar(editor, area);
-        area.focus();
-
-        const restore = () => { editor.remove(); noteEl.hidden = false; btn.hidden = false; };
-
-        editor.querySelector(".convo-cancel").addEventListener("click", restore);
-        area.addEventListener("keydown", (e) => {
-          if (e.key === "Escape") { e.preventDefault(); restore(); }
-        });
-
-        editor.querySelector(".convo-save").addEventListener("click", async (e) => {
-          const next = area.value.trim();
-          const docFile = editor.querySelector(".convo-file")?.files?.[0] || null;
-          const errEl = editor.querySelector(".convo-edit-err");
-          errEl.textContent = "";
-
-          if (docFile && !isAllowedAttachment(docFile)) {
-            errEl.textContent = "That file type is not supported — PDF or an image.";
-            return;
+          onDelete: async () => {
+            await save((cur) => {
+              const kept = (cur.interactions || []).filter((i) => i.id !== id);
+              const newest = [...kept].sort((a, b) => b.date.localeCompare(a.date))[0];
+              return {
+                ...cur,
+                interactions: kept,
+                // Removing the most recent conversation has to move the
+                // relationship back to whatever is now newest, or the health
+                // bar keeps counting from a touchpoint that no longer exists.
+                lastContacted: newest ? newest.date : (cur.dateMet || ""),
+                nextReminder: !cur.reminderEnabled || cur.followUpFrequency === "none"
+                  ? cur.nextReminder
+                  : calculateNextReminder(
+                      newest ? newest.date : (cur.dateMet || todayDateString()),
+                      cur.followUpFrequency)
+              };
+            });
+            await renderPage();
+            showToast("Conversation deleted.");
           }
-          // Attaching a file with the text untouched is a real edit, so the
-          // no-op check has to account for it or the upload is silently dropped.
-          if (next === original.trim() && !docFile) { restore(); return; }
-
-          const saveBtn = e.currentTarget;
-          saveBtn.disabled = true;
-          const id = btn.dataset.editConvo;
-
-          // Upload first, but never let it cost the notes: a failed attachment
-          // still saves the text and says so, same order the profile logger uses.
-          let newFileId = null;
-          let attachmentFailed = false;
-          if (docFile) {
-            saveBtn.textContent = "Uploading…";
-            const uploaded = await db.uploadFileToStorage(docFile, { contactId });
-            if (uploaded) newFileId = uploaded.id;
-            else attachmentFailed = true;
-          }
-
-          await save((cur) => ({
-            ...cur,
-            interactions: (cur.interactions || []).map((i) =>
-              i.id === id
-                ? normalizeInteraction({
-                    ...i,
-                    notes: next,
-                    fileIds: newFileId ? [...(i.fileIds || []), newFileId] : (i.fileIds || [])
-                  })
-                : i)
-          }));
-          await renderPage();
-          showToast(attachmentFailed
-            ? "Notes saved — the file could not be attached."
-            : newFileId ? "Notes and transcript saved." : "Notes saved.");
         });
       });
     });

@@ -118,7 +118,7 @@ const EXPORTS = [
   // rendering
   "ringHtml", "splitBarHtml", "personRowHtml", "wirePersonRows",
   "renderNotes", "stripNoteMarks", "toggleNoteMark", "noteToolbarHtml",
-  "wireNoteToolbar", "cadenceSentence",
+  "wireNoteToolbar", "cadenceSentence", "openConversationEditor",
   "renderInteractionTimeline", "conversationPreview", "renderStorageFileCard",
   "renderUpcomingMeetings", "healthBarHtml",
   // behaviour

@@ -4254,3 +4254,41 @@ body.dark .view-emails a:hover { color: var(--accent); }
   border-radius: 2px;
 }
 body.dark .convo-note mark { background: #A16207; color: #FFFBEB; }
+
+/* Editing a conversation in a dialog (ORB-64). Room to write, the same fields
+   as logging one, and Delete as far from Save as the footer allows. */
+.convo-edit-card {
+  width: min(680px, 92vw);
+  max-height: 88vh;
+  overflow-y: auto;
+}
+.convo-edit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.convo-edit-header h3 { margin: 0; }
+.convo-edit-head-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+}
+.convo-edit-notes {
+  width: 100%;
+  min-height: 14rem;
+  resize: vertical;
+}
+.convo-edit-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.25rem;
+  flex-wrap: wrap;
+}
+.convo-edit-primary { display: flex; gap: 0.6rem; }
+/* Pushed right and last in the tab order: the destructive action should never
+   be the thing your hand is already near. */
+.convo-edit-delete { margin-left: auto; }
