@@ -125,11 +125,20 @@ function renderNotes(value = "") {
  * Buttons that wrap the selection, so the markers are something you get rather
  * than something you have to learn. Typing them by hand still works.
  */
+// A highlighter, drawn rather than an emoji: emoji render differently on every
+// platform and cannot take the button's colour.
+const HIGHLIGHTER_SVG =
+  '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">'
+  + '<path d="M15.6 3.4a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L11.5 17.5l-4-4z"'
+  + ' fill="currentColor"/>'
+  + '<path d="M7.5 13.5l4 4-2.2 2.2H5.6l-1.4-1.4z" fill="currentColor" opacity="0.55"/>'
+  + '</svg>';
+
 const NOTE_TOOLS = [
   { mark: "**", label: "B", title: "Bold", cls: "is-bold" },
   { mark: "*",  label: "I", title: "Italic", cls: "is-italic" },
   { mark: "__", label: "U", title: "Underline", cls: "is-underline" },
-  { mark: "==", label: "H", title: "Highlight", cls: "is-highlight" }
+  { mark: "==", label: HIGHLIGHTER_SVG, title: "Highlight", cls: "is-highlight", raw: true }
 ];
 
 function noteToolbarHtml() {
@@ -138,7 +147,9 @@ function noteToolbarHtml() {
         '<button type="button" class="note-tool ' + t.cls + '"'
         + ' data-mark="' + escapeHtml(t.mark) + '"'
         + ' title="' + escapeHtml(t.title) + '" aria-label="' + escapeHtml(t.title) + '">'
-        + t.label + '</button>').join("")
+        // Only the hard-coded SVG above is ever inserted raw; everything a user
+        // could influence still goes through escapeHtml.
+        + (t.raw ? t.label : escapeHtml(t.label)) + '</button>').join("")
     + '</div>';
 }
 
@@ -1574,6 +1585,7 @@ function conversationWidgetHtml() {
     + '</select></div>'
     + '</div>'
     + '<div class="field-group"><label>What did you talk about?</label>'
+    + noteToolbarHtml()
     + '<textarea class="cw-notes" rows="5" placeholder="What they are working on, what they said, anything you want to bring up next time…"></textarea></div>'
     + '<div class="field-group"><label>Attach a PDF <span class="opt-label">(optional)</span></label>'
     + '<input type="file" class="cw-file" accept="' + ATTACH_ACCEPT + '" /></div>'
@@ -1602,6 +1614,13 @@ function wireConversationWidget(root, getContacts, onSaved) {
   const dateEl = $(".cw-date");
 
   if (dateEl && !dateEl.value) dateEl.value = todayDateString();
+
+  // The toolbar shipped into the edit dialog and nowhere else, so formatting
+  // existed in one of the three places a note gets written. Wired here it
+  // covers both the Networking Log page and the quick-add modal, which are the
+  // same markup rendered twice.
+  const notesEl = $(".cw-notes");
+  if (notesEl) wireNoteToolbar(form, notesEl);
 
   let linkedId = null;   // set once an existing contact is chosen
   let active = -1;       // highlighted row in the dropdown
@@ -2683,6 +2702,7 @@ async function initContactPage() {
       + '</select></div>'
       + '</div>'
       + '<div class="field-group"><label for="cpIntNotes">Notes</label>'
+      + noteToolbarHtml()
       + '<textarea id="cpIntNotes" rows="5" placeholder="What did you talk about? What should you follow up on?"></textarea></div>'
       + '<div class="field-group"><label for="cpIntDocInput">Attach a PDF <span class="opt-label">(optional)</span></label>'
       + '<input type="file" id="cpIntDocInput" accept="' + ATTACH_ACCEPT + '" /></div>'
@@ -3003,6 +3023,11 @@ async function initContactPage() {
       await db.deleteContact(contactId);
       window.location.href = "contacts.html";
     });
+
+    // Third notes box, same treatment — logging from the profile should not be
+    // the one place formatting is missing.
+    const intNotesEl = $("#cpIntNotes");
+    if (intNotesEl) wireNoteToolbar(intNotesEl.closest(".field-group"), intNotesEl);
 
     $("#cpAddIntBtn").addEventListener("click", async () => {
       const errEl = $("#cpIntError");

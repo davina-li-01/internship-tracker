@@ -127,4 +127,56 @@ group("The toolbar is wired to the box it belongs to");
     renderNotes(area.value) === "keep <strong>this</strong>");
 }
 
+// ── Every box you can write a note in ────────────────────────────────────────
+// The toolbar shipped into the edit dialog and nowhere else. Every assertion
+// above still passed, because they all tested the toolbar in isolation and
+// never asked whether the places people actually type had one. These do.
+
+group("The toolbar exists wherever a note is written");
+{
+  const html = main.conversationWidgetHtml();
+  ok("the logger renders one", html.includes("note-toolbar"));
+  ok("above its notes box, not below",
+    html.indexOf("note-toolbar") < html.indexOf("cw-notes"));
+}
+
+group("And it is wired, not just drawn");
+{
+  // A toolbar that renders and does nothing is worse than no toolbar: it
+  // promises a feature and silently drops the click.
+  document.body.innerHTML = '<div id="root">' + main.conversationWidgetHtml() + "</div>";
+  const host = document.getElementById("root");
+  main.wireConversationWidget(host, () => [], async () => {});
+
+  const area = host.querySelector(".cw-notes");
+  area.value = "the platform team";
+  area.setSelectionRange(4, 17);
+  host.querySelector('.note-toolbar [data-mark="**"]')
+    .dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+  eq("bold wraps the selection in the logger", area.value, "the **platform team**");
+
+  area.setSelectionRange(0, 3);
+  host.querySelector('.note-toolbar [data-mark="=="]')
+    .dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+  eq("and so does highlight", area.value, "==the== **platform team**");
+}
+
+group("The highlighter is drawn, not an emoji");
+{
+  const html = main.noteToolbarHtml();
+  ok("it ships an inline svg", /<svg[^>]*viewBox/.test(html));
+  ok("which takes the button's colour", html.includes("currentColor"));
+  ok("and is hidden from screen readers, since the button is labelled",
+    /aria-hidden="true"/.test(html));
+  // Counted off the buttons, not the string — the group wrapper carries an
+  // aria-label of its own and a naive match counts five.
+  document.body.innerHTML = html;
+  const tools = [...document.querySelectorAll(".note-tool")];
+  eq("four tools", tools.length, 4);
+  ok("each has an accessible name, including the icon-only one",
+    tools.every((t) => (t.getAttribute("aria-label") || "").length > 0));
+  eq("and the group itself is named",
+    document.querySelector(".note-toolbar").getAttribute("aria-label"), "Formatting");
+}
+
 done();

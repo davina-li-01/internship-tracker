@@ -4263,25 +4263,51 @@ body.dark .view-emails a:hover { color: var(--accent); }
    plain text; these buttons just wrap the selection so nobody has to learn the
    syntax to use it. */
 .note-toolbar {
-  display: flex;
-  gap: 0.25rem;
-  margin-bottom: 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  margin-bottom: 0.45rem;
+  padding: 0.2rem;
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  background: var(--input-bg);
 }
 .note-tool {
-  min-width: 1.9rem;
-  padding: 0.25rem 0.45rem;
-  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  padding: 0;
+  border: none;
   border-radius: 6px;
-  background: var(--surface);
+  background: none;
   color: var(--text);
-  cursor: pointer;
+  font-size: 0.95rem;
   line-height: 1;
+  cursor: pointer;
+  transition: background var(--trans);
 }
-.note-tool:hover { background: var(--surface-alt, var(--bg)); }
-.note-tool.is-bold      { font-weight: 700; }
-.note-tool.is-italic    { font-style: italic; }
-.note-tool.is-underline { text-decoration: underline; }
-.note-tool.is-highlight { background: #FEF08A; color: #1C1917; }
+.note-tool:hover { background: var(--row-hover); }
+.note-tool:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.note-tool.is-bold      { font-weight: 800; }
+.note-tool.is-italic    { font-style: italic; font-family: Georgia, "Times New Roman", serif; }
+.note-tool.is-underline { text-decoration: underline; text-underline-offset: 2px; }
+/* The swatch under the highlighter says what colour it paints, the same way
+   the reference toolbar shows the colour under the A. */
+.note-tool.is-highlight {
+  position: relative;
+  color: var(--text-muted);
+}
+.note-tool.is-highlight::after {
+  content: "";
+  position: absolute;
+  left: 0.35rem; right: 0.35rem; bottom: 0.28rem;
+  height: 3px;
+  border-radius: 2px;
+  background: #FDE047;
+}
+.note-tool.is-highlight:hover { color: var(--text); }
 
 /* Rendered marks inside a saved note. */
 .convo-note mark {
