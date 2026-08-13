@@ -4260,6 +4260,49 @@ body.dark .view-emails a:hover { color: var(--accent); }
 }
 .cadence-result .link-btn { font-size: inherit; }
 
+/* The chooser behind the + (ORB-73). Two named actions with a line of
+   explanation each — the descriptions are what carry the distinction, so these
+   are deliberately not two bare buttons sitting side by side. */
+.chooser-card { max-width: 460px; width: 100%; text-align: left; }
+.chooser-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
+
+.chooser-option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.chooser-option:hover { border-color: var(--primary); background: var(--surface-alt); }
+.chooser-option:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+.chooser-title { font-weight: 600; }
+.chooser-desc { font-size: 0.78rem; color: var(--text-muted); line-height: 1.4; }
+
+body.dark .chooser-option { background: var(--surface); }
+body.dark .chooser-option:hover { border-color: var(--accent); }
+
+/* Add a connection (ORB-73). Same grid as the conversation widget's person
+   block, minus every conversation field — their absence is the point. */
+.quick-add-lede { margin: -0.5rem 0 0.9rem; }
+.ac-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem 0.85rem; }
+.ac-name-field { grid-column: 1 / -1; }
+.ac-custom { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.4rem; }
+.ac-custom-days { max-width: 6rem; }
+.ac-custom-unit { font-size: 0.8rem; color: var(--text-muted); }
+.ac-submit { margin-top: 0.9rem; }
+.ac-error a { color: inherit; text-decoration: underline; }
+
+@media (max-width: 520px) { .ac-grid { grid-template-columns: 1fr; } }
+
 /* Formatting toolbar for conversation notes (ORB-63). Markers are stored as
    plain text; these buttons just wrap the selection so nobody has to learn the
    syntax to use it. */

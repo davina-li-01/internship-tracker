@@ -58,6 +58,54 @@ with no access to this repo.
 
 ---
 
+## ORB-73 — add someone you have not spoken to yet, shipped Aug 13 (Phase 1)
+
+Built to the PRD *"Adding a connection you have not spoken to"*, frozen the same
+day. The open questions below were answered there: **option B**, a chooser behind
+the **+** offering *Add a connection* and *Log a conversation*, each with a line
+saying what it does. Naming both actions where the choice is made is what removes
+the ambiguity; one control silently meaning two things is what created it.
+
+**What shipped.** `openQuickAddChooser` is now what the **+** opens on both pages.
+`addConnectionFormHtml` / `wireAddConnectionForm` write a contact with
+`interactions: []` and no `lastContacted`. The conversation logger is unchanged
+and one click further away.
+
+**The bug that did not make it out.** Passing `dateMet` through and letting
+`normalizeContact` derive the deadline would have re-created the exact failure the
+ticket exists to fix: a person met yesterday gets a natural deadline a month out,
+reads **In touch**, and never appears in Reach out next — the cold-relationship-
+looks-healthy bug, arriving through `dateMet` instead of through a fabricated
+interaction. So `nextReminder` is passed explicitly as `firstDeadlineFor("", freq)`
+— the grace window — because no conversation means there is no anchor to count
+from. Both cases are asserted in `add-connection.test.mjs`.
+
+**`lastContacted` is empty** when no meeting date is given, which is the default
+and the common case. When a date *is* given it flows through
+`normalizeContact`'s existing `dateMet` fallback — deliberately not changed here,
+because `grace.test.mjs` and `health.test.mjs` encode that fallback for contacts
+that *do* have conversations, and rewriting it inside a UI ticket is how a cadence
+change ships without review. The guarantee that matters holds either way: no date
+is ever fabricated, and the contact never reads as healthy.
+
+**Duplicates** are caught by exact name match, case- and padding-insensitive, and
+offer the existing profile instead of creating a second row. Substring matches are
+allowed through — *Marcus Chenoweth* is not *Marcus Chen*.
+
+**Not in Phase 1:** empty states for a profile with no history (**ORB-75**), label
+reconciliation across the **+**, both chooser options and both dialog headings
+(**ORB-74**), and re-running the metrics on 27 Aug (**ORB-76**). The **+** still
+carries `aria-label="Add a new connection"` while opening a chooser — a known
+mismatch that is ORB-74's to close, not left by accident.
+
+72 new assertions; 934 across 30 suites.
+
+| Requirement | User Story | Importance | Jira Issue | Dependencies |
+|---|---|---|---|---|
+| Add someone you have not spoken to yet | As someone building out my network, I can add a person I have met but not yet spoken to, so their record is honest and their cadence does not start from a conversation that never happened | Must have | ORB-73 | **ORB-69** is the dependency that made this cheap — a cadence with no anchor date is judged against the grace window instead of reading "No schedule", so a contact with no conversation still appears in Reach out next rather than vanishing. Tier defaults come from **ORB-51** and the picker shape from **ORB-52**; the toast pattern from **ORB-14**. Deduplication is deliberately the existing autocomplete and no new matching logic. Phase 1 of three: **ORB-74** reconciles the labels, **ORB-75** the empty states, **ORB-76** re-reads the metrics on 27 Aug |
+
+---
+
 ## ORB-73 — add someone you have not spoken to yet (opened Aug 13)
 
 **The only way in fabricates a conversation.** The **+** on My Network and the

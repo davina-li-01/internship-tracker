@@ -125,6 +125,9 @@ const EXPORTS = [
   // behaviour
   "markReachedOut", "showToast",
   "conversationWidgetHtml", "wireConversationWidget",
+  // adding a person with no conversation (ORB-73)
+  "addConnectionFormHtml", "wireAddConnectionForm", "openAddConnectionModal",
+  "openQuickAddChooser", "openQuickAddModal", "initQuickAddButton",
   // attachments
   "isAllowedAttachment", "isImageFile", "ATTACH_ACCEPT",
   // integrations

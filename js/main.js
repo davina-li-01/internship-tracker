@@ -2070,10 +2070,386 @@ function openQuickAddModal(contacts, onSaved) {
   modal.querySelector(".cw-name")?.focus();
 }
 
+/**
+ * Adding someone you have not spoken to (ORB-73).
+ *
+ * The + used to open the conversation logger and nothing else, so the only way
+ * to get a person into Orbit was to record a conversation with them. Saving
+ * always wrote an interaction and set `lastContacted` to its date, which meant
+ * a cold relationship was stored as freshly contacted and read as healthy — the
+ * exact failure the product exists to prevent, arriving through the front door.
+ *
+ * This form writes a person and nothing else. There are no conversation fields,
+ * and their absence is the feature.
+ */
+function addConnectionFormHtml() {
+  const freqOptions = Object.entries(FREQUENCY_LABELS)
+    .map(([v, l]) => '<option value="' + v + '"' + (v === "monthly" ? " selected" : "") + '>' + l + '</option>')
+    .join("");
+  const defaultTier = tierForFrequency("monthly");
+
+  return '<form class="ac-form" autocomplete="off">'
+    + '<div class="ac-grid">'
+    + '<div class="field-group ac-name-field">'
+    + '<label for="acName">Their name <span class="required">*</span></label>'
+    + '<div class="combo">'
+    + '<input type="text" id="acName" class="ac-name" placeholder="Start typing a name…" required'
+    + ' role="combobox" aria-autocomplete="list" aria-expanded="false" />'
+    + '<ul class="combo-list" role="listbox" hidden></ul>'
+    + '</div>'
+    + '</div>'
+    + '<div class="field-group"><label for="acRole">Role / Title</label>'
+    + '<input type="text" id="acRole" class="ac-role" placeholder="Product Manager" /></div>'
+    + '<div class="field-group"><label for="acCompany">Company</label>'
+    + '<input type="text" id="acCompany" class="ac-company" placeholder="Where they work" /></div>'
+    + '<div class="field-group"><label for="acEmail">Email</label>'
+    + '<input type="email" id="acEmail" class="ac-email" placeholder="email@example.com" /></div>'
+    + '</div>'
+
+    // Same tier-first shape as the profile and the conversation widget (ORB-52):
+    // "what kind of relationship is this" is answerable the moment you meet
+    // someone; "how many days" is not. The interval stays available as the
+    // override, behind Adjust, so the result line is the only cadence control
+    // most people ever touch.
+    + '<div class="field-group"><label for="acTier">What kind of relationship?</label>'
+    + '<select id="acTier" class="ac-tier">' + tierOptionsHtml(defaultTier) + '</select>'
+    + '<p class="tiny muted ac-tier-hint">' + escapeHtml(TIERS[defaultTier].hint) + '</p></div>'
+    + '<p class="cadence-result tiny ac-cadence-line">'
+    + '<span class="ac-cadence-text">' + escapeHtml(cadenceSentence(frequencyForTier(defaultTier))) + '</span> '
+    + '<button type="button" class="link-btn ac-adjust">Adjust</button></p>'
+    + '<div class="field-group hidden ac-freq-group">'
+    + '<label for="acFrequency">Reach out again?</label>'
+    + '<select id="acFrequency" class="ac-freq">' + freqOptions
+    + '<option value="custom">Custom…</option></select>'
+    + '<div class="ac-custom hidden">'
+    + '<input type="number" class="ac-custom-days" min="1" max="365" placeholder="45"'
+    + ' aria-label="Every how many days" />'
+    + '<span class="ac-custom-unit">days</span>'
+    + '</div></div>'
+
+    // Optional, and said so twice — in the label and under it. "I do not
+    // remember when we met" is the normal answer and must never block adding
+    // someone. Empty is a valid, permanent value; it is never filled in with
+    // today's date, because a guessed date is indistinguishable from a known
+    // one once stored.
+    + '<div class="field-group"><label for="acDateMet">When you met '
+    + '<span class="opt-label">(optional)</span></label>'
+    + '<input type="date" id="acDateMet" class="ac-datemet" />'
+    + '<p class="tiny muted">Leave this blank if you do not remember — it is never guessed for you.</p></div>'
+
+    + '<p class="error ac-error" aria-live="polite"></p>'
+    + '<button type="submit" class="btn ac-submit">Add to my network</button>'
+    + '</form>';
+}
+
+/**
+ * @param getContacts  () => contacts, read fresh so the dropdown stays current
+ * @param onSaved      called with the saved contact
+ */
+function wireAddConnectionForm(root, getContacts, onSaved) {
+  const form = root.querySelector(".ac-form");
+  if (!form) return;
+
+  const $ = (sel) => form.querySelector(sel);
+  const nameEl = $(".ac-name");
+  const listEl = $(".combo-list");
+  const tierEl = $(".ac-tier");
+  const freqEl = $(".ac-freq");
+  const freqGroup = $(".ac-freq-group");
+  const customWrap = $(".ac-custom");
+  const errEl = $(".ac-error");
+
+  let active = -1;
+
+  const chosenFrequency = () => {
+    if (freqEl.value !== "custom") return freqEl.value || "none";
+    const days = parseInt($(".ac-custom-days").value, 10);
+    return Number.isNaN(days) || days < 1 ? "" : "custom:" + days;
+  };
+
+  const refreshCadenceLine = () => {
+    $(".ac-cadence-text").textContent = cadenceSentence(chosenFrequency());
+  };
+
+  tierEl.addEventListener("change", () => {
+    $(".ac-tier-hint").textContent = TIERS[tierEl.value]?.hint || "";
+    const preset = frequencyForTier(tierEl.value);
+    if (preset.startsWith("custom:")) {
+      freqEl.value = "custom";
+      customWrap.classList.remove("hidden");
+      $(".ac-custom-days").value = preset.slice(7);
+    } else {
+      freqEl.value = preset;
+      customWrap.classList.add("hidden");
+    }
+    refreshCadenceLine();
+  });
+
+  $(".ac-adjust").addEventListener("click", () => {
+    freqGroup.classList.toggle("hidden");
+    if (!freqGroup.classList.contains("hidden")) freqEl.focus();
+  });
+
+  freqEl.addEventListener("change", () => {
+    customWrap.classList.toggle("hidden", freqEl.value !== "custom");
+    if (freqEl.value === "custom") $(".ac-custom-days").focus();
+    refreshCadenceLine();
+  });
+  $(".ac-custom-days").addEventListener("input", refreshCadenceLine);
+
+  // ── Duplicate guard ──────────────────────────────────────────────────
+  // The autocomplete is the whole of ORB-73's deduplication (§4 rules out
+  // matching logic). Here it does the opposite job to the conversation
+  // widget's: there, picking a match links the conversation onto an existing
+  // person; here, a match means the person already exists and adding them
+  // again is the mistake. So it offers their profile instead of prefilling.
+  const closeList = () => {
+    listEl.hidden = true;
+    listEl.innerHTML = "";
+    active = -1;
+    nameEl.setAttribute("aria-expanded", "false");
+  };
+
+  const findExisting = (value) => {
+    const q = String(value || "").trim().toLowerCase();
+    if (!q) return null;
+    return (getContacts() || []).find((c) => (c.name || "").trim().toLowerCase() === q) || null;
+  };
+
+  const alreadyThere = (contact) => {
+    errEl.innerHTML = escapeHtml(contact.name) + ' is already in your network. '
+      + '<a href="contact.html?id=' + encodeURIComponent(contact.id) + '">Open their profile</a>'
+      + ' to log a conversation or edit their details.';
+  };
+
+  const renderList = () => {
+    const q = nameEl.value.trim().toLowerCase();
+    if (!q) return closeList();
+
+    const matches = (getContacts() || [])
+      .filter((c) => c.name && c.name.toLowerCase().includes(q))
+      .slice(0, 6);
+
+    if (!matches.length) return closeList();
+
+    listEl.innerHTML = matches.map((c, i) =>
+      '<li class="combo-item" role="option" data-id="' + escapeHtml(c.id) + '"'
+      + (i === active ? ' aria-selected="true"' : '') + '>'
+      + '<span class="combo-avatar" aria-hidden="true">' + escapeHtml(initialsFor(c.name)) + '</span>'
+      + '<span class="combo-main">'
+      + '<span class="combo-name">' + escapeHtml(c.name) + '</span>'
+      + '<span class="combo-sub">' + escapeHtml(c.role || "Role not set")
+      + (c.company ? " @ " + escapeHtml(c.company) : "") + '</span>'
+      + '</span>'
+      + '<span class="combo-last">Already added</span>'
+      + '</li>').join("");
+    listEl.hidden = false;
+    nameEl.setAttribute("aria-expanded", "true");
+
+    listEl.querySelectorAll(".combo-item").forEach((li) => {
+      li.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        const match = (getContacts() || []).find((c) => c.id === li.dataset.id);
+        if (match) {
+          nameEl.value = match.name;
+          closeList();
+          alreadyThere(match);
+        }
+      });
+    });
+  };
+
+  nameEl.addEventListener("input", () => {
+    errEl.textContent = "";
+    renderList();
+  });
+
+  nameEl.addEventListener("keydown", (e) => {
+    const items = [...listEl.querySelectorAll(".combo-item")];
+    if (!items.length) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      active = e.key === "ArrowDown"
+        ? Math.min(active + 1, items.length - 1)
+        : Math.max(active - 1, 0);
+      items.forEach((li, i) => li.setAttribute("aria-selected", String(i === active)));
+      items[active].scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter" && active >= 0) {
+      e.preventDefault();
+      const match = (getContacts() || []).find((c) => c.id === items[active].dataset.id);
+      if (match) {
+        nameEl.value = match.name;
+        closeList();
+        alreadyThere(match);
+      }
+    } else if (e.key === "Escape") {
+      closeList();
+    }
+  });
+
+  nameEl.addEventListener("blur", () => setTimeout(closeList, 120));
+
+  // ── Save ─────────────────────────────────────────────────────────────
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    errEl.textContent = "";
+
+    const name = nameEl.value.trim();
+    if (!name) { errEl.textContent = "Who are you adding?"; return; }
+
+    const duplicate = findExisting(name);
+    if (duplicate) { alreadyThere(duplicate); return; }
+
+    const frequency = chosenFrequency();
+    if (!frequency) {
+      errEl.textContent = "Enter how many days between reach-outs.";
+      return;
+    }
+
+    const contact = normalizeContact({
+      name,
+      role: $(".ac-role").value,
+      company: $(".ac-company").value,
+      email: $(".ac-email").value,
+      dateMet: $(".ac-datemet").value || "",
+      tier: tierEl.value,
+      followUpFrequency: frequency,
+      reminderEnabled: frequency !== "none",
+      // No conversation has happened, so there is no anchor to count a cadence
+      // from — which is precisely the case firstDeadlineFor answers with the
+      // grace window. Passed explicitly rather than derived, because deriving
+      // it would let a recent `dateMet` set a natural deadline and the person
+      // would read "In touch" without a word having been exchanged. ORB-69
+      // made this state coherent; before it, they would have been invisible.
+      nextReminder: frequency === "none" ? "" : firstDeadlineFor("", frequency),
+      // Stated rather than implied. This is the entire ticket.
+      interactions: []
+    });
+
+    const submitBtn = $(".ac-submit");
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Adding…";
+    const saved = await db.saveContact(contact);
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Add to my network";
+
+    if (!saved) {
+      errEl.textContent = "Could not save. Open the console (F12) for the Supabase error.";
+      return;
+    }
+
+    if (onSaved) await onSaved(saved, { name });
+  });
+}
+
+function openAddConnectionModal(contacts, onSaved) {
+  document.getElementById("addConnectionModal")?.remove();
+
+  const modal = document.createElement("div");
+  modal.id = "addConnectionModal";
+  modal.className = "modal-overlay";
+  modal.innerHTML = '<div class="modal-card quick-add-card">'
+    + '<div class="quick-add-header">'
+    + '<h3>Add a connection</h3>'
+    + '<button class="icon-btn" id="addConnectionClose" type="button" aria-label="Close">✕</button>'
+    + '</div>'
+    + '<p class="tiny muted quick-add-lede">Someone you know but have not spoken to yet. '
+    + 'No conversation is recorded.</p>'
+    + addConnectionFormHtml()
+    + '</div>';
+  document.body.appendChild(modal);
+
+  const close = () => modal.remove();
+  modal.querySelector("#addConnectionClose").addEventListener("click", close);
+  modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+  document.addEventListener("keydown", function onEsc(e) {
+    if (e.key === "Escape" && !modal.querySelector(".combo-list:not([hidden])")) {
+      close();
+      document.removeEventListener("keydown", onEsc);
+    }
+  });
+
+  // Same shape as ORB-14's fix for the conversation modal: close first, then
+  // confirm outside, so the only feedback in the app is not destroyed with the
+  // DOM that produced it. Neither page carrying the + shows a new contact.
+  wireAddConnectionForm(modal, () => contacts, async (saved, meta = {}) => {
+    close();
+    if (onSaved) await onSaved(saved);
+    showToast(meta.name + " added to your network.", {
+      actionLabel: "View profile",
+      href: "contact.html?id=" + encodeURIComponent(saved.id),
+      duration: 7000
+    });
+  });
+  modal.querySelector(".ac-name")?.focus();
+}
+
+/**
+ * The chooser behind the + (ORB-73, option B).
+ *
+ * One control silently meant two things: the button says "Add a new connection"
+ * and opened a dialog headed "Log a conversation". Naming both actions where
+ * the choice is made is what removes the ambiguity — the descriptions carry the
+ * distinction, so these are deliberately not two bare buttons.
+ *
+ * The cost is one extra click on both paths. Accepted: a click that tells you
+ * what you are about to do is worth more than one saved.
+ */
+function openQuickAddChooser(contacts, onSaved) {
+  document.getElementById("quickAddChooser")?.remove();
+
+  const modal = document.createElement("div");
+  modal.id = "quickAddChooser";
+  modal.className = "modal-overlay";
+  modal.innerHTML = '<div class="modal-card chooser-card" role="dialog" aria-modal="true"'
+    + ' aria-labelledby="chooserTitle">'
+    + '<div class="quick-add-header">'
+    + '<h3 id="chooserTitle">Add to your network</h3>'
+    + '<button class="icon-btn" id="chooserClose" type="button" aria-label="Close">✕</button>'
+    + '</div>'
+    + '<ul class="chooser-list">'
+    // Add first: it is what the button already claims to do, and the action a
+    // new account needs most.
+    + '<li><button type="button" class="chooser-option" id="chooseAddConnection">'
+    + '<span class="chooser-title">Add a connection</span>'
+    + '<span class="chooser-desc">Someone you know but have not spoken to yet. '
+    + 'No conversation is recorded.</span>'
+    + '</button></li>'
+    + '<li><button type="button" class="chooser-option" id="chooseLogConversation">'
+    + '<span class="chooser-title">Log a conversation</span>'
+    + '<span class="chooser-desc">Record a conversation you have already had, '
+    + 'with someone new or already in your network.</span>'
+    + '</button></li>'
+    + '</ul>'
+    + '</div>';
+  document.body.appendChild(modal);
+
+  const close = () => modal.remove();
+  modal.querySelector("#chooserClose").addEventListener("click", close);
+  modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+  document.addEventListener("keydown", function onEsc(e) {
+    if (e.key === "Escape") {
+      close();
+      document.removeEventListener("keydown", onEsc);
+    }
+  });
+
+  modal.querySelector("#chooseAddConnection").addEventListener("click", () => {
+    close();
+    openAddConnectionModal(contacts, onSaved);
+  });
+  modal.querySelector("#chooseLogConversation").addEventListener("click", () => {
+    close();
+    openQuickAddModal(contacts, onSaved);
+  });
+
+  modal.querySelector("#chooseAddConnection").focus();
+}
+
 function initQuickAddButton(getContacts, onSaved) {
   const btn = document.getElementById("quickAddBtn");
   if (!btn) return;
-  btn.addEventListener("click", () => openQuickAddModal(getContacts(), onSaved));
+  btn.addEventListener("click", () => openQuickAddChooser(getContacts(), onSaved));
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
