@@ -189,6 +189,86 @@ def append_row(doc, cells):
     first_table(doc)["content"].append(make_row(cells))
 
 
+# ── Building a page from scratch ─────────────────────────────────────────────
+# Enough ADF to write a document by hand. Deliberately small: these are the
+# node types the Orbit pages actually use, and adding more on demand is safer
+# than a general converter nobody can predict the output of.
+
+def heading(text, level=2):
+    return {"type": "heading", "attrs": {"level": level},
+            "content": inline_nodes(text)}
+
+
+def para(text=""):
+    node = {"type": "paragraph"}
+    if text:
+        node["content"] = inline_nodes(text)
+    return node
+
+
+def bullets(items):
+    return {"type": "bulletList", "content": [
+        {"type": "listItem", "content": [para(i)]} for i in items]}
+
+
+def numbered(items):
+    return {"type": "orderedList", "attrs": {"order": 1}, "content": [
+        {"type": "listItem", "content": [para(i)]} for i in items]}
+
+
+def panel(kind, blocks):
+    """kind: info | note | success | warning | error"""
+    return {"type": "panel", "attrs": {"panelType": kind}, "content": blocks}
+
+
+def status(text, colour="neutral"):
+    return {"type": "status",
+            "attrs": {"text": text, "color": colour, "style": "bold"}}
+
+
+def tagged_heading(text, tag, colour="yellow", level=3):
+    """A heading with a lozenge after it — how a claim is marked unevidenced."""
+    return {"type": "heading", "attrs": {"level": level},
+            "content": inline_nodes(text + " ") + [status(tag, colour)]}
+
+
+def table(rows, header=True):
+    """rows: list of lists of cell text (or pre-built cell dicts)."""
+    out = []
+    for i, row in enumerate(rows):
+        cells = []
+        for value in row:
+            if isinstance(value, dict):
+                cells.append(value)
+                continue
+            cell = make_cell(value)
+            if i == 0 and header:
+                cell["type"] = "tableHeader"
+                cell["content"] = [{"type": "paragraph",
+                                    "content": [{"type": "text", "text": str(value),
+                                                 "marks": [{"type": "strong"}]}]}]
+            cells.append(cell)
+        out.append({"type": "tableRow", "content": cells})
+    return {"type": "table", "attrs": {"layout": "default"}, "content": out}
+
+
+def document(blocks):
+    return {"type": "doc", "version": 1, "content": blocks}
+
+
+def create_page(space_id, parent_id, title, doc):
+    payload = {
+        "spaceId": str(space_id),
+        "status": "current",
+        "title": title,
+        "body": {"representation": "atlas_doc_format",
+                 "value": json.dumps(doc, ensure_ascii=False)},
+    }
+    if parent_id:
+        payload["parentId"] = str(parent_id)
+    return request("POST", "https://{site}/wiki/api/v2/pages".format(site=SITE), payload)
+
+
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
 def main():
