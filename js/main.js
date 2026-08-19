@@ -6632,13 +6632,95 @@ function initProfileMenu() {
 
 // ── Reach-out nudge on load ───────────────────────────────────────────────────
 
+/**
+ * The nudge on open (ORB-58, closing ORB-13).
+ *
+ * ORB-13 asked why recording a reach-out took two clicks and a modal. The
+ * dashboard, My Network and the profile were all answered months ago:
+ * `markReachedOut` gives one past-tense click with an 8-second undo, and the
+ * dialog is demoted to a secondary Draft button.
+ *
+ * **The one surface that interrupts you never got the rework.** It opened the
+ * old "Draft a message" modal — a dialog, over whatever you were doing, whose
+ * first offer is an eight-line draft you did not ask for and whose confirm
+ * button is third. That is the worst version of the gesture on the surface with
+ * the least patience for it.
+ *
+ * So the nudge is now a bar, not a dialog. It does not trap focus, it does not
+ * cover the page, and its primary action is the same one click as everywhere
+ * else. Drafting is still one click away, which is where it belongs — writing a
+ * message is the rare path, and saying you already sent one is the common one.
+ *
+ * WHO IT PICKS
+ *
+ * `needsAttention()` rather than "first overdue", so it follows ORB-92's
+ * ranking: a thought you caught, then a conversation two days old, then an
+ * anniversary, then the clock. A nudge that interrupts you about the least
+ * interesting person on the list teaches you to dismiss nudges.
+ */
+function reachOutNudgeHtml(contact, health) {
+  const reason = reachOutReason(contact, health);
+  return '<div class="nudge" role="region" aria-label="Reach out to '
+    + escapeHtml(contact.name) + '">'
+    + '<div class="nudge-body">'
+    + '<p class="nudge-name">' + escapeHtml(contact.name)
+    + (contact.starred === true ? ' <span class="star-inline" aria-hidden="true">\u2605</span>' : '')
+    + '</p>'
+    + '<p class="nudge-why">'
+    + escapeHtml(reason.kind === "elapsed"
+        ? lastSpokeSentence(contact, health)
+        : reason.text)
+    + '</p>'
+    + '</div>'
+    + '<div class="nudge-actions">'
+    + '<button class="btn btn-sm" type="button" data-nudge-done>\u2713 Reached out</button>'
+    + '<button class="btn btn-secondary btn-sm" type="button" data-nudge-draft>Draft</button>'
+    + '<button class="icon-btn nudge-close" type="button" data-nudge-dismiss'
+    + ' aria-label="Not now">\u2715</button>'
+    + '</div>'
+    + '</div>';
+}
+
+function showReachOutNudge(contact, health = getHealth(contact), onChanged) {
+  document.querySelector(".nudge")?.remove();
+  const host = document.createElement("div");
+  host.className = "nudge-slot";
+  host.innerHTML = reachOutNudgeHtml(contact, health);
+  document.body.appendChild(host);
+
+  const close = () => host.remove();
+  const refresh = async () => {
+    close();
+    // Whatever page opened this re-renders itself, so the row the nudge was
+    // about updates behind it rather than going stale (ORB-15's hook).
+    if (onChanged) await onChanged();
+    else if (window.__orbitRefresh) await window.__orbitRefresh();
+  };
+
+  host.querySelector("[data-nudge-done]").addEventListener("click", async (e) => {
+    e.currentTarget.disabled = true;
+    await markReachedOut(contact, refresh);
+  });
+  host.querySelector("[data-nudge-draft]").addEventListener("click", async () => {
+    close();
+    await showReminderModal(contact, onChanged);
+  });
+  host.querySelector("[data-nudge-dismiss]").addEventListener("click", close);
+  return host;
+}
+
 async function checkRemindersOnLoad() {
   if (document.querySelector("[data-page='contact']")) return;
   if (!nudgeAllowed()) return;
   setTimeout(async () => {
     const contacts = (await db.getContacts()) || [];
-    const due = contacts.filter((c) => getReminderStatus(c) === "due");
-    if (due.length) { markNudgeShown(); showReminderModal(due[0]); }
+    // ORB-58. Was `contacts.filter(getReminderStatus === "due")[0]`, which is a
+    // different question from the one the dashboard answers and could pick
+    // someone the list does not even show first.
+    const next = needsAttention(contacts)[0];
+    if (!next) return;
+    markNudgeShown();
+    showReachOutNudge(next.contact, next.health);
   }, 900);
 }
 

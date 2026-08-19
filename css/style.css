@@ -2471,6 +2471,32 @@ body.dark .token-industry { color: var(--accent); }
 .reachout-said .prompt-echo { margin: 0; white-space: normal; }
 .reachout-said .prompt-ledger { margin: 0; font-size: 0.75rem; }
 
+/* ── The nudge on open (ORB-58) ──────────────────────────────── */
+/* A bar, not a dialog. It does not cover the page or trap focus — the whole
+   complaint about the modal it replaces was that it interrupted more than the
+   thing it was asking about was worth. Bottom-left, so it does not collide with
+   the toast stack that its own primary action raises. */
+.nudge-slot {
+  position: fixed; left: var(--space-md); bottom: var(--space-md);
+  z-index: 60; max-width: min(420px, calc(100vw - 2 * var(--space-md)));
+}
+.nudge {
+  display: flex; gap: var(--space-sm); align-items: center; flex-wrap: wrap;
+  padding: 0.8rem 0.9rem; border-radius: var(--radius-card);
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur);
+}
+.nudge-body { flex: 1 1 180px; min-width: 0; }
+.nudge-name { margin: 0; font-weight: 700; font-size: 0.9rem; }
+.nudge-why { margin: 0.1rem 0 0; font-size: 0.78rem; line-height: 1.4; color: var(--text-muted); }
+.nudge-actions { display: flex; gap: 0.4rem; align-items: center; flex-shrink: 0; }
+.nudge-close { font-size: 0.8rem; }
+@media (max-width: 560px) {
+  .nudge-slot { left: var(--space-sm); right: var(--space-sm); max-width: none; }
+  .nudge-actions { width: 100%; }
+  .nudge-actions .btn { flex: 1; }
+}
+
 /* ── Catching a thought (ORB-81) ─────────────────────────────── */
 /* The reason the person is on the list, so it leads and it is marked. */
 .prompt-capture {

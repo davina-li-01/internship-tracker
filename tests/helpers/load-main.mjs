@@ -141,6 +141,9 @@ const EXPORTS = [
   // a reason, two triggers, and trigger before timer (ORB-90/91/92)
   "reachOutReason", "reasonRank", "justMetTrigger", "anniversaryTrigger",
   "REACH_OUT_REASONS", "JUST_MET_DAYS", "ANNIVERSARY_WINDOW_DAYS",
+  // the nudge on open, one click like everywhere else (ORB-58, ORB-13)
+  "reachOutNudgeHtml", "showReachOutNudge", "checkRemindersOnLoad",
+  "nudgeAllowed", "markNudgeShown", "getNudgeMode",
   // behaviour
   "markReachedOut", "showToast",
   "conversationWidgetHtml", "wireConversationWidget",
