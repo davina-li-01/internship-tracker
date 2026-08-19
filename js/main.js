@@ -1193,6 +1193,131 @@ function bandWords(health) {
   return health?.firstContact ? FIRST_CONTACT_META : BAND_META[health.band];
 }
 
+/**
+ * The sentence a reach-out prompt leads with (ORB-78).
+ *
+ * Survey 1 asked what actually prompted the last message people sent a
+ * professional contact. Three of five answered some version of "it had been a
+ * while and I felt bad about it." One was moved by a reminder they had set,
+ * which is the mechanism this app ships.
+ *
+ * That answer fuses three things: elapsed time, a named person, and the feeling
+ * between them. Orbit had the first two in bureaucratic form — "Reach out soon ·
+ * 14 days left" — and none of the third. A countdown is a fact about a schedule.
+ * "You last spoke to Marcus 4 months ago" is a fact about a person, and it is
+ * the one that moved people.
+ *
+ * The first name is used deliberately: "Marcus" is who you owe a message, and
+ * "Marcus Chen" is a database row.
+ */
+function firstNameOf(name) {
+  return String(name || "").trim().split(/\s+/)[0] || "them";
+}
+
+function lastSpokeSentence(contact, health = getHealth(contact)) {
+  const who = firstNameOf(contact.name);
+
+  if (!health.firstContact) {
+    return "You last spoke to " + who + " " + relativeDayLabel(contact.lastContacted) + ".";
+  }
+  // Never spoken to. ORB-75 established that this is not a lapse, so it is
+  // stated as a fact about a meeting rather than as time owed.
+  const metDays = daysSince(contact.dateMet);
+  if (metDays === null) return "You have not spoken to " + who + " yet.";
+  if (metDays <= 1) {
+    return "You met " + who + " " + relativeDayLabel(contact.dateMet) + ". You have not spoken yet.";
+  }
+  return "You met " + who + " " + relativeDayLabel(contact.dateMet) + " and have not spoken since.";
+}
+
+/**
+ * The last conversation in its own words (ORB-78).
+ *
+ * What you actually said is a stronger prompt than any status Orbit can compute
+ * — it is the thing that makes the person concrete again. Marks are stripped
+ * because this is one line inside a prompt, not the notes view.
+ */
+function lastConversationWords(contact, limit = 120) {
+  const latest = (contact.interactions || [])
+    .filter((i) => (i.notes || "").trim() || (i.title || "").trim())
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+  if (!latest) return "";
+  const text = stripNoteMarks(latest.notes || latest.title || "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  return text.length > limit ? text.slice(0, limit).trimEnd() + "…" : text;
+}
+
+/**
+ * A gap long enough that the silence itself becomes the obstacle (ORB-79).
+ *
+ * Below this the dread does not apply — nobody agonises over a fortnight. Two
+ * months is where "it would be weird now" starts doing the blocking, which is
+ * the point at which the line below is worth spending.
+ */
+const LONG_SILENCE_DAYS = 60;
+
+function elapsedPhrase(days) {
+  if (days < 30) return days + " day" + (days === 1 ? "" : "s");
+  if (days < 365) {
+    const months = Math.round(days / 30);
+    return months + " month" + (months === 1 ? "" : "s");
+  }
+  const years = Math.round(days / 365);
+  return years + " year" + (years === 1 ? "" : "s");
+}
+
+/**
+ * Permission to send it anyway (ORB-79).
+ *
+ * Guilt starts the action and then blocks it. The same feeling that produces "I
+ * should message her" produces "it would be weird now", and Survey 1 shows both
+ * halves — three people acted on the feeling, and the stated blockers were
+ * "just forgot", "got lazy", "procrastination".
+ *
+ * The blocking half is not a preference to be respected. It is factually wrong.
+ * Liu et al. (13 preregistered experiments, ~6,000 participants) find people
+ * underestimate how much a message out of the blue is appreciated, and that the
+ * underestimate GROWS with surprise and social distance — so the longer the
+ * silence, the more wrong the dread is. Flynn and Lake find people agree to
+ * requests roughly three times more often than the asker predicts.
+ *
+ * So this is not reassurance. It is a correction, and it is stated as one.
+ *
+ * ORB-75 removed the accusation from a never-contacted person without putting
+ * anything in its place; this is the other half of that.
+ */
+function longSilenceLine(contact, health = getHealth(contact)) {
+  const days = health.elapsed;
+  if (days === null || days < LONG_SILENCE_DAYS) return "";
+  return "It has been " + elapsedPhrase(days)
+    + " — long enough that reaching out feels awkward. It is not: people "
+    + "consistently underestimate how welcome an out-of-the-blue message is, "
+    + "and the longer the gap the more that holds.";
+}
+
+/**
+ * The prompt itself: who, how long, and what you last said (ORB-78).
+ *
+ * One renderer for all three places a reach-out is proposed — the dashboard
+ * row, the profile strip and the draft modal — so the vocabulary cannot drift
+ * between them. ORB-54 reframes this same language for dormant ties and should
+ * change it here rather than adding a fourth variant.
+ *
+ * lastSpokeSentence returns plain text and is escaped here rather than
+ * escaping the name inside itself. A helper that returns half-escaped HTML
+ * is a trap for whoever calls it next.
+ */
+function reachOutPromptHtml(contact, health = getHealth(contact), { echo = true } = {}) {
+  const words = echo ? lastConversationWords(contact) : "";
+  return '<p class="prompt-line">' + escapeHtml(lastSpokeSentence(contact, health)) + '</p>'
+    + (words ? '<p class="prompt-echo">“' + escapeHtml(words) + '”</p>' : '');
+}
+
+function permissionLineHtml(contact, health = getHealth(contact)) {
+  const line = longSilenceLine(contact, health);
+  return line ? '<p class="permission-line">' + escapeHtml(line) + '</p>' : "";
+}
+
 function healthBarHtml(health) {
   const meta = bandWords(health);
   if (!health.scheduled) {
@@ -3040,6 +3165,7 @@ async function showReminderModal(contact, onChanged) {
   document.getElementById("reminderModal")?.remove();
 
   const prefs = await db.getPreferences();
+  const health = getHealth(contact);
   const emailText = buildReminderEmailText(contact, prefs.your_name || "");
   const nextStr = contact.nextReminder ? formatDate(contact.nextReminder.split("T")[0]) : "Not set";
 
@@ -3051,7 +3177,14 @@ async function showReminderModal(contact, onChanged) {
     + '<h3>Draft a message to <strong>' + escapeHtml(contact.name) + '</strong></h3>'
     + '<button class="icon-btn" id="modalClose" type="button" aria-label="Close">✕</button>'
     + '</div>'
-    + '<p class="muted">' + escapeHtml(getFreqLabel(contact.followUpFrequency)) + ' · Next: ' + nextStr + '</p>'
+    // This is the point of hesitation: the draft is on screen and the only
+    // question left is whether to send it. It led with "Every month · Next: 12
+    // Sep", which is the schedule talking. It now leads with the person and the
+    // silence (ORB-78), then answers the objection that silence raises (ORB-79).
+    + reachOutPromptHtml(contact, health)
+    + permissionLineHtml(contact, health)
+    + '<p class="tiny muted">' + escapeHtml(getFreqLabel(contact.followUpFrequency))
+    + ' · Next: ' + escapeHtml(nextStr) + '</p>'
     + '<div class="modal-actions">'
     + '<button class="btn" id="modalMarkDone" type="button">I reached out</button>'
     + '<button class="btn btn-secondary" id="modalLater" type="button">Remind me in 3 days</button>'
@@ -3175,21 +3308,30 @@ async function markReachedOut(contact, onChanged) {
 
 // ── Shared row renderers ──────────────────────────────────────────────────────
 
-function personRowHtml(contact, health, { showReconnect = false } = {}) {
+function personRowHtml(contact, health, { showReconnect = false, prompt = false } = {}) {
   return '<li class="person-row" data-open-contact="' + escapeHtml(contact.id) + '" role="button" tabindex="0">'
     + '<div class="person-avatar" aria-hidden="true">' + escapeHtml(initialsFor(contact.name)) + '</div>'
     + '<div class="person-main">'
     + '<p class="person-name">' + escapeHtml(contact.name) + '</p>'
     + '<p class="tiny">' + escapeHtml(contact.role || "Role not set")
     + (contact.company ? ' @ <strong>' + escapeHtml(contact.company) + '</strong>' : '') + '</p>'
+    // Two registers, on purpose. `prompt` is a row that is ASKING for something
+    // — Reach out next — and gets the person-and-time sentence plus what you
+    // last said (ORB-78). Everywhere else this row is a directory entry, where
+    // the cadence is the useful fact and a sentence addressed to the reader
+    // would be noise repeated down an alphabetical list.
+    //
     // "Last connected no date" was what a never-contacted person got, which
     // reads as a missing field rather than a fact about the relationship
     // (ORB-75). There is nothing to be last, so the line says so instead.
-    + '<p class="tiny muted">'
-    + (health.firstContact
-      ? 'Not contacted yet'
-      : 'Last connected ' + relativeDayLabel(contact.lastContacted))
-    + (health.scheduled ? ' · ' + escapeHtml(getFreqLabel(contact.followUpFrequency)) : '') + '</p>'
+    + (prompt
+      ? reachOutPromptHtml(contact, health)
+      : '<p class="tiny muted">'
+        + (health.firstContact
+          ? 'Not contacted yet'
+          : 'Last connected ' + relativeDayLabel(contact.lastContacted))
+        + (health.scheduled ? ' · ' + escapeHtml(getFreqLabel(contact.followUpFrequency)) : '')
+        + '</p>')
     + (contact.industry ? '<span class="token token-industry">' + escapeHtml(contact.industry) + '</span>' : '')
     + '</div>'
     + '<div class="person-side">'
@@ -3315,11 +3457,14 @@ async function initDashboard() {
     const attentionHtml = '<section class="card dash-section">'
       + '<div class="dash-section-header">'
       + '<h2>Reach out next</h2>'
-      + '<p class="muted">People on a schedule who are drifting — most overdue first.</p>'
+      // Was "People on a schedule who are drifting — most overdue first", which
+      // described the query rather than the people (ORB-78).
+      + '<p class="muted">Longest since you spoke, first.</p>'
       + '</div>'
       + (attention.length
         ? '<ul class="person-list">'
-          + attention.map(({ contact, health }) => personRowHtml(contact, health, { showReconnect: true })).join("")
+          + attention.map(({ contact, health }) =>
+              personRowHtml(contact, health, { showReconnect: true, prompt: true })).join("")
           + '</ul>'
         : '<p class="empty">You are current with everyone on a schedule. Nice work.</p>')
       + '</section>';
@@ -3686,11 +3831,18 @@ async function initContactPage() {
             : health.daysLeft + " days left"
         })
       + '</div>'
+      // "Last connected: 4 months ago" was a labelled field. The same fact said
+      // as a sentence about a person is what people actually act on (ORB-78),
+      // and the last conversation's own words underneath make them concrete
+      // again. The deadline stays — it is the one thing here the sentence does
+      // not carry.
+      + '<div class="reachout-said">'
+      + reachOutPromptHtml(c, health)
       + '<dl class="reachout-meta">'
-      + '<div><dt>Last connected</dt><dd>' + escapeHtml(relativeDayLabel(c.lastContacted)) + '</dd></div>'
       + '<div><dt>' + (health.grace ? "Reach out by" : "Next nudge") + '</dt>'
       + '<dd>' + (c.nextReminder ? formatDate(c.nextReminder.split("T")[0]) : "—") + '</dd></div>'
       + '</dl>'
+      + '</div>'
       + '<div class="reachout-controls">'
       // Tier first, because "what kind of relationship is this" is a question
       // you can answer; "how many days" is one most people cannot (ORB-51).

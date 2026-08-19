@@ -2415,6 +2415,32 @@ body.dark .token-industry { color: var(--accent); }
 .person-main .tiny, .connection-main .tiny { margin: 0; }
 .person-side { display: flex; flex-direction: column; align-items: flex-end; gap: 0.4rem; flex-shrink: 0; }
 
+/* ── Reach-out prompt (ORB-78 / ORB-79) ──────────────────────── */
+/* The sentence is the loudest thing under the name: full text colour, not the
+   muted grey the schedule line used, because it is the reason the row exists. */
+.prompt-line {
+  margin: 0.2rem 0 0; font-size: 0.82rem; line-height: 1.45;
+  color: var(--text); font-weight: 600;
+}
+/* Their words, not ours. One line — this is a reminder of a conversation, not
+   a place to read it. */
+.prompt-echo {
+  margin: 0.15rem 0 0; font-size: 0.78rem; line-height: 1.45;
+  color: var(--text-muted); font-style: italic;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* A correction, so it is given a surface rather than set as fine print. */
+.permission-line {
+  margin: 0.6rem 0 0; padding: 0.6rem 0.75rem;
+  font-size: 0.8rem; line-height: 1.5; color: var(--text);
+  background: rgba(249,115,22,0.07);
+  border-left: 3px solid var(--primary);
+  border-radius: 0 var(--radius-btn) var(--radius-btn) 0;
+}
+.reachout-said { display: flex; flex-direction: column; gap: 0.55rem; min-width: 0; }
+.reachout-said .prompt-line { margin: 0; font-size: 0.92rem; }
+.reachout-said .prompt-echo { margin: 0; white-space: normal; }
+
 /* ── Filter bar ──────────────────────────────────────────────── */
 .filter-bar {
   display: flex; align-items: center; gap: 0.6rem;

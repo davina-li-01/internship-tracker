@@ -125,6 +125,10 @@ const EXPORTS = [
   "renderInteractionTimeline", "conversationPreview", "renderStorageFileCard",
   "conversationTitle", "conversationNotes",
   "renderUpcomingMeetings", "healthBarHtml", "statusChip", "BAND_META",
+  // the reach-out prompt and the permission line (ORB-78, ORB-79)
+  "lastSpokeSentence", "lastConversationWords", "reachOutPromptHtml",
+  "longSilenceLine", "permissionLineHtml", "elapsedPhrase", "firstNameOf",
+  "LONG_SILENCE_DAYS", "showReminderModal",
   // behaviour
   "markReachedOut", "showToast",
   "conversationWidgetHtml", "wireConversationWidget",

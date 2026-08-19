@@ -123,6 +123,103 @@ with no access to this repo.
 
 ---
 
+## ORB-78 and ORB-79 — the prompt says who and how long, shipped Aug 19
+
+The two highest-scoring tickets on the board (RICE **720** and **567**) and the
+two cheapest. Both are copy and display on surfaces that already existed; no
+schema, no new page, no migration.
+
+### What the survey actually said
+
+Survey 1 asked five people what prompted the last message they sent a
+professional contact. **Three of five** answered some version of *"it had been a
+while and I felt bad about it."* **One** was moved by a reminder they had set.
+
+That one is the mechanism Orbit shipped. The app was reproducing the stimulus
+that worked for a fifth of respondents and none of the one that worked for
+three-fifths.
+
+The answer that won fuses three things — **elapsed time, a named person, and the
+feeling between them**. Orbit had the first two in bureaucratic form, *Reach out
+soon · 14 days left*, and none of the third. A countdown is a fact about a
+schedule. *You last spoke to Marcus 4 months ago* is a fact about a person.
+
+### ORB-78 — what changed
+
+One renderer, `reachOutPromptHtml`, used by all three surfaces that propose a
+reach-out, so the wording cannot drift between them:
+
+| Surface | Was | Is |
+|---|---|---|
+| Reach out next row | Last connected 4 months ago · Every month | You last spoke to Marcus 4 months ago. + their own words |
+| Section subtitle | People on a schedule who are drifting — most overdue first | Longest since you spoke, first |
+| Profile strip | **Last connected** / 4 months ago | the sentence, plus the last conversation |
+| Draft modal | Every month · Next: 12 Sep | the sentence, then the cadence demoted to fine print |
+
+**The echo is the part worth keeping.** What you actually said last time is a
+stronger prompt than any status the app can compute, because it makes the person
+concrete again. Marks are stripped and it clips at 120 characters — this is a
+reminder of a conversation, not a place to read one.
+
+**Three things were deliberately NOT done.** The health bar keeps its countdown,
+because the band still drives colour, ordering and the dashboard counts and the
+deadline is the one fact the sentence does not carry. My Network keeps *Last
+connected · Every month*, because a directory is not asking for anything and a
+sentence addressed to the reader repeated down an alphabetical list is noise.
+And a never-contacted person gets *You met Priya 3 months ago and have not spoken
+since* — never *You last spoke*, which would be a claim the data cannot support.
+That last one is **ORB-75's rule applied again**, and it is asserted both ways,
+including the ORB-64 case where a deleted conversation leaves an empty array
+behind a real date.
+
+### ORB-79 — the other half of the feeling
+
+Guilt starts the action and then blocks it. The same feeling producing *I should
+message her* produces *it would be weird now*. Survey 1 shows both halves: three
+acted on the feeling, and the stated blockers were *just forgot*, *got lazy*,
+*procrastination*.
+
+**The blocking half is not a preference to respect. It is factually wrong.** Liu
+et al. — 13 preregistered experiments, ~6,000 participants — find people
+underestimate how much an out-of-the-blue message is appreciated, and that the
+underestimate **grows** with surprise and social distance. Flynn and Lake find
+people agree to requests roughly three times more often than the asker predicts.
+
+So the line is written as a correction, not as reassurance:
+
+> It has been 4 months — long enough that reaching out feels awkward. It is not:
+> people consistently underestimate how welcome an out-of-the-blue message is,
+> and the longer the gap the more that holds.
+
+It fires only past **60 days** and only in the draft modal. Both limits are the
+point. Nobody agonises over a fortnight, and a correction shown on every surface
+every time is wallpaper rather than an argument. This completes **ORB-75**, which
+removed the accusation without putting anything in its place.
+
+### The escaping boundary, restated
+
+`lastSpokeSentence` returns **plain text** and is escaped by the renderer. It
+originally escaped the name inside itself, which would have returned
+half-escaped HTML — a trap for whoever called it next. There is a test asserting
+the raw sentence still contains `<b>Marcus</b>` unescaped, which reads oddly
+until you understand it is guarding the boundary rather than the output.
+
+The echo also puts **other people's pasted words on a new surface**, which is the
+case ORB-63 was careful about. Marks are stripped rather than rendered, and both
+the name and the notes are tested with live payloads.
+
+**81 new assertions; 1188 across 34 suites.** The profile and the modal are
+rendered for real rather than asserted through the helper, because "three
+surfaces share one renderer" is the claim worth guarding and testing the helper
+alone would not have caught a surface that stopped calling it.
+
+| Requirement | User Story | Importance | Jira Issue | Dependencies |
+|---|---|---|---|---|
+| Say how long it has been, and to whom | As a user, I want to be told when I last spoke to someone rather than that a timer expired, so the prompt produces the feeling that actually makes me reach out | Must have | ORB-78 | Display only. Reuses **ORB-75**'s never-contacted vocabulary rather than inventing a second set, and **constrains ORB-54**, which is briefed to reframe "overdue" for dormant ties and must change this shared renderer rather than adding a fourth variant. **ORB-90** will hang its stated reason off the same line |
+| Tell them the gap is an asset, not a debt | As a user hesitating over a long silence, I want to know the gap makes my message land better rather than worse, so the feeling that got me here does not also stop me | Must have | ORB-79 | Depends on **ORB-78** for the elapsed-time vocabulary it quotes. Completes **ORB-75**. One line, one surface, one threshold — deliberately not shown wherever a reach-out is mentioned |
+
+---
+
 ## RICE scored, ORB-53 split, and a column bug worth remembering
 
 ### The bug: I wrote every score one column to the right
