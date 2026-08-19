@@ -1407,14 +1407,18 @@ function longSilenceLine(contact, health = getHealth(contact)) {
 function reachOutPromptHtml(contact, health = getHealth(contact), { echo = true } = {}) {
   const words = echo ? lastConversationWords(contact) : "";
   const ledger = ledgerLine(contact);
-  // ORB-81 first, and above the elapsed time, because when there is a captured
-  // thought it is the reason this person is on the list at all — the clock is
-  // incidental. Only the newest is shown; a stack of them is a to-do list, and
-  // the profile is where that already lives.
-  const caught = openCaptures(contact)[0];
-  return (caught
-      ? '<p class="prompt-capture"><span class="prompt-capture-tag">You noted</span> '
-        + escapeHtml(caught.text) + '</p>'
+  // ORB-90. The reason leads, above the elapsed time, because when there is one
+  // it is why this person is on the list at all — the clock is incidental. Only
+  // the strongest is shown; a stack of them is a to-do list, and the profile is
+  // where that already lives.
+  //
+  // `elapsed` renders nothing: "it has been a while" IS the sentence below, and
+  // printing it twice would be the fallback shouting.
+  const reason = reachOutReason(contact, health);
+  return (reason.kind !== "elapsed"
+      ? '<p class="prompt-capture"><span class="prompt-capture-tag">'
+        + escapeHtml(reason.label) + '</span> '
+        + escapeHtml(reason.text) + '</p>'
       : '')
     + '<p class="prompt-line">' + escapeHtml(lastSpokeSentence(contact, health)) + '</p>'
     + (ledger ? '<p class="prompt-ledger">' + escapeHtml(ledger) + '</p>' : '')
@@ -1698,6 +1702,129 @@ function normalizeFollowUpItem(item = {}) {
   };
 }
 
+/**
+ * Two triggers computed from data already stored (ORB-91).
+ *
+ * Survey 1 found exactly one person in five acted on a reminder they had set
+ * themselves. Gollwitzer and Sheeran put if-then plans at **d = .65** across 94
+ * tests — "when X happens, I will do Y" beats "I will do Y eventually" by a
+ * wide margin — and a timer is the second of those, dressed as the first.
+ *
+ * DELIBERATELY LIMITED TO WHAT IS ALREADY ON DISK. That constraint is what
+ * makes this small. A job change would be the strongest trigger of all and
+ * needs LinkedIn or manual entry, so it is explicitly out of scope.
+ *
+ * TRIGGER A — you just met.
+ *
+ * A conversation logged in the last few days, with no reach-out since. The
+ * follow-up moment is now, not in a month, and the cadence actively hides it:
+ * having just spoken makes someone "in touch", so the one moment a note lands
+ * best is the one moment the dashboard says there is nothing to do.
+ *
+ * TRIGGER B — the anniversary of meeting.
+ *
+ * From `dateMet` (ORB-73). Not a milestone worth celebrating on its own — it is
+ * an excuse, and an excuse is what the survey says people are short of.
+ */
+const JUST_MET_DAYS = 4;
+const ANNIVERSARY_WINDOW_DAYS = 3;
+
+function justMetTrigger(contact) {
+  const latest = (contact.interactions || [])
+    .map((i) => String(i.date || ""))
+    .filter(Boolean)
+    .sort()
+    .pop();
+  if (!latest) return null;
+  const since = daysSince(latest);
+  if (since === null || since < 0 || since > JUST_MET_DAYS) return null;
+  // If lastContacted has moved past the conversation, the follow-up already
+  // happened and this would be nagging about a job that is done.
+  if (contact.lastContacted && contact.lastContacted > latest) return null;
+  const who = firstNameOf(contact.name);
+  return {
+    kind: "just-met",
+    text: since === 0
+      ? "You spoke to " + who + " today — a note now lands better than one in a month."
+      : "You spoke to " + who + " " + relativeDayLabel(latest)
+        + " — a note now lands better than one in a month."
+  };
+}
+
+function anniversaryTrigger(contact, today = todayDateString()) {
+  const met = parseDateOnly(contact.dateMet);
+  if (!met) return null;
+  const thisYear = Number(today.slice(0, 4));
+  const monthDay = String(contact.dateMet).slice(5, 10);
+  if (!/^\d{2}-\d{2}$/.test(monthDay)) return null;
+
+  // This year's anniversary, and the ones either side of it. On 2 January the
+  // relevant one is three days ago and lives in the PREVIOUS year; on 31
+  // December it is two days ahead and lives in the NEXT one. Checking only this
+  // year would skip every turn-of-year anniversary, and would do it silently
+  // for the other eleven months. The windows are ±3 days out of 365, so they
+  // cannot overlap and the order below does not matter.
+  //
+  // Measured against the `today` that was passed in rather than via daysSince,
+  // which always reads the real clock. A trigger whose test can only be written
+  // for the day it runs on is a trigger nobody can test at the year boundary.
+  const now = parseDateOnly(today);
+  if (!now) return null;
+  for (const year of [thisYear, thisYear - 1, thisYear + 1]) {
+    const years = year - met.getFullYear();
+    if (years < 1) continue;
+    const on = parseDateOnly(year + "-" + monthDay);
+    if (!on) continue;
+    const off = Math.round((now - on) / 86400000);
+    if (Math.abs(off) > ANNIVERSARY_WINDOW_DAYS) continue;
+    return {
+      kind: "anniversary",
+      text: "It is " + years + " year" + (years === 1 ? "" : "s")
+        + " this week since you met " + firstNameOf(contact.name) + "."
+    };
+  }
+  return null;
+}
+
+/**
+ * Why this person is on the list (ORB-90).
+ *
+ * Every row states a reason. That is the point of the ticket: a queue of dates
+ * gives you nothing to act on, and "it has been a while" — the honest fallback
+ * when there is no better one — is still a reason, just the weakest one.
+ *
+ * The order of the checks is the ranking ORB-92 sorts by, so there is one list
+ * rather than two that can disagree.
+ */
+const REACH_OUT_REASONS = ["capture", "just-met", "anniversary", "first-contact", "elapsed"];
+
+function reachOutReason(contact, health = getHealth(contact)) {
+  const caught = openCaptures(contact)[0];
+  if (caught) return { kind: "capture", text: caught.text, label: "You noted" };
+
+  const met = justMetTrigger(contact);
+  if (met) return { ...met, label: "Just met" };
+
+  const anniversary = anniversaryTrigger(contact);
+  if (anniversary) return { ...anniversary, label: "A year on" };
+
+  if (health.firstContact) {
+    return {
+      kind: "first-contact",
+      label: "Never spoken",
+      text: "You have not had a first conversation with "
+        + firstNameOf(contact.name) + " yet."
+    };
+  }
+  return { kind: "elapsed", label: "", text: "" };
+}
+
+/** Where a reason sorts. Lower is sooner (ORB-92). */
+function reasonRank(reason) {
+  const i = REACH_OUT_REASONS.indexOf(reason?.kind);
+  return i === -1 ? REACH_OUT_REASONS.length : i;
+}
+
 /** Captured thoughts still waiting, newest first. */
 function openCaptures(contact) {
   return (contact.followUps || [])
@@ -1866,13 +1993,23 @@ function matchesConnectionFilters(contact, { cadence, status, silent, starred })
  */
 function needsAttention(contacts) {
   return contacts
-    .map((c) => ({ contact: c, health: getHealth(c), captures: openCaptures(c) }))
-    // ORB-81. A thought you caught at 2am outranks a cadence, and it belongs
-    // here even for someone with no schedule at all — you did not write it down
-    // so it could wait for a timer. This is the only thing other than a lapsed
-    // cadence that can put a person on this list.
-    .filter((x) => x.captures.length || (x.health.scheduled && x.health.band !== "good"))
-    .sort((a, b) => (b.captures.length > 0) - (a.captures.length > 0)
+    .map((c) => {
+      const health = getHealth(c);
+      return { contact: c, health, reason: reachOutReason(c, health) };
+    })
+    // ORB-81 and ORB-91. A reason outranks a cadence and does not need one: a
+    // thought you caught at 2am, a conversation two days old, an anniversary —
+    // none of these wait for a timer, and someone with no schedule at all can
+    // land here on any of them. `elapsed` and `first-contact` are not reasons
+    // that stand on their own; they describe a person the clock already put
+    // here, so they still require a lapsed cadence.
+    .filter((x) => reasonRank(x.reason) < REACH_OUT_REASONS.indexOf("first-contact")
+      || (x.health.scheduled && x.health.band !== "good"))
+    // ORB-92. Trigger before timer, which is the whole bet: Survey 1 found 1 in
+    // 5 acted on a reminder they set themselves. The clock is demoted to the
+    // fallback that catches everyone no trigger fired for — which will be most
+    // people, so it is not removed.
+    .sort((a, b) => reasonRank(a.reason) - reasonRank(b.reason)
       || (b.contact.starred === true) - (a.contact.starred === true)
       || a.health.pct - b.health.pct);
 }

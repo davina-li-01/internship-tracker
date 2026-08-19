@@ -138,6 +138,9 @@ const EXPORTS = [
   // catching a thought in one gesture (ORB-81)
   "captureFormHtml", "wireCaptureForm", "openCaptureModal", "openCaptures",
   "normalizeFollowUpItem", "FOLLOWUP_SOURCES",
+  // a reason, two triggers, and trigger before timer (ORB-90/91/92)
+  "reachOutReason", "reasonRank", "justMetTrigger", "anniversaryTrigger",
+  "REACH_OUT_REASONS", "JUST_MET_DAYS", "ANNIVERSARY_WINDOW_DAYS",
   // behaviour
   "markReachedOut", "showToast",
   "conversationWidgetHtml", "wireConversationWidget",
