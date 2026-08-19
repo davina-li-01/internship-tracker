@@ -305,6 +305,107 @@ test of **ORB-90/91/92** and had nothing to do with tiers.
 
 ---
 
+## ORB-93, ORB-94, ORB-54, ORB-81 — shipped Aug 19
+
+Four tickets, one coherent change: **the app stops asking you to classify people
+and starts letting you point at them.**
+
+### ORB-93 — the star
+
+Migration **013**, one boolean, **stored and never inferred**. That last part is
+the whole distinction from ORB-86 and the reason ORB-57's first metric can mean
+anything — the moment something derives a star, every contact looks deliberately
+marked.
+
+It carries the same missing-column fallback `tier` got in 012, which matters more
+here: a silent save failure would read as *nobody stars anyone* rather than as a
+migration nobody ran. **The migration still has to be run by hand** — until then
+the control saves nothing and warns in the console.
+
+Reach out next now sorts **starred → clock**. Membership is unchanged: an
+unstarred overdue person is still on the list, below the starred ones. Solving
+ordering by removing people is the trap ORB-75 named.
+
+### ORB-94 — the picker goes
+
+Removed from all three surfaces: profile, add-connection form, conversation
+widget. `TIERS`, `frequencyForTier`, migration 012 and the column all stay —
+`effectiveTier` still answers *was this interval deliberate?*, and ORB-86 may
+revive tiers as a suggestion.
+
+**The riskiest line was the profile save.** It wrote `tier: tierSelect.value` on
+every press, deliberately, because pressing Save was the user answering the tier
+question. With the picker gone, the mechanical fix — write `effectiveTier(c)` —
+would have recorded an **inference as a choice** on every schedule edit and
+quietly destroyed the evidence ORB-86 is parked waiting for. It now does not
+write the field at all, and there is a test asserting an untiered contact stays
+untiered through a save.
+
+### ORB-54 — a long silence is an opportunity
+
+Written against the inner-circle tier, which had just been deleted, so the star
+is what decides now. **Failure language is reserved for the starred.** Everyone
+else past their date reads **"Worth reviving"**, *quiet 170 days*, in indigo.
+
+Not a paler red — a paler red still reads as a warning, and the point is that
+this is a different *kind* of state, not a milder one. The dormant-tie research
+says the contact untouched for two years may be the most valuable in the network;
+Orbit was painting exactly that person as a failure.
+
+**Mechanism: a `tone` beside `band`, not a fifth band.** The band drives
+ordering, membership and every denominator on the dashboard. A new one would move
+these people out of Reach out next and solve the colour by hiding the person —
+ORB-75's trap, avoided the same way. Words and colour change; placement does not,
+and both halves are asserted.
+
+The **Overdue** KPI tile became **Past their date** with *"N you starred"*
+beneath, because after this change the old label overstated most of what it
+counted. `countByBand` gained `starredCritical` as a **subset**, never a band.
+
+### ORB-81 — catching a thought
+
+Survey 1 asked where people were when they realised they had forgotten someone:
+**lying awake (twice), scrolling LinkedIn, going through email, seeing the name
+by accident.** Not one was inside a system built to tell them, and **two were in
+bed**. A notification at 9am loses to a thought that arrived at 2am.
+
+So it is not a form. **One required field — who — and it is the first thing you
+type.** The thought is optional: *"Marcus"* alone is a complete intention, and
+requiring a sentence at 2am is how the thought gets lost. A permanent bar at the
+top of the dashboard, plus a third chooser option so the **+** reaches it from
+every page.
+
+**Storage is a third provenance on `followUps`, not a second list.** Same shape,
+same completion, and the profile already renders them. What `capture` buys is
+behaviour: an **open** one puts its person on Reach out next *regardless of
+cadence* — even with no schedule at all — and leads the prompt as the reason.
+A manual talking point deliberately does neither, and that is asserted, because
+they share an array and it would be easy to catch both.
+
+Reaching out completes open captures; Undo reopens them. Manual points are left
+alone — they may outlive the conversation they were written for.
+
+### The prompt after four tickets
+
+> **YOU NOTED** Ask about the payments move
+> **You last spoke to Marcus 4 months ago.**
+> 6 conversations over 2 years · 3 files
+> *"Talked about her move to the payments team."*
+> ◇ Worth reviving · quiet 170 days
+
+Every line is a different ticket and they all go through one renderer.
+
+**196 new assertions across four suites; 1349 across 37.**
+
+| Requirement | User Story | Importance | Jira Issue | Dependencies |
+|---|---|---|---|---|
+| Star the people who matter | As a user who already knows which handful of people matter, I want to mark them, so the app reflects what I know instead of asking me to classify everyone | Must have | ORB-93 | Migration 013. Stored, never inferred — that is what separates it from **ORB-86** and what keeps **ORB-57**'s first metric measurable. Shipped before **ORB-94** so no day had neither control |
+| Take the tier picker out of the flow | As a user adding someone I met once, I do not want to be asked what kind of relationship it is before I know | Must have | ORB-94 | Depends on **ORB-93**. Removes the surface, not the code — **ORB-86** can revive tiers as a suggestion. Forced the **ORB-57** metric restatement |
+| Reframe "overdue" outside the starred set | As a user, I want a long gap to read as an opportunity rather than a failure, so I open the app instead of avoiding it | Must have | ORB-54 | Was written against the inner-circle tier; **ORB-94** deleted it, so **ORB-93**'s star decides instead. Reuses `bandWords()` from **ORB-75** rather than inventing a parallel set, exactly as ORB-75 asked |
+| Catch a thought about someone in one gesture | As a user who realises at 2am that I forgot someone, I want to record it in one action, so the realisation survives to a moment when I can act on it | Must have | ORB-81 | Distinct from **ORB-73**, which captures a *person*; this captures an *intention*. Rides **ORB-78**'s prompt renderer to resurface. **ORB-92** should treat an open capture as the strongest trigger rather than inventing a second ordering |
+
+---
+
 ## ORB-51 decided — a star instead of a tier, Aug 19
 
 **Davina's call, and it closes ORB-51.** Tiering is parked. In its place, people
