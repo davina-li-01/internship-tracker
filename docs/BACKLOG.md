@@ -123,6 +123,86 @@ with no access to this repo.
 
 ---
 
+## Survey 1 — what five real students said, Aug 18
+
+First real user research. Five responses, so everything is directional — but three
+patterns are unanimous or near-unanimous, and one of them **reverses an assumption
+behind two tickets**. Full write-up and the response table live in Confluence under
+*User research → Survey 1*.
+
+**Finding 1 — nobody's system works, and the type does not matter.** Every
+respondent rated their system **2 out of 5**; one said 3. That holds across a
+person with seven storage locations and a person with one, across two maintained
+spreadsheets, a notes app, LinkedIn alone, and no system at all. The tool is not
+the variable. **The counter-example is the most useful row:** one respondent keeps
+everything in a single notes app — no fragmentation at all — and still could not
+find something 2–3 times in three months, and still rates it 2/5. *Storage location
+is not the failure. Retrieval and initiation are.* That demotes "one central place"
+from a value proposition to table stakes.
+
+**Finding 2 — guilt is the engine, and we have been removing it.** Asked what
+prompted their last message to a professional contact, **three of five** said *"it
+had been a while and I felt bad about it."* Exactly **one** was moved by a reminder
+they had set — the mechanism Orbit ships. **ORB-54** and **ORB-75** both treated
+guilt as the enemy. They were right to remove an accusation and wrong to put
+nothing in its place: the app became gentler and quieter at the same time. The
+second half matters too — the same feeling produces *I should message her* and *it
+would be weird now*, and the dread half is the part the literature says is factually
+wrong. Recorded as a scope delta; **ORB-78** and **ORB-79** are the response.
+
+**Finding 3 — the moment of realising is never inside a tool.** Asked where they
+were when they realised they had forgotten someone: *lying awake* twice, *scrolling
+LinkedIn*, *going through email*, *seeing their name by accident*. **Not one person
+realised inside a system built to tell them; two were in bed.** Prospective memory
+observed directly, and hard on a reminder-shaped product — a 9am notification
+competes with a 2am thought. **ORB-81**.
+
+**The finding nobody was looking for.** Learning when recruiting opens changed
+behaviour in **4 of 5** — all four "started reaching out". One **senior** answered
+*"I still don't know"*, and is the same respondent who relies on memory and once
+went into a conversation having never found their notes. **ORB-83**.
+
+**What got more complicated.** The tier design call split evenly — 2 knew who
+mattered from the first conversation, 2 only looking back, 1 after several months —
+so *always derive* is wrong for 40% and *always ask* is wrong for the other 40%
+(**ORB-86**). "Networking is bursty" is a majority pattern, not a rule: 2 of 5 said
+evenly spread, and the busiest three weeks is usually 4–10 conversations rather
+than twenty. Maya's ~25 contacts sits at the median and holds.
+
+**Sample gaps, which matter more than any number above.** Zero first-generation
+respondents — the largest split in the literature, entirely untested. No juniors,
+which is the primary persona's exact band. No first-years and nobody with four
+contacts, so the secondary persona is unrepresented. All business, consulting or
+finance; three of five share an institution.
+
+**On juniors not responding.** The tempting reading is that they already know what
+they are doing. This survey argues against it: one senior has 1–5 contacts, another
+still does not know when recruiting opens, and the fifth-year with 50+ contacts
+answered **"Cooked"**. Nobody ages out of this. The likelier reading is that
+juniors in mid-August are *inside* the window — non-response as a symptom of the
+pressure the persona describes rather than evidence of its absence.
+
+### Ten tickets raised, in priority order
+
+Priority is set by evidence strength and by cost, not by appetite. The first three
+are copy and layout on surfaces that already exist, which is the unusual part —
+the highest-leverage work here is nearly free.
+
+| Requirement | User Story | Importance | Jira Issue | Dependencies |
+|---|---|---|---|---|
+| Say how long it has been, and to whom | As a user, I want to be told when I last spoke to someone rather than that a timer expired, so the prompt produces the feeling that actually makes me reach out | Must have | ORB-78 | **Survey 1, 3 of 5.** Replaces schedule language (*Reach out soon · 14 days left*) with person-and-time language and the last conversation's own words. Display only, no schema. **Constrains ORB-54**, which is unbuilt and currently briefed to remove this vocabulary rather than replace it |
+| Tell them the gap is an asset, not a debt | As a user hesitating over a long silence, I want to know the gap makes my message land better rather than worse, so the feeling that got me here does not also stop me | Must have | ORB-79 | Cheapest item on the roadmap, most evidence behind it. Liu et al. (13 preregistered experiments, ~6,000 people) find appreciation is underestimated and the underestimate *grows* with gap length; Flynn & Lake find people agree roughly 3× more often than predicted. One line at the point of hesitation. **Completes ORB-75**, which removed the accusation without adding the permission |
+| Show what has accumulated when prompting | As a user deciding whether to reach out, I want to see what I already have with this person, so the value of the relationship is visible at the moment I might abandon it | Should have | ORB-80 | Survey 1: the two highest-volume respondents answered **"Cooked"** and **"Everything"**; the one relying on memory answered *"not much"*. Value scales with what is recorded, and is currently invisible at the only moment it would change a decision. Reads existing data. Pairs with **ORB-78** |
+| Capture a thought about someone in one gesture | As a user who realises at 2am that I forgot someone, I want to record that in one action, so the realisation survives to a moment when I can act on it | Must have | ORB-81 | **Survey 1, 5 of 5** realised away from any tool; two were lying awake. Distinct from **ORB-73**, which captures a *person* — this captures an *intention* |
+| Tell them when recruiting opens | As a student who does not know the timeline, I want the app to tell me, so I find out before it is too late rather than after | Should have | ORB-83 | **Survey 1, 4 of 5** started reaching out in the month after they found out. One senior still does not know it exists. Corroborated by Cornell and Princeton: finance applications open as early as sophomore spring and many firms do not recruit seniors. Content problem more than an engineering one |
+| Ask how experienced at networking they are, and store it | As the product owner, I want to know which kind of user I am looking at, so I can tell whether beginners and established networkers behave differently before designing for either | Should have | ORB-82 | Segmentation only, **deliberately does not branch the product**. Survey 1 has zero first-generation respondents, zero first-years and nobody under five contacts. One onboarding question buys the split that is missing; routing by experience level is a later decision that should rest on data. Feeds **ORB-33** |
+| An outreach that is waiting for a reply | As a user who has messaged someone and heard nothing, I want that recorded, so the attempt exists and the one follow-up I am willing to send actually happens | Should have | ORB-84 | Gap 1 from the networking flows. A contact either has a conversation or none; there is no state for *I reached out and heard nothing*, which is where the follow-up decision lives. Matters most for the secondary persona, who reads each silence as confirmation. Reply-rate figures behind it are vendor data and must not be quoted as findings |
+| Suggest a tier from history rather than demanding one | As a user adding someone I have met once, I want the app to work out what they are to me over time, so I am not asked a question I cannot yet answer | Should have | ORB-86 | **Survey 1 split evenly** — 2 knew from the first conversation, 2 only looking back. Both patterns are real, so offer a tier and let it change. Revisits **ORB-51** and **ORB-52**. **ORB-57**'s "changed from the default" metric must survive: a suggested tier is not a chosen one |
+| Record the ask, and whether it landed | As a user working toward a referral, I want to record that I asked and what came of it, so the outcome the whole sequence exists for is not the one thing I cannot see | Could have | ORB-85 | Gap 2 from the networking flows. **No survey evidence** — the instrument did not ask about referrals, which is itself a gap for Survey 2. Depends on **ORB-84** |
+| Introductions onward | As a user who has been referred, I want to record who else I was introduced to and by whom, so the network compounds instead of growing one cold message at a time | Could have | ORB-87 | Gap 3 from the flows, and the mechanism behind the strongest 18–20 finding: near-peers have a direct effect on career progress where same-age peers have none, and their value arrives through introductions rather than search. **No survey evidence yet**; most likely of these to change shape before it is built |
+
+---
+
 ## ORB-77 — the notes box behaves like a text editor, shipped Aug 13
 
 Not planned — five complaints from one session of real use, all in the same box.
