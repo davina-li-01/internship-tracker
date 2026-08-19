@@ -46,7 +46,7 @@ const {
   normalizeContact, getHealth, personRowHtml,
   lastSpokeSentence, lastConversationWords, reachOutPromptHtml,
   longSilenceLine, permissionLineHtml, elapsedPhrase, firstNameOf,
-  LONG_SILENCE_DAYS
+  LONG_SILENCE_DAYS, relationshipLedger, ledgerLine
 } = main;
 
 const person = (over = {}) => normalizeContact({
@@ -354,6 +354,103 @@ group("ORB-78 / ORB-79 — the draft modal, which is the point of hesitation");
   const modal = document.getElementById("reminderModal");
   ok("the sentence is unconditional", /You last spoke to Marcus 6 days ago\./.test(modal.textContent));
   ok("the correction is not", !modal.querySelector(".permission-line"));
+  modal.remove();
+}
+
+
+// ── ORB-80 ────────────────────────────────────────────────────────────────────
+// Survey 1 asked what people would lose if their system vanished. The two
+// highest-volume respondents said "Cooked" and "Everything"; the one relying on
+// memory said "not much". Value scales with what is recorded, and it was
+// invisible at the only moment it would change a decision — the prompt, which
+// is also the screen carrying "Remove schedule".
+group("ORB-80 — the ledger counts what is actually there");
+{
+  const c = person({ interactions: [
+    convo({ id: "a", date: daysAgo(700) }),
+    convo({ id: "b", date: daysAgo(400) }),
+    convo({ id: "c", date: daysAgo(120) })
+  ] });
+  const l = relationshipLedger(c);
+  eq("every conversation counts", l.count, 3);
+  eq("the span runs first to last", l.spanDays, 580);
+  eq("the meeting date is not evidence of a relationship", l.files, 0);
+  eq("and it reads as accumulation", ledgerLine(c), "3 conversations over 2 years");
+}
+{
+  const c = person({ interactions: [convo()] });
+  eq("one conversation is singular and has no span", ledgerLine(c), "1 conversation");
+}
+{
+  // A burst is not accumulation. "3 conversations over 4 days" undersells a
+  // relationship the count already described better on its own.
+  const c = person({ interactions: [
+    convo({ id: "a", date: daysAgo(4) }), convo({ id: "b", date: daysAgo(2) }),
+    convo({ id: "c", date: daysAgo(1) })
+  ] });
+  eq("a span under a week is dropped", ledgerLine(c), "3 conversations");
+}
+{
+  const c = person({ interactions: [
+    convo({ id: "a", date: daysAgo(40), fileIds: ["f1", "f2"] }),
+    convo({ id: "b", date: daysAgo(5), fileIds: ["f3"] })
+  ] });
+  eq("attachments are the most losable thing here, so they are counted",
+    ledgerLine(c), "2 conversations over 1 month · 3 files");
+}
+{
+  const c = person({ interactions: [convo({ notes: "", title: "", fileIds: ["f1"] })] });
+  eq("a conversation with only a PDF still says both",
+    ledgerLine(c), "1 conversation · 1 file");
+}
+{
+  // The failure this guards: a prompt that opens "0 conversations" tells someone
+  // their network is empty at the moment it is asking them to act on it.
+  eq("nothing accumulated means no line at all", ledgerLine(person()), "");
+  eq("and that includes someone never spoken to", ledgerLine(unspoken()), "");
+  ok("so the prompt for them carries no ledger",
+    !/prompt-ledger/.test(reachOutPromptHtml(unspoken(), getHealth(unspoken()))));
+}
+{
+  // There is no such thing as an undated conversation once it is saved —
+  // normalizeInteraction dates a blank as today — so the span is real, not
+  // invented. The empty-date guard in relationshipLedger is for callers holding
+  // raw rows, and is asserted directly rather than through the model.
+  const c = person({ interactions: [convo({ date: "" }), convo({ id: "b", date: daysAgo(10) })] });
+  eq("a blank date is today, so the span is honest", ledgerLine(c), "2 conversations over 10 days");
+  eq("and a genuinely dateless raw row cannot widen it",
+    relationshipLedger({ interactions: [{ date: "" }, { date: "" }] }).spanDays, 0);
+}
+
+group("ORB-80 — it appears at the moment the decision is made");
+{
+  const c = person({ interactions: [
+    convo({ id: "a", date: daysAgo(700) }), convo({ id: "b", date: daysAgo(120) })
+  ] });
+  const html = reachOutPromptHtml(c, getHealth(c));
+  ok("the ledger is in the prompt", /class="prompt-ledger"/.test(html));
+  // Order is the argument: who and how long, then what you have built, then
+  // what you last said.
+  ok("it sits between the sentence and their words",
+    html.indexOf("prompt-line") < html.indexOf("prompt-ledger")
+    && html.indexOf("prompt-ledger") < html.indexOf("prompt-echo"));
+
+  const row = personRowHtml(c, getHealth(c), { showReconnect: true, prompt: true });
+  ok("the dashboard row shows it", /2 conversations over 2 years/.test(row));
+  ok("but the directory row does not",
+    !/2 conversations over/.test(personRowHtml(c, getHealth(c), { showReconnect: true })));
+}
+{
+  // "Remove schedule" lives in this modal. That is the abandonment the ticket
+  // is about, so the ledger has to be on the same screen as the button.
+  document.getElementById("reminderModal")?.remove();
+  const c = person({ interactions: [
+    convo({ id: "a", date: daysAgo(700) }), convo({ id: "b", date: daysAgo(120) })
+  ] });
+  await main.showReminderModal(c, async () => {});
+  const modal = document.getElementById("reminderModal");
+  ok("the modal shows what would be abandoned", /2 conversations over 2 years/.test(modal.textContent));
+  ok("beside the button that abandons it", modal.querySelector("#modalTurnOff"));
   modal.remove();
 }
 

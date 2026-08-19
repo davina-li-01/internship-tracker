@@ -129,6 +129,8 @@ const EXPORTS = [
   "lastSpokeSentence", "lastConversationWords", "reachOutPromptHtml",
   "longSilenceLine", "permissionLineHtml", "elapsedPhrase", "firstNameOf",
   "LONG_SILENCE_DAYS", "showReminderModal",
+  // what has accumulated (ORB-80)
+  "relationshipLedger", "ledgerLine",
   // behaviour
   "markReachedOut", "showToast",
   "conversationWidgetHtml", "wireConversationWidget",

@@ -2422,6 +2422,12 @@ body.dark .token-industry { color: var(--accent); }
   margin: 0.2rem 0 0; font-size: 0.82rem; line-height: 1.45;
   color: var(--text); font-weight: 600;
 }
+/* What has accumulated (ORB-80). Set as a small, dense fact rather than prose:
+   it is evidence, and evidence reads better counted than narrated. */
+.prompt-ledger {
+  margin: 0.2rem 0 0; font-size: 0.72rem; font-weight: 700;
+  letter-spacing: 0.02em; color: var(--text-muted);
+}
 /* Their words, not ours. One line — this is a reminder of a conversation, not
    a place to read it. */
 .prompt-echo {
@@ -2440,6 +2446,7 @@ body.dark .token-industry { color: var(--accent); }
 .reachout-said { display: flex; flex-direction: column; gap: 0.55rem; min-width: 0; }
 .reachout-said .prompt-line { margin: 0; font-size: 0.92rem; }
 .reachout-said .prompt-echo { margin: 0; white-space: normal; }
+.reachout-said .prompt-ledger { margin: 0; font-size: 0.75rem; }
 
 /* ── Filter bar ──────────────────────────────────────────────── */
 .filter-bar {

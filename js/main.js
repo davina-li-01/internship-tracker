@@ -1248,6 +1248,64 @@ function lastConversationWords(contact, limit = 120) {
 }
 
 /**
+ * What has accumulated with this person (ORB-80).
+ *
+ * Survey 1 asked what people would lose if their system vanished. The two
+ * highest-volume respondents answered "Cooked" and "Everything". The one
+ * relying on memory answered "not much — I think I rely too heavily on memory".
+ *
+ * Value scales with what is recorded, which is a good property for a product to
+ * have and a useless one if it is invisible at the moment it would change a
+ * decision. This is that moment: the reach-out prompt is also where "Remove
+ * schedule" lives, so it is the screen on which a relationship gets abandoned.
+ *
+ * Span is measured across the conversations themselves rather than from dateMet
+ * — "6 conversations over 2 years" is a claim about the relationship, and the
+ * date you happened to meet is not evidence for it.
+ */
+function relationshipLedger(contact) {
+  const dates = (contact.interactions || [])
+    .map((i) => String(i.date || ""))
+    .filter(Boolean)
+    .sort();
+  const count = (contact.interactions || []).length;
+  const files = (contact.interactions || [])
+    .reduce((n, i) => n + ((i.fileIds || []).length), 0);
+  const spanDays = dates.length > 1
+    ? Math.abs(daysSince(dates[dates.length - 1]) - daysSince(dates[0]))
+    : 0;
+  return { count, files, spanDays };
+}
+
+/**
+ * The ledger as one line, or nothing (ORB-80).
+ *
+ * Nothing is the right answer for a relationship with no history: a prompt that
+ * opens "0 conversations" tells someone their network is empty at the exact
+ * moment it is asking them to do something about it.
+ *
+ * A span under a week is dropped rather than printed. Three conversations "over
+ * 4 days" reads as a burst of activity, which is not what accumulation means
+ * and undersells a relationship the count already described.
+ *
+ * Attachments are counted here although the ticket says count, span and last
+ * exchange. They are the most concretely losable thing in the app — a PDF is
+ * the answer to "what would you lose" in a way a row in a table is not — and
+ * the same reduce already runs in conversationPreview.
+ */
+function ledgerLine(contact) {
+  const { count, files, spanDays } = relationshipLedger(contact);
+  if (!count && !files) return "";
+  const parts = [];
+  if (count) {
+    parts.push(count + " conversation" + (count === 1 ? "" : "s")
+      + (spanDays >= 7 ? " over " + elapsedPhrase(spanDays) : ""));
+  }
+  if (files) parts.push(files + " file" + (files === 1 ? "" : "s"));
+  return parts.join(" · ");
+}
+
+/**
  * A gap long enough that the silence itself becomes the obstacle (ORB-79).
  *
  * Below this the dread does not apply — nobody agonises over a fortnight. Two
@@ -1300,7 +1358,9 @@ function longSilenceLine(contact, health = getHealth(contact)) {
  *
  * One renderer for all three places a reach-out is proposed — the dashboard
  * row, the profile strip and the draft modal — so the vocabulary cannot drift
- * between them. ORB-54 reframes this same language for dormant ties and should
+ * between them. Three lines, in the order the decision is made: who and how
+ * long (ORB-78), what you have built with them (ORB-80), and what you last
+ * actually said (ORB-78). ORB-54 reframes this same language for dormant ties and should
  * change it here rather than adding a fourth variant.
  *
  * lastSpokeSentence returns plain text and is escaped here rather than
@@ -1309,7 +1369,9 @@ function longSilenceLine(contact, health = getHealth(contact)) {
  */
 function reachOutPromptHtml(contact, health = getHealth(contact), { echo = true } = {}) {
   const words = echo ? lastConversationWords(contact) : "";
+  const ledger = ledgerLine(contact);
   return '<p class="prompt-line">' + escapeHtml(lastSpokeSentence(contact, health)) + '</p>'
+    + (ledger ? '<p class="prompt-ledger">' + escapeHtml(ledger) + '</p>' : '')
     + (words ? '<p class="prompt-echo">“' + escapeHtml(words) + '”</p>' : '');
 }
 

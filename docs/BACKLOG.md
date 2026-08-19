@@ -220,6 +220,56 @@ alone would not have caught a surface that stopped calling it.
 
 ---
 
+## ORB-80 — show what has accumulated, shipped Aug 19
+
+RICE **189**. Rides on **ORB-78**'s renderer, so it shipped the same day for a
+third line of code.
+
+**Survey 1 asked what people would lose if their system vanished.** The two
+highest-volume respondents answered **"Cooked"** and **"Everything"**. The one
+relying on memory answered *"not much — I think I rely too heavily on memory."*
+
+Value scales with what is recorded. That is a good property for a product to
+have and a useless one if it is invisible at the only moment it would change a
+decision — which is the reach-out prompt, because the prompt is also the screen
+carrying **Remove schedule**. The ledger and the button that abandons the
+relationship are now on the same surface, deliberately.
+
+The prompt is three lines in the order the decision is made:
+
+> **You last spoke to Marcus 4 months ago.**
+> 6 conversations over 2 years · 3 files
+> *"Talked about her move to the payments team."*
+
+**Four judgement calls.**
+
+- **Zero shows nothing.** A prompt opening *"0 conversations"* tells someone
+  their network is empty at the exact moment it is asking them to act on it.
+- **A span under a week is dropped.** *"3 conversations over 4 days"* is a burst,
+  not accumulation, and it undersells a relationship the count described better
+  alone.
+- **Span is measured across the conversations**, not from `dateMet`. "6
+  conversations over 2 years" is a claim about a relationship; the date you
+  happened to meet is not evidence for it.
+- **Attachments are counted, which the ticket did not ask for.** A PDF is the
+  answer to "what would you lose" in a way a row in a table is not, and the same
+  reduce already ran in `conversationPreview`. Flagging it as a scope addition
+  rather than burying it.
+
+One assertion documents something worth knowing: there is no such thing as an
+undated conversation once saved, because `normalizeInteraction` dates a blank as
+today. The empty-date guard exists for callers holding raw rows and is tested
+directly rather than through the model, so the test does not quietly assert a
+thing the model already prevents.
+
+19 new assertions; **1207 across 34 suites.**
+
+| Requirement | User Story | Importance | Jira Issue | Dependencies |
+|---|---|---|---|---|
+| Show what has accumulated when prompting | As a user deciding whether to reach out, I want to see what I already have with this person, so the value of the relationship is visible at the moment I might abandon it | Should have | ORB-80 | Depends on **ORB-78** for the shared prompt renderer — it is one line inside it, not a fourth surface. Reads existing data; no schema. **ORB-90** adds a stated reason to the same block and should extend this renderer rather than adding another |
+
+---
+
 ## RICE scored, ORB-53 split, and a column bug worth remembering
 
 ### The bug: I wrote every score one column to the right
