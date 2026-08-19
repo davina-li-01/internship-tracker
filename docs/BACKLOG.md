@@ -123,6 +123,70 @@ with no access to this repo.
 
 ---
 
+## RICE scored, ORB-53 split, and a column bug worth remembering
+
+### The bug: I wrote every score one column to the right
+
+Columns on the in-flight table are `0 Feature, 1 Jira, 2 Team, 3 Complete By,
+4 Reach, 5 Impact, 6 Confidence, 7 Effort, 8 RICE Score, 9 Status`. The first
+pass wrote Reach into index **5**, so every value shifted right by one and the
+score landed in **Status**, wiping it from all 28 rows.
+
+**The verification missed it because it read the same wrong indices.** Reach and
+Impact are both plain numbers, so nothing looked malformed and the arithmetic
+"checked out" — I was multiplying the same shifted cells I had written. Davina
+spotted it by reading the page.
+
+**The fix is the lesson:** derive column indices from the header row rather than
+hard-coding them, and check a column's *type* — Status holds a `status` node,
+never a number — instead of only checking that values are self-consistent.
+Statuses were recovered from Confluence version 54.
+
+### Effort re-scored for how this is actually built
+
+Effort was scored as though implementation volume were the cost. It is not — the
+code is vibe-coded, and the real cost is **integrations and third-party APIs**.
+Rescaled: pure UI and copy drop to **1**, logic and schema to **2–3**, and only
+genuine external dependencies stay high. **ORB-88** (Granola, unknown API) and
+**ORB-18** (transcription API) are the only 8s left.
+
+**ORB-18 is explicitly not superseded by Granola.** Davina wants the plain audio
+transcript regardless, so its confidence rose from 4 to 7 even though its effort
+keeps the score low.
+
+**ORB-82 dropped from 5th to 21st** on Davina's own numbers: impact 2 and
+confidence 5 rather than the 2 and 9 first assigned. It stays scheduled for
+28 Aug because the segmentation data has research value RICE does not measure.
+
+### ORB-53 split into three
+
+One 8-effort ticket became three small ones, which is both easier to build and
+scores far better — the original scored 81, the pieces score 288, 252 and 149.
+
+| Requirement | User Story | Importance | Jira Issue | Dependencies |
+|---|---|---|---|---|
+| Say why someone is on the reach-out list | As a user looking at who to contact, I want to see the reason each person is there, so the list gives me something to act on rather than a queue of dates | Must have | ORB-90 | **First of three splitting ORB-53.** Foundation for the other two: every row carries a stated reason, with *it has been a while* as the honest fallback. Display only — reasons are computed in **ORB-91**. Pairs with **ORB-78** |
+| Two triggers from data we already hold | As a user, I want to be told when something actually happened rather than when a timer expired, so the prompt arrives with a reason attached | Must have | ORB-91 | **Second of three.** Limited to triggers computable from stored data, which is what makes it small: **a meeting just ended** (already supplied by **ORB-45**) and **the anniversary of when you met** (from `dateMet`, added by **ORB-73**). Job changes need LinkedIn and are out of scope. Gollwitzer & Sheeran put if-then plans at **d = .65**; Survey 1 found only 1 of 5 acted on a timer |
+| Order by trigger before timer | As a user, I want the people with a real reason at the top of the list, so the clock becomes the fallback rather than the whole ranking | Must have | ORB-92 | **Third of three**, and the piece that delivers ORB-53's original intent. Sorting only, once **ORB-90** and **ORB-91** exist. The clock is demoted, not removed. **ORB-55** should reuse this ordering rather than inventing a second one |
+
+ORB-53 keeps its Backlog row as the decision-log entry and is off the roadmap,
+which now carries the three executable pieces instead.
+
+### Where RICE and judgement disagree
+
+Worth recording, because both times the number is arguably the thing that is
+wrong:
+
+- **Granola (ORB-88) scores 30, 24th of 29.** Reach is capped at Granola users
+  and confidence is held down by the unknown API. But RICE measures reach across
+  all users, and with one real user **Jack *is* the reach** — the framework
+  cannot see design-partner value. Overridden deliberately; it stays scheduled
+  right after core.
+- **ORB-82 scores 33** and is kept at 28 Aug for the same class of reason: the
+  value is research, not user-facing.
+
+---
+
 ## Rescheduled from 19 Aug, and Granola raised (ORB-88, ORB-89)
 
 **Five items were genuinely overdue** and two were due the day this was written.
