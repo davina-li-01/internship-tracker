@@ -270,6 +270,41 @@ thing the model already prevents.
 
 ---
 
+## ORB-57 — two metrics restated against the star, Aug 19
+
+Half the metric set was written in terms of tiers, and **ORB-94** deletes the
+tier picker. Nothing would have errored; the numbers would just have gone flat
+six days before **ORB-76** re-reads them.
+
+| Goal | Was | Is |
+|---|---|---|
+| People commit to relationships deliberately | 30%+ of contacts sit in a tier the user **changed from the default** | **A user stars at least one person in their first week** |
+| Fewer relationships lapse | **Inner-circle** contacts past their cadence trends down while network size grows | **Starred** contacts past their cadence trends down while network size grows |
+
+**The threshold moved with the control, on purpose.** The old metric measured
+*deviation from a default* — every contact already had a tier, so changing one
+was the signal. A star starts from nothing, and a realistic user stars maybe five
+people out of forty. "30% starred" would have been a far harder bar reworded, not
+the same bar. Stated as reach rather than share, it tests the same belief —
+people know who matters and will say so — without a percentage neither the survey
+nor the literature supports.
+
+Metric 2 is a straight substitution and arguably truer: an inner circle was a
+bucket you were sorted into, a star is a person you chose. The dormant-tie carve-
+out survives unchanged — a distant contact untouched for a year is an opportunity
+(**ORB-54**), not a lapse.
+
+**Downstream catch, same class as the one ORB-57 found last time.** The PRD's
+field table said the `tier` column *"counts toward ORB-57's changed-from-default
+metric"*. It no longer counts toward anything. Fixed on page 6520834; the column
+itself stays, because ORB-86 may revive tiers as a suggestion.
+
+The two metrics that were already trigger-based — 2+ reconnections a month, and
+over half of reach-outs carrying a trigger — are untouched. Those are the direct
+test of **ORB-90/91/92** and had nothing to do with tiers.
+
+---
+
 ## ORB-51 decided — a star instead of a tier, Aug 19
 
 **Davina's call, and it closes ORB-51.** Tiering is parked. In its place, people
