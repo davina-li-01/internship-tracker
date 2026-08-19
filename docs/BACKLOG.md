@@ -305,6 +305,82 @@ test of **ORB-90/91/92** and had nothing to do with tiers.
 
 ---
 
+## ORB-90, ORB-91, ORB-92 — trigger before timer, shipped Aug 19
+
+The three tickets ORB-53 was split into, and the direct test of the central bet.
+**Survey 1 found exactly one person in five acted on a reminder they had set
+themselves** — which is the only mechanism this app shipped with. Gollwitzer and
+Sheeran put if-then plans at **d = .65** across 94 tests: *when X happens, I will
+do Y* beats *I will do Y eventually*, and a timer is the second dressed as the
+first.
+
+### ORB-90 — every row says why
+
+The reason leads, above the elapsed time. **"It has been a while" stays as the
+honest fallback but prints no tag** — ORB-78 already says it in a full sentence,
+and printing it twice with a label on it is the fallback shouting.
+
+### ORB-91 — two triggers, from data already on disk
+
+That constraint is what kept it small. **A job change would be the strongest
+trigger of all and needs LinkedIn or manual entry, so it is explicitly out.**
+
+**You just met.** A conversation in the last four days with no reach-out since.
+This is the one worth reading twice: **the cadence actively hides it.** Having
+just spoken makes you *in touch*, so the single moment a note lands best was the
+single moment the dashboard said there was nothing to do. There is a test
+asserting both halves — the person is on the list, and the health model still
+says they are fine.
+
+It clears itself. Met Monday, reached out Tuesday, gone by Wednesday — otherwise
+it is nagging about a job already done.
+
+**The anniversary of meeting.** From `dateMet` (ORB-73). Not a milestone worth
+celebrating on its own; it is an *excuse*, and an excuse is what the survey says
+people are short of.
+
+### ORB-92 — the ranking
+
+    capture → just-met → anniversary → first-contact → elapsed
+    then the star, then the clock
+
+**One array is both the reason list and the sort order.** Two lists is how a row
+ends up showing one reason and sorting by another.
+
+A reason beats a star, and a star breaks ties within a reason. Both are
+asserted, because the ordering claim is the ticket.
+
+### The bug worth remembering: the year boundary
+
+`anniversaryTrigger` first checked only the current year's anniversary. **On 2
+January, a 30 December anniversary is three days ago and lives in the previous
+year** — so every turn-of-year anniversary would have been skipped, silently,
+for the other eleven months of testing. It now checks the years either side.
+
+The related fix is smaller and more useful: it originally compared against
+`daysSince`, which always reads the real clock, so the `today` parameter did
+nothing. **A trigger whose test can only be written on the day it fires is a
+trigger nobody tests at the boundary.** It now measures against the date passed
+in, which is what made the December case checkable at all.
+
+### What ORB-81 already paid for
+
+ORB-92 was scored at effort 2 partly because the capture shipped first. Captures
+had already established that something other than a lapsed cadence can put a
+person on this list, so the triggers slotted into a filter and a sort that
+existed. Splitting ORB-53 and doing the pieces in this order was worth roughly
+half the effort of the original ticket.
+
+**51 new assertions; 1400 across 38 suites.**
+
+| Requirement | User Story | Importance | Jira Issue | Dependencies |
+|---|---|---|---|---|
+| Say why someone is on the reach-out list | As a user looking at who to contact, I want to see the reason each person is there, so the list gives me something to act on rather than a queue of dates | Must have | ORB-90 | First of three splitting **ORB-53**. Rides **ORB-78**'s renderer; the tag sits above the elapsed sentence. **ORB-55** should reuse `reachOutReason()` in the digest rather than inventing a second vocabulary |
+| Two triggers from data we already hold | As a user, I want to be told when something actually happened rather than when a timer expired, so the prompt arrives with a reason attached | Must have | ORB-91 | Second of three. Uses `dateMet` from **ORB-73** and stored conversations. Job changes are out of scope pending LinkedIn or manual entry — worth raising separately once there is evidence anyone wants it |
+| Order by trigger before timer | As a user, I want the people with a real reason at the top of the list, so the clock becomes the fallback rather than the whole ranking | Must have | ORB-92 | Third of three, and the piece that delivers ORB-53's original intent. Cheaper than scored because **ORB-81** had already made membership independent of the cadence. **ORB-55** must reuse this ordering, not invent a second one |
+
+---
+
 ## ORB-93, ORB-94, ORB-54, ORB-81 — shipped Aug 19
 
 Four tickets, one coherent change: **the app stops asking you to classify people
