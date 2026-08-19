@@ -142,6 +142,9 @@ const EXPORTS = [
   "reachOutReason", "reasonRank", "justMetTrigger", "anniversaryTrigger",
   "REACH_OUT_REASONS", "JUST_MET_DAYS", "ANNIVERSARY_WINDOW_DAYS",
   // the nudge on open, one click like everywhere else (ORB-58, ORB-13)
+  // reach-outs are touchpoints; the echo dates itself (ORB-96, ORB-97)
+  "TOUCHPOINT_TYPE", "isTouchpoint", "conversationsOf", "lastConversationEntry",
+  "INTERACTION_TYPES",
   "reachOutNudgeHtml", "showReachOutNudge", "checkRemindersOnLoad",
   "nudgeAllowed", "markNudgeShown", "getNudgeMode",
   // behaviour

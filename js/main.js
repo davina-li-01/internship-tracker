@@ -1274,14 +1274,21 @@ function lastSpokeSentence(contact, health = getHealth(contact)) {
  * — it is the thing that makes the person concrete again. Marks are stripped
  * because this is one line inside a prompt, not the notes view.
  */
-function lastConversationWords(contact, limit = 120) {
+function lastConversationEntry(contact, limit = 120) {
   const latest = (contact.interactions || [])
     .filter((i) => (i.notes || "").trim() || (i.title || "").trim())
     .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
-  if (!latest) return "";
+  if (!latest) return null;
   const text = stripNoteMarks(latest.notes || latest.title || "").replace(/\s+/g, " ").trim();
-  if (!text) return "";
-  return text.length > limit ? text.slice(0, limit).trimEnd() + "…" : text;
+  if (!text) return null;
+  return {
+    text: text.length > limit ? text.slice(0, limit).trimEnd() + "…" : text,
+    date: String(latest.date || "")
+  };
+}
+
+function lastConversationWords(contact, limit = 120) {
+  return lastConversationEntry(contact, limit)?.text || "";
 }
 
 /**
@@ -1301,17 +1308,22 @@ function lastConversationWords(contact, limit = 120) {
  * date you happened to meet is not evidence for it.
  */
 function relationshipLedger(contact) {
+  // ORB-96. Two numbers, because they are two different claims: a conversation
+  // is something you had and wrote up, a touchpoint is something you did. The
+  // span runs across both — a year of reach-outs is a year of relationship
+  // whether or not any of it was written down.
   const dates = (contact.interactions || [])
     .map((i) => String(i.date || ""))
     .filter(Boolean)
     .sort();
-  const count = (contact.interactions || []).length;
+  const count = conversationsOf(contact).length;
+  const touchpoints = (contact.interactions || []).filter(isTouchpoint).length;
   const files = (contact.interactions || [])
     .reduce((n, i) => n + ((i.fileIds || []).length), 0);
   const spanDays = dates.length > 1
     ? Math.abs(daysSince(dates[dates.length - 1]) - daysSince(dates[0]))
     : 0;
-  return { count, files, spanDays };
+  return { count, touchpoints, files, spanDays };
 }
 
 /**
@@ -1331,12 +1343,17 @@ function relationshipLedger(contact) {
  * the same reduce already runs in conversationPreview.
  */
 function ledgerLine(contact) {
-  const { count, files, spanDays } = relationshipLedger(contact);
-  if (!count && !files) return "";
+  const { count, touchpoints, files, spanDays } = relationshipLedger(contact);
+  if (!count && !touchpoints && !files) return "";
   const parts = [];
+  // The span hangs off whichever of the two comes first, so it is stated once.
+  const span = spanDays >= 7 ? " over " + elapsedPhrase(spanDays) : "";
   if (count) {
-    parts.push(count + " conversation" + (count === 1 ? "" : "s")
-      + (spanDays >= 7 ? " over " + elapsedPhrase(spanDays) : ""));
+    parts.push(count + " conversation" + (count === 1 ? "" : "s") + span);
+  }
+  if (touchpoints) {
+    parts.push(touchpoints + " reach-out" + (touchpoints === 1 ? "" : "s")
+      + (count ? "" : span));
   }
   if (files) parts.push(files + " file" + (files === 1 ? "" : "s"));
   return parts.join(" · ");
@@ -1405,7 +1422,20 @@ function longSilenceLine(contact, health = getHealth(contact)) {
  * is a trap for whoever calls it next.
  */
 function reachOutPromptHtml(contact, health = getHealth(contact), { echo = true } = {}) {
-  const words = echo ? lastConversationWords(contact) : "";
+  // ORB-97. The sentence above is built from `lastContacted`; the quote is the
+  // most recent thing you actually WROTE. Those diverge the moment you use the
+  // reach-out button, and the prompt then read "You last spoke to Marcus 3 days
+  // ago" over words from eight months earlier, presented as what you last said.
+  //
+  // The fix is to date the quote rather than hide it — an old note is still the
+  // best thing on the screen for remembering who someone is. It is only labelled
+  // when it disagrees, so the common case stays clean.
+  const entry = echo ? lastConversationEntry(contact) : null;
+  const words = entry?.text || "";
+  const stale = entry && contact.lastContacted && entry.date
+    && entry.date < String(contact.lastContacted).slice(0, 10)
+    ? ' <span class="prompt-echo-when">— ' + escapeHtml(relativeDayLabel(entry.date)) + '</span>'
+    : "";
   const ledger = ledgerLine(contact);
   // ORB-90. The reason leads, above the elapsed time, because when there is one
   // it is why this person is on the list at all — the clock is incidental. Only
@@ -1422,7 +1452,7 @@ function reachOutPromptHtml(contact, health = getHealth(contact), { echo = true 
       : '')
     + '<p class="prompt-line">' + escapeHtml(lastSpokeSentence(contact, health)) + '</p>'
     + (ledger ? '<p class="prompt-ledger">' + escapeHtml(ledger) + '</p>' : '')
-    + (words ? '<p class="prompt-echo">“' + escapeHtml(words) + '”</p>' : '');
+    + (words ? '<p class="prompt-echo">“' + escapeHtml(words) + '”' + stale + '</p>' : '');
 }
 
 function permissionLineHtml(contact, health = getHealth(contact)) {
@@ -1730,7 +1760,10 @@ const JUST_MET_DAYS = 4;
 const ANNIVERSARY_WINDOW_DAYS = 3;
 
 function justMetTrigger(contact) {
-  const latest = (contact.interactions || [])
+  // Conversations only (ORB-96). A touchpoint is you having ALREADY followed
+  // up, so counting it here would fire "you spoke to Marcus today — a note now
+  // lands better" the instant you pressed the button that says you sent one.
+  const latest = conversationsOf(contact)
     .map((i) => String(i.date || ""))
     .filter(Boolean)
     .sort()
@@ -1912,7 +1945,7 @@ function conversationPreview(contact, limit = 150) {
   // A conversation logged with only a PDF and no notes used to render nothing
   // here, which is the same "did that save?" problem as ORB-14.
   if (!text && !clips) return "";
-  const count = (contact.interactions || []).length;
+  const count = conversationsOf(contact).length;
   return '<p class="connection-note">'
     + (latest ? '<span class="convo-count">' + count
         + (count === 1 ? " conversation" : " conversations") + '</span> ' : '')
@@ -2152,6 +2185,36 @@ function applyTheme() {
 // ── Talking-point suggestions ─────────────────────────────────────────────────
 
 const INTERACTION_TYPES = ["coffee chat", "meeting", "check-in", "email", "phone call", "event"];
+
+/**
+ * A reach-out you recorded with the button rather than by writing it up (ORB-96).
+ *
+ * `markReachedOut` used to move `lastContacted` and nothing else, so pressing
+ * the button twenty times left the app believing you had never spoken. That
+ * made `interactions` mean "times you wrote something down" while every
+ * surface read it as "times you were in touch" — ORB-80's ledger most of all,
+ * which exists precisely to show what has accumulated and was counting a
+ * fraction of it.
+ *
+ * NOT the same mistake ORB-73 fixed. That bug fabricated a conversation you
+ * never had, on a day you merely added someone. This records something you did
+ * — you said so by pressing the button — and records it as what it is. It
+ * carries no notes and never will, so nothing downstream can quote it as
+ * though you had written one.
+ *
+ * Deliberately not in INTERACTION_TYPES: it is not an answer to "what kind of
+ * conversation was this?", so it must not appear in the picker.
+ */
+const TOUCHPOINT_TYPE = "reached out";
+
+function isTouchpoint(item) {
+  return item?.type === TOUCHPOINT_TYPE;
+}
+
+/** Conversations proper — what you actually wrote up. */
+function conversationsOf(contact) {
+  return (contact.interactions || []).filter((i) => !isTouchpoint(i));
+}
 
 /**
  * What may be attached to a conversation or uploaded to Files.
@@ -3743,8 +3806,10 @@ async function markReachedOut(contact, onChanged) {
   const restore = {
     lastContacted: contact.lastContacted,
     nextReminder: contact.nextReminder,
-    // The captured thoughts as they were, so Undo restores them open (ORB-81).
-    followUps: contact.followUps
+    // The captured thoughts as they were, so Undo restores them open (ORB-81),
+    // and the history without the touchpoint this is about to add (ORB-96).
+    followUps: contact.followUps,
+    interactions: contact.interactions
   };
   const today = todayDateString();
   // Reaching out is what a captured thought was FOR, so it closes here. Leaving
@@ -3757,6 +3822,13 @@ async function markReachedOut(contact, onChanged) {
   const saved = await db.saveContact(normalizeContact({
     ...contact,
     followUps,
+    // ORB-96. Recorded as a touchpoint, not a conversation, and with no notes —
+    // you pressed a button, you did not write anything, and inventing words for
+    // you is the ORB-73 mistake.
+    interactions: [
+      normalizeInteraction({ date: today, type: TOUCHPOINT_TYPE }),
+      ...(contact.interactions || [])
+    ],
     lastContacted: today,
     nextReminder: calculateNextReminder(today, contact.followUpFrequency)
   }));

@@ -45,7 +45,17 @@ console.log("\nORB-13 — one-click reached out");
   ok("the person is now in touch", __t.getHealth(state.store.get("c1")).band === "good");
   ok("confirmation names the person", toast()?.textContent.includes("Marcus Chen"));
   ok("confirmation offers undo", toast()?.querySelector(".toast-action")?.textContent === "Undo");
-  eq("no notes were invented", state.store.get("c1").interactions.length, 0);
+  // Was "no notes were invented … length, 0". ORB-96 records the reach-out as a
+  // TOUCHPOINT: pressing the button is something you did, and leaving it
+  // unrecorded made `interactions` mean "times you wrote something down" while
+  // every surface read it as "times you were in touch". The no-notes half of
+  // the original assertion is the part that mattered and it is kept.
+  eq("the reach-out is recorded", state.store.get("c1").interactions.length, 1);
+  eq("as a touchpoint, not a conversation",
+     state.store.get("c1").interactions[0].type, "reached out");
+  eq("still with no notes invented", state.store.get("c1").interactions[0].notes, "");
+  eq("and it does not count as a conversation",
+     __t.relationshipLedger(state.store.get("c1")).count, 0);
 }
 
 console.log("\nORB-13 — undo");

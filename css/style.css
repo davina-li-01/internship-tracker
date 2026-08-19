@@ -2470,6 +2470,8 @@ body.dark .token-industry { color: var(--accent); }
 .reachout-said .prompt-line { margin: 0; font-size: 0.92rem; }
 .reachout-said .prompt-echo { margin: 0; white-space: normal; }
 .reachout-said .prompt-ledger { margin: 0; font-size: 0.75rem; }
+/* ORB-97: only rendered when the quote is older than the date above it. */
+.prompt-echo-when { font-style: normal; color: var(--text-faint); }
 
 /* ── The nudge on open (ORB-58) ──────────────────────────────── */
 /* A bar, not a dialog. It does not cover the page or trap focus — the whole
