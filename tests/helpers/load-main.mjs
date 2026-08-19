@@ -135,6 +135,9 @@ const EXPORTS = [
   "starButtonHtml", "toggleStar", "STARRED_FILTER",
   // failure language reserved for the starred (ORB-54)
   "DORMANT_META", "FIRST_CONTACT_META", "bandWords",
+  // catching a thought in one gesture (ORB-81)
+  "captureFormHtml", "wireCaptureForm", "openCaptureModal", "openCaptures",
+  "normalizeFollowUpItem", "FOLLOWUP_SOURCES",
   // behaviour
   "markReachedOut", "showToast",
   "conversationWidgetHtml", "wireConversationWidget",

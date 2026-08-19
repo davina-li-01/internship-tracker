@@ -293,13 +293,15 @@ group("The + asks which of the two things you meant");
   ok("and not the conversation logger", !document.getElementById("quickAddModal"));
 
   const opts = chooser.querySelectorAll(".chooser-option");
-  eq("two options", opts.length, 2);
+  eq("three options", opts.length, 3);
   ok("adding a connection comes first", /add a connection/i.test(opts[0].textContent));
   ok("logging a conversation second", /log a conversation/i.test(opts[1].textContent));
+  // ORB-81 added the third. Last, because it is the smallest act of the three.
+  ok("catching a thought third", /note to self/i.test(opts[2].textContent));
   // Two bare buttons would not have removed the ambiguity — the descriptions
   // are the part that does.
-  ok("each explains what it does", opts[0].querySelector(".chooser-desc")
-    && opts[1].querySelector(".chooser-desc"));
+  ok("each explains what it does",
+    [...opts].every((o) => o.querySelector(".chooser-desc")));
   ok("both are focusable buttons", [...opts].every((b) => b.tagName === "BUTTON"));
   chooser.remove();
 }

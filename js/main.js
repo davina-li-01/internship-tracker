@@ -1407,7 +1407,16 @@ function longSilenceLine(contact, health = getHealth(contact)) {
 function reachOutPromptHtml(contact, health = getHealth(contact), { echo = true } = {}) {
   const words = echo ? lastConversationWords(contact) : "";
   const ledger = ledgerLine(contact);
-  return '<p class="prompt-line">' + escapeHtml(lastSpokeSentence(contact, health)) + '</p>'
+  // ORB-81 first, and above the elapsed time, because when there is a captured
+  // thought it is the reason this person is on the list at all — the clock is
+  // incidental. Only the newest is shown; a stack of them is a to-do list, and
+  // the profile is where that already lives.
+  const caught = openCaptures(contact)[0];
+  return (caught
+      ? '<p class="prompt-capture"><span class="prompt-capture-tag">You noted</span> '
+        + escapeHtml(caught.text) + '</p>'
+      : '')
+    + '<p class="prompt-line">' + escapeHtml(lastSpokeSentence(contact, health)) + '</p>'
     + (ledger ? '<p class="prompt-ledger">' + escapeHtml(ledger) + '</p>' : '')
     + (words ? '<p class="prompt-echo">“' + escapeHtml(words) + '”</p>' : '');
 }
@@ -1664,14 +1673,36 @@ function normalizeEmails(contact = {}) {
   });
 }
 
+const FOLLOWUP_SOURCES = ["manual", "ai", "capture"];
+
+/**
+ * `capture` is a third provenance (ORB-81), not a new table.
+ *
+ * A thought caught at 2am and a talking point typed on the profile are the same
+ * shape — a sentence about a person, done or not done — so giving the first its
+ * own storage would mean two lists to reconcile, two things to complete, and a
+ * profile that shows one of them. What differs is where it came from, and that
+ * is the only thing recorded.
+ *
+ * It earns its own value because an OPEN capture pulls someone into Reach out
+ * next regardless of their cadence. A manual talking point must not do that —
+ * it is preparation for a conversation you already intend to have.
+ */
 function normalizeFollowUpItem(item = {}) {
   return {
     id: item.id || makeId(),
     text: (item.text || "").trim(),
-    source: item.source === "ai" ? "ai" : "manual",
+    source: FOLLOWUP_SOURCES.includes(item.source) ? item.source : "manual",
     completed: item.completed === true,
     createdAt: item.createdAt || new Date().toISOString()
   };
+}
+
+/** Captured thoughts still waiting, newest first. */
+function openCaptures(contact) {
+  return (contact.followUps || [])
+    .filter((f) => f.source === "capture" && !f.completed)
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
 }
 
 function normalizeContact(contact = {}) {
@@ -1835,9 +1866,14 @@ function matchesConnectionFilters(contact, { cadence, status, silent, starred })
  */
 function needsAttention(contacts) {
   return contacts
-    .map((c) => ({ contact: c, health: getHealth(c) }))
-    .filter((x) => x.health.scheduled && x.health.band !== "good")
-    .sort((a, b) => (b.contact.starred === true) - (a.contact.starred === true)
+    .map((c) => ({ contact: c, health: getHealth(c), captures: openCaptures(c) }))
+    // ORB-81. A thought you caught at 2am outranks a cadence, and it belongs
+    // here even for someone with no schedule at all — you did not write it down
+    // so it could wait for a timer. This is the only thing other than a lapsed
+    // cadence that can put a person on this list.
+    .filter((x) => x.captures.length || (x.health.scheduled && x.health.band !== "good"))
+    .sort((a, b) => (b.captures.length > 0) - (a.captures.length > 0)
+      || (b.contact.starred === true) - (a.contact.starred === true)
       || a.health.pct - b.health.pct);
 }
 
@@ -3126,6 +3162,184 @@ function openAddConnectionModal(contacts, onSaved) {
  * The cost is one extra click on both paths. Accepted: a click that tells you
  * what you are about to do is worth more than one saved.
  */
+/**
+ * Catch a thought about someone, in one gesture (ORB-81).
+ *
+ * Survey 1 asked five students where they were when they realised they had
+ * forgotten to follow up with someone. The answers: lying awake (twice),
+ * scrolling LinkedIn, going through email, and seeing the person's name
+ * somewhere by accident.
+ *
+ * **Not one of them was inside a system built to tell them, and two were in
+ * bed.** That is hard on a reminder-shaped product: a notification at 9am is
+ * competing with a thought that arrived at 2am, and losing.
+ *
+ * So this is not a form. There is one required field — who — and it is the
+ * first thing you type. The thought is optional, because "Marcus" on its own is
+ * already a complete intention, and requiring a sentence at 2am is how the
+ * thought gets lost. Enter saves from either field.
+ *
+ * WHY IT ATTACHES TO SOMEONE RATHER THAN FLOATING
+ *
+ * An orphan note needs a home, a review queue and a way to be filed, which is a
+ * feature rather than a capture. Attaching it means it resurfaces in the one
+ * place already built for "who should I contact" — Reach out next — which is
+ * the "usable moment" the ticket asks for.
+ */
+function captureFormHtml(contacts = []) {
+  return '<form class="capture-form" novalidate>'
+    + '<div class="capture-row">'
+    + '<div class="combo">'
+    + '<input type="text" class="capture-who" autocomplete="off" role="combobox"'
+    + ' aria-expanded="false" aria-autocomplete="list"'
+    + ' placeholder="Who are you thinking about?" aria-label="Who are you thinking about?" />'
+    + '<ul class="combo-list capture-list" role="listbox" hidden></ul>'
+    + '</div>'
+    + '<button type="submit" class="btn btn-sm capture-save">Save</button>'
+    + '</div>'
+    // Optional, and it says so. The label is the whole argument for this
+    // ticket, so it is on screen rather than in a tooltip.
+    + '<input type="text" class="capture-thought" maxlength="280"'
+    + ' placeholder="What was the thought? (optional)"'
+    + ' aria-label="What was the thought? Optional" />'
+    + '<p class="capture-error error" aria-live="polite"></p>'
+    + '</form>';
+}
+
+/**
+ * Wires it. `getContacts` is a function because the list changes underneath.
+ *
+ * Only existing people can be captured against. Creating someone from here
+ * would need a role, a company and a cadence to be useful, and that is
+ * ORB-73's form — this is capturing an INTENTION, not a person.
+ */
+function wireCaptureForm(root, getContacts, onSaved) {
+  const form = root.querySelector(".capture-form");
+  if (!form) return;
+  const $ = (sel) => form.querySelector(sel);
+  const whoEl = $(".capture-who");
+  const thoughtEl = $(".capture-thought");
+  const listEl = $(".capture-list");
+  const errEl = $(".capture-error");
+  let chosen = null;
+  let active = -1;
+
+  const close = () => {
+    listEl.hidden = true;
+    listEl.innerHTML = "";
+    active = -1;
+    whoEl.setAttribute("aria-expanded", "false");
+  };
+
+  const render = () => {
+    const q = whoEl.value.trim().toLowerCase();
+    if (!q) return close();
+    const matches = (getContacts() || [])
+      .filter((c) => (c.name || "").toLowerCase().includes(q))
+      .slice(0, 6);
+    if (!matches.length) return close();
+    listEl.innerHTML = matches.map((c, i) =>
+      '<li class="combo-item' + (i === active ? " active" : "") + '" role="option"'
+      + ' aria-selected="' + (i === active ? "true" : "false") + '"'
+      + ' data-capture-id="' + escapeHtml(c.id) + '">'
+      + '<span class="combo-name">' + escapeHtml(c.name) + '</span>'
+      + '</li>').join("");
+    listEl.hidden = false;
+    whoEl.setAttribute("aria-expanded", "true");
+    listEl.querySelectorAll("[data-capture-id]").forEach((li) => {
+      // mousedown, not click: blur would close the list first.
+      li.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        pick((getContacts() || []).find((c) => c.id === li.dataset.captureId));
+      });
+    });
+  };
+
+  const pick = (contact) => {
+    if (!contact) return;
+    chosen = contact;
+    whoEl.value = contact.name;
+    close();
+    thoughtEl.focus();
+  };
+
+  whoEl.addEventListener("input", () => { chosen = null; render(); });
+  whoEl.addEventListener("blur", () => setTimeout(close, 120));
+  whoEl.addEventListener("keydown", (e) => {
+    const items = [...listEl.querySelectorAll(".combo-item")];
+    if (e.key === "ArrowDown" && items.length) {
+      e.preventDefault(); active = Math.min(active + 1, items.length - 1); render();
+    } else if (e.key === "ArrowUp" && items.length) {
+      e.preventDefault(); active = Math.max(active - 1, 0); render();
+    } else if (e.key === "Enter" && active >= 0 && items[active]) {
+      // Enter on a highlighted suggestion chooses it rather than submitting —
+      // otherwise the first keystroke of a name saves against the wrong person.
+      e.preventDefault();
+      pick((getContacts() || []).find((c) => c.id === items[active].dataset.captureId));
+    }
+  });
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    errEl.textContent = "";
+
+    const typed = whoEl.value.trim();
+    const match = chosen
+      || (getContacts() || []).find((c) => (c.name || "").toLowerCase() === typed.toLowerCase());
+    if (!match) {
+      errEl.textContent = typed
+        ? "No one in your network by that name yet."
+        : "Who is this about?";
+      whoEl.focus();
+      return;
+    }
+
+    // The name alone is a complete intention, so this is the fallback rather
+    // than a validation error.
+    const text = thoughtEl.value.trim() || ("Reach out to " + match.name);
+    const saved = await db.saveContact(normalizeContact({
+      ...match,
+      followUps: [normalizeFollowUpItem({ text, source: "capture" }), ...(match.followUps || [])]
+    }));
+    if (!saved) {
+      errEl.textContent = "Could not save that — nothing was recorded.";
+      return;
+    }
+    whoEl.value = "";
+    thoughtEl.value = "";
+    chosen = null;
+    close();
+    showToast("Noted about " + match.name + " — it is on your list.");
+    whoEl.focus();
+    if (onSaved) await onSaved();
+  });
+}
+
+function openCaptureModal(contacts, onSaved) {
+  document.getElementById("captureModal")?.remove();
+  const modal = document.createElement("div");
+  modal.id = "captureModal";
+  modal.className = "modal-overlay";
+  modal.innerHTML = '<div class="modal-card capture-card" role="dialog" aria-modal="true"'
+    + ' aria-labelledby="captureTitle">'
+    + '<div class="quick-add-header">'
+    + '<h3 id="captureTitle">Note to self about someone</h3>'
+    + '<button class="icon-btn" id="captureClose" type="button" aria-label="Close">\u2715</button>'
+    + '</div>'
+    + '<p class="muted">It will be waiting on Reach out next.</p>'
+    + captureFormHtml(contacts)
+    + '</div>';
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector("#captureClose").addEventListener("click", close);
+  modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+  wireCaptureForm(modal, () => contacts, async () => {
+    close();
+    if (onSaved) await onSaved();
+  });
+  modal.querySelector(".capture-who").focus();
+}
+
 function openQuickAddChooser(contacts, onSaved) {
   document.getElementById("quickAddChooser")?.remove();
 
@@ -3151,6 +3365,13 @@ function openQuickAddChooser(contacts, onSaved) {
     + '<span class="chooser-desc">Record a conversation you have already had, '
     + 'with someone new or already in your network.</span>'
     + '</button></li>'
+    // Third and last, because it is the smallest act of the three and the one
+    // you already know you want when you open this (ORB-81).
+    + '<li><button type="button" class="chooser-option" id="chooseCapture">'
+    + '<span class="chooser-title">Note to self about someone</span>'
+    + '<span class="chooser-desc">A thought you do not want to lose. '
+    + 'One line, and it waits for you on Reach out next.</span>'
+    + '</button></li>'
     + '</ul>'
     + '</div>';
   document.body.appendChild(modal);
@@ -3172,6 +3393,10 @@ function openQuickAddChooser(contacts, onSaved) {
   modal.querySelector("#chooseLogConversation").addEventListener("click", () => {
     close();
     openQuickAddModal(contacts, onSaved);
+  });
+  modal.querySelector("#chooseCapture").addEventListener("click", () => {
+    close();
+    openCaptureModal(contacts, onSaved);
   });
 
   modal.querySelector("#chooseAddConnection").focus();
@@ -3380,11 +3605,21 @@ async function showReminderModal(contact, onChanged) {
 async function markReachedOut(contact, onChanged) {
   const restore = {
     lastContacted: contact.lastContacted,
-    nextReminder: contact.nextReminder
+    nextReminder: contact.nextReminder,
+    // The captured thoughts as they were, so Undo restores them open (ORB-81).
+    followUps: contact.followUps
   };
   const today = todayDateString();
+  // Reaching out is what a captured thought was FOR, so it closes here. Leaving
+  // it open would keep the person pinned to Reach out next after the thing was
+  // done, which is the same "did that save?" doubt as ORB-14 from the other
+  // direction. Only captures are closed — a manual talking point may well
+  // survive the conversation it was written for.
+  const followUps = (contact.followUps || []).map((f) =>
+    f.source === "capture" && !f.completed ? { ...f, completed: true } : f);
   const saved = await db.saveContact(normalizeContact({
     ...contact,
+    followUps,
     lastContacted: today,
     nextReminder: calculateNextReminder(today, contact.followUpFrequency)
   }));
@@ -3620,12 +3855,21 @@ async function initDashboard() {
       + '<section id="upcomingMeetings" class="card chart-card upcoming-slot"></section>'
       + '</div>';
 
+    // ORB-81. Always visible and always empty, at the top of the page you land
+    // on. Behind a button it would cost two taps and lose to the thought.
+    const captureHtml = '<section class="card capture-card dash-capture">'
+      + '<h2 class="capture-heading">Thinking of someone?</h2>'
+      + '<p class="muted">One line. It waits for you below.</p>'
+      + captureFormHtml(contacts)
+      + '</section>';
+
     const attentionHtml = '<section class="card dash-section">'
       + '<div class="dash-section-header">'
       + '<h2>Reach out next</h2>'
       // Was "People on a schedule who are drifting — most overdue first", which
-      // described the query rather than the people (ORB-78).
-      + '<p class="muted">Longest since you spoke, first.</p>'
+      // described the query rather than the people (ORB-78). Two reasons land
+      // people here now, and the note is the one worth naming (ORB-81).
+      + '<p class="muted">Anything you noted first, then longest since you spoke.</p>'
       + '</div>'
       + (attention.length
         ? '<ul class="person-list">'
@@ -3635,8 +3879,9 @@ async function initDashboard() {
         : '<p class="empty">You are current with everyone on a schedule. Nice work.</p>')
       + '</section>';
 
-    root.innerHTML = kpiHtml + chartsHtml + attentionHtml;
+    root.innerHTML = kpiHtml + captureHtml + chartsHtml + attentionHtml;
     wirePersonRows(root, contacts, render);
+    wireCaptureForm(root, () => cached, render);
     // Renders from cache immediately; the background sync refreshes it.
     renderUpcomingMeetings();
   }

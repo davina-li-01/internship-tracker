@@ -2471,6 +2471,35 @@ body.dark .token-industry { color: var(--accent); }
 .reachout-said .prompt-echo { margin: 0; white-space: normal; }
 .reachout-said .prompt-ledger { margin: 0; font-size: 0.75rem; }
 
+/* ── Catching a thought (ORB-81) ─────────────────────────────── */
+/* The reason the person is on the list, so it leads and it is marked. */
+.prompt-capture {
+  margin: 0 0 0.3rem; font-size: 0.82rem; line-height: 1.45; color: var(--text);
+  display: flex; gap: 0.4rem; align-items: baseline; flex-wrap: wrap;
+}
+.prompt-capture-tag {
+  font-size: 0.62rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--primary-deep);
+  background: rgba(249,115,22,0.12); padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-pill); flex-shrink: 0;
+}
+body.dark .prompt-capture-tag { color: var(--accent); background: rgba(251,146,60,0.16); }
+
+.dash-capture { margin-bottom: var(--space-md); }
+.capture-heading { margin: 0 0 0.15rem; font-size: 1rem; }
+.capture-form { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.8rem; }
+.capture-row { display: flex; gap: 0.5rem; align-items: stretch; }
+.capture-row .combo { flex: 1; min-width: 0; position: relative; }
+.capture-who, .capture-thought { width: 100%; }
+.capture-save { flex-shrink: 0; align-self: stretch; }
+.capture-error:empty { display: none; }
+/* On a phone the two fields stack and the button goes full width — this is the
+   surface the ticket is actually about, so it is not an afterthought. */
+@media (max-width: 560px) {
+  .capture-row { flex-direction: column; }
+  .capture-save { align-self: stretch; }
+}
+
 /* ── Filter bar ──────────────────────────────────────────────── */
 .filter-bar {
   display: flex; align-items: center; gap: 0.6rem;

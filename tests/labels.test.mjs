@@ -67,11 +67,13 @@ async function headingBehind(optionId) {
   document.getElementById("quickAddChooser")?.remove();
   document.getElementById("addConnectionModal")?.remove();
   document.getElementById("quickAddModal")?.remove();
+  document.getElementById("captureModal")?.remove();
   openQuickAddChooser([], () => {});
   click(document.getElementById(optionId));
   await tick();
   const modal = document.getElementById("addConnectionModal")
-    || document.getElementById("quickAddModal");
+    || document.getElementById("quickAddModal")
+    || document.getElementById("captureModal");
   const heading = clean(modal.querySelector("h3").textContent);
   modal.remove();
   return heading;
@@ -106,13 +108,15 @@ for (const { file, html } of pages) {
   // The specific historical bug, asserted by name so it cannot come back
   // quietly under a different label.
   const names = options.map((o) => o.title);
-  ok("the + does not name just one of the two options",
+  ok("the + does not name just one of the options",
     !names.includes(chooserHeading));
 }
 
 group("Each chooser option is headed by the words it was chosen with");
 {
-  eq("there are two options", options.length, 2);
+  // Three since ORB-81. The count is asserted so a fourth cannot be added
+  // without someone reading the rule below it.
+  eq("there are three options", options.length, 3);
   for (const opt of options) {
     const heading = await headingBehind(opt.id);
     eq('"' + opt.title + '" opens a dialog headed the same', heading, opt.title);
