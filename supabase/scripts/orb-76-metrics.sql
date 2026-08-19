@@ -1,15 +1,19 @@
 -- Orbit — ORB-76: the three ORB-73 success metrics, re-read
 --
--- Paste the whole file into the Supabase SQL editor and run it. It is three
--- SELECTs and nothing else — it reads, it never writes, and it is safe to run
--- as often as you like.
+-- Paste the whole file into the Supabase SQL editor and run it. It reads, it
+-- never writes, and it is safe to run as often as you like.
 --
--- WHY IT IS ONE FILE
+-- WHY IT IS ONE STATEMENT AND NOT SEVERAL
+--
+-- The Supabase editor shows only the LAST statement's result. The first version
+-- of this file ended with a separate context query, so running it returned the
+-- context and silently dropped the three metrics — the reading you actually
+-- came for. Everything is now a single UNION ALL, so one paste gives one table
+-- and nothing can be quietly discarded.
 --
 -- The three queries are written out separately in the PRD ("Adding a connection
 -- you have not spoken to", §3) because each one is explained line by line
--- there. This is the same SQL with the explanations stripped, so a reading is
--- one paste rather than three.
+-- there. This is the same SQL with the explanations stripped.
 --
 -- WHAT THEY ARE FOR
 --
@@ -77,23 +81,26 @@ select '3. added on the first day',
          select min(created_at)::date
            from public.contacts
           where user_id = c.user_id
-       );
+       )
 
--- ── Context for reading the above ───────────────────────────────────────────
--- Not a success metric. These say whether the numbers above have enough
--- behind them to mean anything, which the PRD's own risk table doubted.
-select 'contacts total'                       as context,
-       count(*)::text                         as value
+union all
+
+-- ── Context ─────────────────────────────────────────────────────────────────
+-- Not success metrics. These say whether the three above have enough behind
+-- them to mean anything, which the PRD's own risk table doubted in advance.
+select '— contacts total', count(*)::text, '8'
   from public.contacts
 union all
-select 'contacts added since 13 Aug',
-       count(*) filter (where created_at::date > date '2026-08-13')::text
+select '— added since 13 Aug',
+       count(*) filter (where created_at::date > date '2026-08-13')::text, '—'
   from public.contacts
 union all
-select 'conversations logged, all time',
-       coalesce(sum(jsonb_array_length(coalesce(interactions, '[]'::jsonb))), 0)::text
+select '— conversations logged, all time',
+       coalesce(sum(jsonb_array_length(coalesce(interactions, '[]'::jsonb))), 0)::text, '—'
   from public.contacts
 union all
-select 'people you have starred (ORB-93)',
-       count(*) filter (where starred)::text
-  from public.contacts;
+select '— starred (ORB-93, ORB-57 metric 1)',
+       count(*) filter (where starred)::text, '0'
+  from public.contacts
+
+ order by 1;
