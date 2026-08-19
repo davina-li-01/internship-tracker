@@ -123,6 +123,91 @@ with no access to this repo.
 
 ---
 
+## Rescheduled from 19 Aug, and Granola raised (ORB-88, ORB-89)
+
+**Five items were genuinely overdue** and two were due the day this was written.
+The roadmap did not show it: the dates lived in the *Date Started* column, which
+was dropped on 14 Aug when the table was restructured, so the in-flight table has
+been dateless since. Recovered from Confluence version 40 rather than from memory.
+
+| Ticket | Was due | State |
+|---|---|---|
+| ORB-51 | 12 Aug | In Progress — **and blocks ORB-53, 54, 55, 56** |
+| ORB-22 | 12 Aug | SUPERSEDED — should not be scheduled at all |
+| ORB-54 | 13 Aug | Not started |
+| ORB-13 | 14 Aug | In Progress |
+| ORB-33 | 15 Aug | Not started |
+| ORB-21 | 17 Aug | Not started |
+| ORB-17, ORB-18 | 18 Aug | Due that day |
+
+Everything live is rescheduled from **Wed 19 Aug**, dated in the *Complete By*
+column, and the table is now **sorted by that date** so it reads as a schedule
+rather than a list. ORB-22 is deliberately left undated — dating superseded work
+implies it is going to happen. **ORB-76 was missing from the roadmap entirely**
+despite being the one dated commitment on the books; it is now on it, for 27 Aug.
+
+**Two scheduling bugs caught in the making.** The first pass put three items on
+Saturdays because 19 Aug was assumed to be a Tuesday and is a Wednesday. The
+working days are now generated rather than typed, and an assertion refuses any
+date that falls on a weekend.
+
+### Granola — the first request from a real user
+
+**Jack Witt** — Survey 1, fifth year, 50+ contacts, answered **"Cooked"** when
+asked what he would lose — asked for Granola integration unprompted, before being
+shown anything. That is the first outside confirmation of a pain point
+(**ORB-18**) that had until now only been suspected.
+
+**The matching path is cheaper than it looks.** A Granola note attaches to a
+calendar event; **ORB-15** already maps calendar events to contacts by attendee
+email; **ORB-47** is the by-name fallback for events with no attendees. So
+*Granola note → event → contact* reuses machinery that shipped in August rather
+than needing new matching logic.
+
+**Step 1 is a spike, not a build.** Nothing should be scheduled past it until it
+is known what Granola actually exposes — export, webhook, public API or nothing.
+Depending on the answer, **ORB-88 may shrink or supersede ORB-18**, which was
+scoped as building transcription rather than integrating a tool the user already
+runs.
+
+**One scope warning is recorded on ORB-89.** Handing the notes surface to Granola
+is where Orbit stops being a record and starts being a capture tool — a different
+product claim. Survey 1 found retrieval and initiation are the failures and that
+**capture is not the bottleneck**. Build it because a real user asked and
+note-taking is a known pain, not because the survey called for it.
+
+| Requirement | User Story | Importance | Jira Issue | Dependencies |
+|---|---|---|---|---|
+| Link a Granola note to the contact it was about | As a user who records conversations in Granola, I want the note to land on the right person in Orbit automatically, so my history is complete without me copying anything across | Must have | ORB-88 | First feature request from a real user (Jack Witt, Survey 1). **Step 1 is a spike:** establish what Granola exposes before scheduling any build. Matching reuses **ORB-15** (event → contact by attendee email) with **ORB-47** as the by-name fallback. Probably shrinks or supersedes **ORB-18** |
+| Granola as the note-taker when logging a conversation | As a user logging a conversation, I want Granola to take the notes rather than an empty box, so the thing I already use is where the writing happens | Should have | ORB-89 | Depends on **ORB-88** for the surface, and on **ORB-77**'s editor boundary — whatever Granola returns must arrive as marker text, not HTML, or **ORB-63**'s escape-first guarantee breaks. **Scope warning:** this is where Orbit becomes a capture tool, which Survey 1 did not ask for |
+
+### The plan, 19 Aug to 24 Sep
+
+Core first, Granola immediately after it, as asked.
+
+| Days | Work |
+|---|---|
+| **Wed 19 Aug** | **ORB-78**, **ORB-79** — the two cheapest engine tickets |
+| **Thu 20 Aug** | **ORB-80** — completes the trio |
+| **Fri 21 Aug** | **ORB-51** — close the cadence decision the survey largely answered |
+| **Mon 24 Aug** | **ORB-54** — now inherits ORB-78/79's vocabulary |
+| **Tue 25 Aug** | **ORB-81** — capture the 2am realisation |
+| **Wed 26 Aug** | **ORB-83** — tell them when recruiting opens |
+| **Thu 27 Aug** | **ORB-76** — run the three PRD metrics *(already committed)* |
+| **Fri 28 Aug** | **ORB-82**, **ORB-58** |
+| **Mon 31 Aug** | **ORB-84** — outreach awaiting a reply |
+| **Tue–Wed 1–2 Sep** | **ORB-53** — the prospective-memory gap |
+| **Thu–Fri 3–4 Sep** | **ORB-88** — Granola spike, then build |
+| **Mon 7 Sep** | **ORB-89** — Granola as the note surface |
+| **8–11 Sep** | ORB-86, ORB-56, ORB-13, ORB-33 |
+| **14–18 Sep** | ORB-17, ORB-19, ORB-18 *(re-scope after ORB-88)*, ORB-21, ORB-55 |
+| **21–24 Sep** | ORB-48, ORB-85, ORB-87, ORB-47 |
+
+Q3 closes 30 Sep, so the plan finishes with four working days of slack. That slack
+is the buffer for the ORB-88 spike coming back with an answer nobody wants.
+
+---
+
 ## Survey 1 — what five real students said, Aug 18
 
 First real user research. Five responses, so everything is directional — but three
