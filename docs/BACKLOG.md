@@ -270,6 +270,67 @@ thing the model already prevents.
 
 ---
 
+## ORB-51 decided — a star instead of a tier, Aug 19
+
+**Davina's call, and it closes ORB-51.** Tiering is parked. In its place, people
+who already know who matters get to say so with one click.
+
+### The reasoning
+
+Survey 1 split on when people know which contacts genuinely matter: **2 knew from
+the first conversation, 1 after several months, 2 only looking back now.**
+
+Every design that resolves that split by *asking better* is still asking. A tier
+demands a classification — which of five kinds is this — at the moment you have
+the least information. A **star** asks you to point, not to classify. It costs
+one click, has no taxonomy to learn, no cadence attached, and it is simply absent
+for the people who cannot answer yet.
+
+So the split stops being a design problem: the 2 who know are served, and the 2
+who only know in hindsight are never blocked on a question.
+
+### Three tickets
+
+| | Feature | RICE | When |
+|---|---|---|---|
+| **ORB-93** | Star the people who matter | 252 | Thu 20 Aug |
+| **ORB-94** | Take the tier picker out of the flow | **350** | Fri 21 Aug |
+| **ORB-95** | Talking points from what you attached | 23.3 | Fri 25 Sep |
+
+**ORB-93 ships before ORB-94 even though ORB-94 scores higher.** Removing the
+picker first would leave a day with neither control. The star has to exist before
+the tier can go.
+
+**The star is stored, not computed.** One boolean on `contacts`, set by the user
+and never overwritten by inference — that is exactly what separates it from
+**ORB-86**, and the reason it needs migration 013 rather than a derivation. It
+carries the same missing-column fallback `tier` got in 012, because the free-tier
+project drifts from `js/db.js`.
+
+**ORB-94 removes the surface, not the code.** `TIERS`, `frequencyForTier` and
+migration 012 all stay, so ORB-86 can bring tiers back as a *suggestion* if the
+data ever supports it. The interval picker remains as the cadence control.
+
+**ORB-95 exists because ORB-20 made PDFs attachable and nothing reads them.** They
+are the richest thing in the app and completely inert. It depends on **ORB-17**
+for the generator and is honestly scored at effort 6 — PDF text extraction, a
+larger prompt payload, and an edge function holding the key.
+
+### Deferred, not cancelled
+
+**ORB-86** (suggest a tier from history) and **ORB-56** (tier as a filter axis) are
+now **DEFERRED** with their dates cleared, so the roadmap stops claiming they are
+scheduled. Both come back only if starring shows people want a richer model than
+one bit. Watching first is the point.
+
+### One thing that needs an answer
+
+**ORB-57's "changed from the default" metric measures a control that ORB-94
+removes.** A metric left pointing at a deleted surface reads as a healthy zero
+forever. It has to be restated when ORB-94 lands, not after.
+
+---
+
 ## RICE scored, ORB-53 split, and a column bug worth remembering
 
 ### The bug: I wrote every score one column to the right
