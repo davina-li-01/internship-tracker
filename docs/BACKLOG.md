@@ -305,6 +305,119 @@ test of **ORB-90/91/92** and had nothing to do with tiers.
 
 ---
 
+## ORB-76 read, and two defects it exposed (ORB-96, ORB-97) — Aug 19
+
+Read **eight days early**. Eleven tickets shipped on the 19th and the app changed
+underneath the experiment; reading on the 27th would have measured a different
+product against a 13 August baseline.
+
+| Metric | 13 Aug | 19 Aug | |
+|---|---|---|---|
+| 1. No conversation logged | 1 of 8 — 12.5% | **4 of 13 — 30.8%** | **up, as predicted** |
+| 2. First conversation on creation day | 3 of 7 — 42.9% | 5 of 9 — 55.6% | up — *metric retired* |
+| 3. Added on the account's first day | 1 | 1 | **cannot move** |
+
+### ORB-73 worked
+
+Five contacts added since the baseline, **three with no conversation** — a state
+that was impossible before ORB-73, because the only way to create a contact also
+logged one. The other two came through the conversation logger, which is the
+ORB-74 chooser doing exactly what it was designed to do. **Both paths are in
+use.**
+
+### Metric 2 is retired, not failed
+
+It went the wrong way, and the metric is at fault rather than the build. It asks
+*is a conversation invented on the day the contact is created?* and cannot
+separate:
+
+- **invented** — you added a person, the app fabricated a conversation
+- **real** — you had coffee with someone new and logged it that day
+
+After ORB-73 the first is **structurally impossible**: the add path writes
+`interactions: []` and an empty `lastContacted`. So every remaining hit is the
+second kind, and the metric can only rise as the app is used normally. **The
+ORB-57 mistake in reverse** — not a metric that cannot fail, but one that cannot
+succeed. Nothing replaces it; metric 1 answers the same question from the side
+that still carries information.
+
+### Metric 3 was never able to move
+
+It counts contacts created on the account's **earliest** day. That day is in the
+past and does not change, so on a single existing account the number is a
+constant. The 13 Aug risk note said "almost no room to move" — too generous.
+
+Worth keeping as a class of error: **a metric anchored to a fixed point in the
+past cannot measure a change made after it.** It was written before the account
+existed, when the first day was still ahead.
+
+### Decision: bulk paste is dropped
+
+ORB-76 required it be scheduled or dropped **with a reason**. Dropped.
+
+1. **The evidence it would rest on cannot exist.** Metric 3 is the only
+   instrument pointed at bulk-entry pain and it is a constant.
+2. **Per-person entry is not visibly painful.** Five contacts in six days
+   without complaint — one motivated user, weak evidence, but the only evidence
+   there is, and it points away from building.
+3. **The cost is out of proportion.** Not a field: parsing, deduplication and
+   error reporting. §4 said so before the numbers existed and they have not
+   argued with it.
+
+Reopens if a second account shows a high first-day count, or if a user says
+entry is why they stopped. Survey 1's senior — seven places, relies on memory —
+is the profile to ask. That is an interview question, not a ticket.
+
+---
+
+### ORB-96 — a reach-out counts as a touchpoint
+
+**Davina found this by reading the context row: 13 contacts, 13 conversations.**
+The question was whether conversations were being tracked wrong, and the answer
+was yes.
+
+`markReachedOut` moved `lastContacted` and nothing else. Press the button twenty
+times and the app believed you had never spoken. So `interactions` meant *times
+you wrote something down* while every surface read it as *times you were in
+touch* — **ORB-80's ledger worst of all**, since it exists to show what has
+accumulated at the moment you might abandon someone, and it was counting a
+fraction of it.
+
+**Not the ORB-73 mistake.** That fabricated a conversation you never had, on a
+day you merely added someone. This records something you did — you said so by
+pressing the button. No notes, ever, and the type is deliberately absent from
+`INTERACTION_TYPES` because it is not an answer to *what kind of conversation was
+this*. The ledger now reads *6 conversations · 14 reach-outs*: two claims,
+because they are two different things.
+
+**The trap worth remembering:** ORB-91's just-met trigger fires on a conversation
+in the last four days with no reach-out since. A touchpoint **is** the reach-out,
+so counting it would have fired *"you spoke to Marcus today — a note now lands
+better"* the instant you pressed the button saying you had sent one. It reads
+conversations only.
+
+### ORB-97 — the quote says when it is from
+
+A **live defect in ORB-78**, shipped this morning and surfaced by ORB-96. The
+sentence comes from `lastContacted`; the quote is the most recent thing you
+actually wrote. They diverge the moment the button is used:
+
+> You last spoke to Marcus **3 days ago**.
+> *"Talked about her move to the payments team."* ← eight months old
+
+Presented as what you last said. The quote is now **dated rather than hidden** —
+an old note is still the best thing on that screen for remembering who someone is
+— and only when it disagrees, so the common case stays clean.
+
+**36 new assertions; 1469 across 40 suites.**
+
+| Requirement | User Story | Importance | Jira Issue | Dependencies |
+|---|---|---|---|---|
+| A reach-out counts as a touchpoint | As a user who keeps in touch by pressing the button rather than writing notes, I want those to count, so the app does not tell me I have never spoken to someone I contact every month | Must have | ORB-96 | Corrects a reading error in **ORB-80** and constrains **ORB-91**, whose trigger had to be narrowed to conversations. No migration — `interactions` is jsonb. **ORB-95** should read conversations only, not touchpoints |
+| The quote says when it is from | As a user reading a reach-out prompt, I want the quoted conversation dated when it is older than the line above it, so the prompt is not telling me two different things at once | Must have | ORB-97 | A defect in **ORB-78**, exposed by **ORB-96**. Display only |
+
+---
+
 ## ORB-90, ORB-91, ORB-92 — trigger before timer, shipped Aug 19
 
 The three tickets ORB-53 was split into, and the direct test of the central bet.
