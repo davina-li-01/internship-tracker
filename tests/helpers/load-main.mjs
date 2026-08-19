@@ -133,6 +133,8 @@ const EXPORTS = [
   "relationshipLedger", "ledgerLine",
   // the star (ORB-93)
   "starButtonHtml", "toggleStar", "STARRED_FILTER",
+  // failure language reserved for the starred (ORB-54)
+  "DORMANT_META", "FIRST_CONTACT_META", "bandWords",
   // behaviour
   "markReachedOut", "showToast",
   "conversationWidgetHtml", "wireConversationWidget",

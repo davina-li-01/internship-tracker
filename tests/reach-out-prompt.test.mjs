@@ -179,10 +179,16 @@ group("ORB-78 — Reach out next asks; the directory does not");
 {
   // The health bar is not the prompt. It drives colour, ordering and the counts,
   // so ORB-78 must not have quietly removed the countdown with the wording.
-  const c = person();
+  // Starred, because ORB-54 later reserved "Overdue" for exactly that case.
+  const c = person({ starred: true });
   const prompt = personRowHtml(c, getHealth(c), { showReconnect: true, prompt: true });
   ok("the status band survives", /Overdue/.test(prompt));
   ok("so does the deadline detail", /days over/.test(prompt));
+
+  const plain = person();
+  const other = personRowHtml(plain, getHealth(plain), { showReconnect: true, prompt: true });
+  ok("and unstarred, the same row still carries a status", /Worth reviving/.test(other));
+  ok("with the elapsed time still on it", /quiet \d+ days/.test(other));
 }
 {
   const c = unspoken();

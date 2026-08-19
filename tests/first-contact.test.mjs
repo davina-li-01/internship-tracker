@@ -124,14 +124,27 @@ group("They are not called overdue");
 
 group("The old vocabulary survives wherever it is still true");
 {
-  const overdue = getHealth(normalizeContact({
+  // ORB-54 narrowed "wherever it is still true" further: a lapsed rhythm is a
+  // failure only for someone you said mattered. Starred here for that reason —
+  // the unstarred version of this fixture is asserted directly below, and the
+  // pair is the whole of ORB-54.
+  const lapsed = {
     name: "Lapsed", followUpFrequency: "monthly", reminderEnabled: true,
     lastContacted: daysAgo(200), nextReminder: daysAgo(9),
     interactions: [{ id: "i1", date: daysAgo(200), type: "coffee chat", notes: "x" }]
-  }));
-  ok("someone with a lapsed rhythm is still overdue", /Overdue/.test(healthBarHtml(overdue)));
+  };
+  const overdue = getHealth(normalizeContact({ ...lapsed, starred: true }));
+  ok("a starred person with a lapsed rhythm is still overdue", /Overdue/.test(healthBarHtml(overdue)));
   ok("and still counted in days over", /9 days over/.test(healthBarHtml(overdue)));
   ok("their chip says so too", /Overdue/.test(statusChip(overdue)));
+
+  const dormant = getHealth(normalizeContact(lapsed));
+  ok("the same lapse unstarred is an opportunity, not a failure",
+    /Worth reviving/.test(healthBarHtml(dormant)));
+  ok("stated as elapsed time rather than as being over something",
+    /quiet 9 days/.test(healthBarHtml(dormant)));
+  ok("but they are in the same band, so nothing moved",
+    dormant.band === "critical" && overdue.band === "critical");
 }
 
 // ── Placement must not change ────────────────────────────────────────────────
@@ -142,7 +155,12 @@ group("Renaming the state does not hide the person");
   eq("still listed in Reach out next", needsAttention([c]).length, 1);
   const counts = countByBand([c, spokenTo]);
   eq("still counted under a real band, not a new one",
-    Object.keys(counts).sort().join(","), "critical,good,none,warning");
+    Object.keys(counts).filter((k) => k !== "starredCritical").sort().join(","),
+    "critical,good,none,warning");
+  // starredCritical is a subset of critical, not a fifth band — ORB-54 relies on
+  // that, because a fifth band would break every denominator on the dashboard.
+  ok("and the ORB-54 subset never exceeds the band it is drawn from",
+    counts.starredCritical <= counts.critical);
   eq("the never-contacted person lands in warning during grace", counts.warning, 1);
   ok("no band is undefined", !Object.values(counts).some((n) => Number.isNaN(n)));
 }

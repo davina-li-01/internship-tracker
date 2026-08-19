@@ -1094,9 +1094,13 @@ function getHealth(contact) {
   // ORB-64 has an empty array but a real date behind it, and calling them
   // "not contacted yet" would be a claim the data does not support.
   const firstContact = !(contact.interactions || []).length && !contact.lastContacted;
+  // ORB-54 needs this to decide whether failure language is warranted. Carried
+  // on health rather than read from the contact at each call site, so the words
+  // and the band can never be computed from different inputs.
+  const starred = contact.starred === true;
 
   if (!interval || !contact.reminderEnabled) {
-    return { scheduled: false, pct: 0, band: "none", elapsed, interval: 0, daysLeft: null, grace: false, firstContact };
+    return { scheduled: false, pct: 0, band: "none", tone: "none", elapsed, interval: 0, daysLeft: null, grace: false, firstContact, starred };
   }
 
   // `elapsed === null` means there is no date to count from — someone was put on
@@ -1135,7 +1139,18 @@ function getHealth(contact) {
     : grace ? "warning"
     : pct >= 60 ? "good" : "warning";
 
-  return { scheduled: true, pct, band, elapsed, interval, daysLeft, grace, firstContact };
+  // ORB-54. `band` decides ordering, counts and membership; `tone` decides
+  // colour. They are the same value except in one case, which is the whole
+  // ticket: a long silence with someone you never said mattered is painted as a
+  // failure today, and the dormant-tie research says that person may be the
+  // most valuable in the network.
+  //
+  // Splitting them rather than adding a band is ORB-75's rule again — a fifth
+  // band would move these people out of Reach out next and solve the colour by
+  // hiding the person.
+  const tone = band === "critical" && !starred ? "dormant" : band;
+
+  return { scheduled: true, pct, band, tone, elapsed, interval, daysLeft, grace, firstContact, starred };
 }
 
 /**
@@ -1189,8 +1204,30 @@ const FIRST_CONTACT_META = {
   icon: "○"
 };
 
+/**
+ * A long silence with someone you never said mattered (ORB-54).
+ *
+ * "Overdue" means you failed at something you undertook. That is true for a
+ * person you starred and false for everyone else — and the dormant-tie research
+ * says the contact untouched for two years may be the single most valuable one
+ * in the network, precisely because they know things and people you do not.
+ * Painting them red gets the sign wrong: it is an opportunity described as a
+ * debt, on the screen you are least likely to open when you feel behind.
+ *
+ * So failure language is reserved for the starred, where it is earned. The
+ * dormant wording is deliberately forward-looking rather than merely gentler —
+ * "Quiet a while" would just be "Overdue" with the accusation filed off.
+ */
+const DORMANT_META = {
+  label: "Worth reviving",
+  short: "Worth reviving",
+  icon: "◇"
+};
+
 function bandWords(health) {
-  return health?.firstContact ? FIRST_CONTACT_META : BAND_META[health.band];
+  if (health?.firstContact) return FIRST_CONTACT_META;
+  if (health?.tone === "dormant") return DORMANT_META;
+  return BAND_META[health.band];
 }
 
 /**
@@ -1394,6 +1431,10 @@ function healthBarHtml(health) {
   // being "over" something — there was never a schedule to run past (ORB-75).
   const detail = health.firstContact && health.daysLeft < 0
     ? `waiting ${days} day${plural(days)}`
+    // "N days over" is the same accusation in numbers, so the dormant case
+    // states elapsed time and nothing else (ORB-54).
+    : health.tone === "dormant" && health.daysLeft < 0
+      ? `quiet ${days} day${plural(days)}`
     : health.daysLeft < 0
       ? `${days} day${plural(days)} over`
       : health.grace
@@ -1401,9 +1442,9 @@ function healthBarHtml(health) {
         : `${days} day${plural(days)} left`;
   return '<div class="health">'
     + '<div class="health-track">'
-    + '<div class="health-fill fill-' + health.band + '" style="width:' + health.pct + '%"></div>'
+    + '<div class="health-fill fill-' + (health.tone || health.band) + '" style="width:' + health.pct + '%"></div>'
     + '</div>'
-    + '<span class="health-label text-' + health.band + '">'
+    + '<span class="health-label text-' + (health.tone || health.band) + '">'
     + '<span class="health-icon" aria-hidden="true">' + meta.icon + '</span> ' + meta.label + '</span>'
     + '<span class="health-detail">' + detail + '</span>'
     + '</div>';
@@ -1411,7 +1452,7 @@ function healthBarHtml(health) {
 
 function statusChip(health) {
   const meta = bandWords(health);
-  return '<span class="status-chip chip-' + health.band + '">'
+  return '<span class="status-chip chip-' + (health.tone || health.band) + '">'
     + '<span aria-hidden="true">' + meta.icon + '</span> ' + escapeHtml(meta.short) + '</span>';
 }
 
@@ -1801,8 +1842,16 @@ function needsAttention(contacts) {
 }
 
 function countByBand(contacts) {
-  const counts = { good: 0, warning: 0, critical: 0, none: 0 };
-  contacts.forEach((c) => { counts[getHealth(c).band]++; });
+  // `starredCritical` is not a band — it is a subset of `critical`, kept
+  // separate so the dashboard can say how many of the people past their date
+  // are ones you actually said mattered (ORB-54). Adding it as a band would
+  // break every denominator on the page.
+  const counts = { good: 0, warning: 0, critical: 0, none: 0, starredCritical: 0 };
+  contacts.forEach((c) => {
+    const health = getHealth(c);
+    counts[health.band]++;
+    if (health.band === "critical" && health.starred) counts.starredCritical++;
+  });
   return counts;
 }
 
@@ -3530,7 +3579,13 @@ async function initDashboard() {
       ? '<div class="kpi-row">'
         + kpiTile("good", "In touch", counts.good, scheduled, "on cadence and current")
         + kpiTile("warning", "Reach out soon", counts.warning, scheduled, "window closing")
-        + kpiTile("critical", "Overdue", counts.critical, scheduled, "past due")
+        // "Overdue" overstated what this counts once ORB-54 reserved failure
+        // language for the starred. The tile counts people past their date;
+        // the sub-line says how many of them you actually said mattered.
+        + kpiTile("critical", "Past their date", counts.critical, scheduled,
+            counts.starredCritical
+              ? counts.starredCritical + " you starred"
+              : "none of them starred")
         + '</div>'
       : '<div class="card kpi-empty">'
         + '<p class="kpi-empty-title">No cadences set yet</p>'
@@ -3937,8 +3992,8 @@ async function initContactPage() {
       + '<div class="reachout-ring">'
       + ringHtml({
           pct: health.scheduled ? health.pct : 0,
-          band: health.scheduled ? health.band : "none",
-          caption: BAND_META[health.band].label,
+          band: health.scheduled ? (health.tone || health.band) : "none",
+          caption: bandWords(health).label,
           sub: !health.scheduled ? "Reach out again?"
             : health.daysLeft < 0 ? Math.abs(health.daysLeft) + " days over"
             : health.grace ? health.daysLeft + " days to first reach-out"

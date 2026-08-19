@@ -2209,6 +2209,13 @@ textarea {
   --st-good-ink:     #0a7a0a;
   --st-warning-ink:  #8a5d00;
   --st-critical-ink: #b02a2a;
+  /* ORB-54. A long silence with someone you never starred is an opportunity,
+     not a failure, so it is not painted with the failure colour. Indigo rather
+     than a paler red: a dimmer red still reads as a warning, and the point is
+     that this is a different KIND of state, not a milder one. The -ink pair is
+     the text-safe darkening the same way the others are. */
+  --st-dormant:      #6366f1;
+  --st-dormant-ink:  #4338ca;
   --track:           rgba(120,80,40,0.14);
   --hairline:        rgba(180,140,100,0.14);
   --row-bg:          rgba(255,255,255,0.55);
@@ -2218,6 +2225,8 @@ body.dark {
   --st-good-ink:     #4ade80;
   --st-warning-ink:  #fcd34d;
   --st-critical-ink: #f87171;
+  --st-dormant:      #818cf8;
+  --st-dormant-ink:  #a5b4fc;
   --track:           rgba(255,255,255,0.10);
   --hairline:        rgba(255,255,255,0.08);
   --row-bg:          rgba(255,255,255,0.04);
@@ -2333,6 +2342,7 @@ body.nav-open .s-group.closed .s-caret { transform: none; }
 .ring-good     { stroke: var(--st-good); }
 .ring-warning  { stroke: var(--st-warning); }
 .ring-critical { stroke: var(--st-critical); }
+.ring-dormant  { stroke: var(--st-dormant); }
 .ring-none     { stroke: var(--track); }
 .ring-value {
   fill: var(--text); font-size: 21px; font-weight: 800;
@@ -2350,6 +2360,7 @@ body.nav-open .s-group.closed .s-caret { transform: none; }
 .fill-good     { background: var(--st-good); }
 .fill-warning  { background: var(--st-warning); }
 .fill-critical { background: var(--st-critical); }
+.fill-dormant  { background: var(--st-dormant); }
 
 .split-legend { list-style: none; margin: 0.9rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
 .split-legend-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; }
@@ -2369,6 +2380,7 @@ body.nav-open .s-group.closed .s-caret { transform: none; }
 .text-good { color: var(--st-good-ink); }
 .text-warning { color: var(--st-warning-ink); }
 .text-critical { color: var(--st-critical-ink); }
+.text-dormant { color: var(--st-dormant-ink); }
 .health-detail { font-size: 0.68rem; color: var(--text-muted); }
 .health-none { justify-content: center; }
 
@@ -2381,6 +2393,7 @@ body.nav-open .s-group.closed .s-caret { transform: none; }
 .chip-good     { color: var(--st-good-ink);     background: color-mix(in srgb, var(--st-good) 14%, transparent); }
 .chip-warning  { color: var(--st-warning-ink);  background: color-mix(in srgb, var(--st-warning) 22%, transparent); }
 .chip-critical { color: var(--st-critical-ink); background: color-mix(in srgb, var(--st-critical) 14%, transparent); }
+.chip-dormant  { color: var(--st-dormant-ink);  background: color-mix(in srgb, var(--st-dormant) 14%, transparent); }
 .chip-none     { color: var(--text-muted);      background: var(--track); }
 
 /* ── Tokens ──────────────────────────────────────────────────── */
