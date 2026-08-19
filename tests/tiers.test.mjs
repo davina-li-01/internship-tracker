@@ -1,10 +1,17 @@
 /**
- * Relationship tiers (ORB-52).
+ * Relationship tiers (ORB-52), and their removal from the flow (ORB-94).
  *
- * The tier is what you pick; the interval is what runs. Everything downstream —
- * health, digest, dashboard — still reads `followUpFrequency`, so the job of
- * these tests is to prove the tier feeds the interval correctly and never
- * quietly becomes a second source of truth.
+ * The tier is no longer asked for anywhere. Survey 1 found 3 of 5 students
+ * could not say which contacts mattered at the moment the picker asked, and the
+ * 2 who could are now served by a star (ORB-93) costing one click and no
+ * taxonomy.
+ *
+ * **The model below is deliberately kept.** `TIERS`, `frequencyForTier` and
+ * `tierForFrequency` still decide the default interval, still answer "is this
+ * interval deliberate?" on the profile, and are what ORB-86 would revive if the
+ * evidence ever supports suggesting a tier rather than demanding one. Migration
+ * 012 and the column are untouched. So the first half of this suite is unchanged
+ * and the second half now proves the question is gone rather than how it behaved.
  *
  * THE ONE THAT MATTERS
  *
@@ -99,82 +106,19 @@ eq("a contact with an interval but no tier stays blank",
 eq("a chosen tier is kept",
   normalizeContact({ name: "X", tier: "inner_circle" }).tier, "inner_circle");
 
-// ── The picker ───────────────────────────────────────────────────────────────
-
-const CONTACT = {
-  id: "t1",
-  name: "Assaf Karmon",
-  email: "assaf@turno.com",
-  followUpFrequency: "custom:150",
-  reminderEnabled: true,
-  lastContacted: "2026-08-07",
-  interactions: [],
-  companyHistory: [],
-  followUps: []
-};
-
-resetState();
-state.store.set(CONTACT.id, normalizeContact(CONTACT));
-dom.reconfigure({ url: "https://orbit.test/contact.html?id=t1" });
-document.body.innerHTML = "";
-const root = document.createElement("section");
-root.id = "contactPageContent";
-document.body.appendChild(root);
-await main.initContactPage();
-
-const tierSel = () => root.querySelector("#cpTier");
-const freqSel = () => root.querySelector("#cpFrequency");
-const days = () => root.querySelector("#cpCustomDays");
-const hint = () => root.querySelector("#cpTierHint");
-const fire = (el, type) => el.dispatchEvent(new dom.window.Event(type, { bubbles: true }));
-const tick = () => new Promise((r) => setTimeout(r, 0));
-
-group("The picker asks the answerable question first");
-ok("a tier select is rendered", tierSel());
-eq("it offers every tier", tierSel().options.length, TIER_ORDER.length);
-// custom:150 is 136–272, so the back-fill would call this professional_network.
-eq("it shows the tier the interval implies, not a blank",
-  tierSel().value, "professional_network");
-ok("the tier control comes before the interval control",
-  tierSel().compareDocumentPosition(freqSel()) & 4);
-ok("a hint explains what the tier means", hint()?.textContent.length > 0);
-
-group("Choosing a tier fills in that tier's interval");
-tierSel().value = "inner_circle";
-fire(tierSel(), "change");
-eq("a named interval is selected directly", freqSel().value, "monthly");
-ok("the custom-days box is hidden for a named interval",
-  root.querySelector("#cpCustomDaysGroup").classList.contains("hidden"));
-ok("the hint follows the tier", /call/i.test(hint().textContent));
-
-tierSel().value = "met_once";
-fire(tierSel(), "change");
-eq("a tier with no named equivalent switches to custom", freqSel().value, "custom");
-eq("and pre-fills the day count", days().value, "365");
-ok("with the day box shown",
-  !root.querySelector("#cpCustomDaysGroup").classList.contains("hidden"));
-
-group("The interval stays the override");
-// Tier said 365; the user overrides to 200 and both are kept. This is the whole
-// design — the tier is the answer to a question, not a lock on the schedule.
-days().value = "200";
-root.querySelector("#cpSaveReminderBtn").click();
-await tick(); await tick();
-
-const saved = state.saves[state.saves.length - 1];
-eq("the chosen tier is stored", saved.tier, "met_once");
-eq("the overridden interval is stored, not the tier default",
-  saved.followUpFrequency, "custom:200");
-eq("and reminders stay on", saved.reminderEnabled, true);
-// The disagreement is intentional and must survive a reload.
-eq("reloading shows the chosen tier, not the one the interval implies",
-  effectiveTier(saved), "met_once");
-eq("while the interval alone would have said otherwise",
-  tierForFrequency(saved.followUpFrequency), "professional_network");
-
-// ── The result line and the override ─────────────────────────────────────────
-// Two controls side by side read as two questions. The tier is the question;
-// the interval is an escape hatch, and it is placed like one.
+// ── The picker is gone (ORB-94) ──────────────────────────────────────────────
+// Three surfaces asked "what kind of relationship is this?" — the profile, the
+// add-connection form and the conversation widget. All three no longer do.
+//
+// WHAT THESE ARE ACTUALLY GUARDING
+//
+// Not the absence of a select. The real risk is that removing the question
+// leaves something still WRITING an answer: `effectiveTier` derives a tier from
+// the interval, and it is one line from being saved as though the user had
+// chosen it. That would make ORB-86's future evidence worthless — every contact
+// would look deliberately classified — and it is exactly what the old profile
+// save did on purpose. So the assertions below are mostly about what does not
+// reach the database.
 
 async function renderProfile(contact) {
   resetState();
@@ -188,157 +132,153 @@ async function renderProfile(contact) {
   return el;
 }
 
-group("A tier whose interval it already implies hides the override");
+const fire = (el, type) => el.dispatchEvent(new dom.window.Event(type, { bubbles: true }));
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+const PROFILE = {
+  id: "t1", name: "Assaf Karmon", followUpFrequency: "custom:150",
+  tier: "professional_network", reminderEnabled: true,
+  lastContacted: "2026-08-07", interactions: [], companyHistory: [], followUps: []
+};
+
+group("No surface asks for a tier any more");
+{
+  const r = await renderProfile(PROFILE);
+  ok("the profile has no tier select", !r.querySelector("#cpTier"));
+  ok("and no tier hint", !r.querySelector("#cpTierHint"));
+  ok("but the interval control is still there", r.querySelector("#cpFrequency"));
+  ok("and the cadence sentence still is", r.querySelector("#cpCadenceText"));
+
+  document.body.innerHTML = '<div id="w"></div>';
+  const w = document.getElementById("w");
+  w.innerHTML = main.conversationWidgetHtml();
+  ok("the conversation widget has no tier select", !w.querySelector(".cw-tier"));
+  ok("it still asks how often", w.querySelector(".cw-freq"));
+
+  document.body.innerHTML = '<div id="a"></div>';
+  const a = document.getElementById("a");
+  a.innerHTML = main.addConnectionFormHtml([]);
+  ok("the add-connection form has no tier select", !a.querySelector(".ac-tier"));
+  ok("nor its hint", !a.querySelector(".ac-tier-hint"));
+  ok("the cadence result line survives", a.querySelector(".ac-cadence-text"));
+}
+
+group("Saving a schedule no longer writes a tier");
+{
+  // The one that matters. This save used to set `tier: tierSelect.value` on
+  // every press, which with the picker gone would mean writing a DERIVED tier
+  // as though it were a chosen one.
+  const r = await renderProfile(PROFILE);
+  r.querySelector("#cpAdjust").click();
+  r.querySelector("#cpFrequency").value = "monthly";
+  fire(r.querySelector("#cpFrequency"), "change");
+  r.querySelector("#cpSaveReminderBtn").click();
+  await tick(); await tick();
+
+  const saved = state.saves[state.saves.length - 1];
+  eq("the interval is saved", saved.followUpFrequency, "monthly");
+  eq("the existing tier is left exactly as it was",
+    saved.tier, "professional_network");
+  ok("and it is NOT the tier the new interval implies",
+    saved.tier !== tierForFrequency("monthly"));
+}
+{
+  // A contact who never had a tier must not acquire one by being edited.
+  const r = await renderProfile({ ...PROFILE, id: "t2", tier: "" });
+  r.querySelector("#cpSaveReminderBtn").click();
+  await tick(); await tick();
+  eq("an untiered contact stays untiered", state.saves[state.saves.length - 1].tier, "");
+  ok("even though the interval would have implied one",
+    tierForFrequency("custom:150") !== "");
+}
+
+group("The interval is now the only cadence control, and still behaves");
 {
   const r = await renderProfile({
     id: "m1", name: "Chris Rule", followUpFrequency: "quarterly",
     tier: "mentors_managers", reminderEnabled: true,
     lastContacted: "2026-08-07", interactions: [], companyHistory: [], followUps: []
   });
-  ok("the interval control starts hidden",
+  // effectiveTier still runs — it is how "did someone deliberately override
+  // this?" is answered, which is the last job the tier model does on screen.
+  ok("an interval matching the tier keeps the control tucked away",
     r.querySelector("#cpFreqGroup").classList.contains("hidden"));
-  eq("the result line says what the tier does",
+  eq("the result line says what it does",
     r.querySelector("#cpCadenceText").textContent, "Reaching out every 3 months.");
-
   r.querySelector("#cpAdjust").click();
-  ok("Adjust reveals it",
-    !r.querySelector("#cpFreqGroup").classList.contains("hidden"));
+  ok("Adjust reveals it", !r.querySelector("#cpFreqGroup").classList.contains("hidden"));
 }
-
-group("An interval the tier would not have produced is never hidden");
 {
-  // Exactly the seasonal case: a close mentor you can only reach twice a year.
-  // The tier stays "mentors and managers"; the interval carries the reality.
   const r = await renderProfile({
     id: "m2", name: "Seasonal Mentor", followUpFrequency: "custom:60",
     tier: "mentors_managers", reminderEnabled: true,
     lastContacted: "2026-08-07", interactions: [], companyHistory: [], followUps: []
   });
-  ok("the override is visible without clicking Adjust",
+  ok("a deliberate override is never hidden from the person who made it",
     !r.querySelector("#cpFreqGroup").classList.contains("hidden"));
-  ok("and so is the day count",
+  ok("and neither is the day count",
     !r.querySelector("#cpCustomDaysGroup").classList.contains("hidden"));
-  eq("the result line reports the real interval, not the tier default",
+  eq("the result line reports the real interval",
     r.querySelector("#cpCadenceText").textContent, "Reaching out every 60 days.");
-  eq("and the tier is unchanged by the disagreement",
-    r.querySelector("#cpTier").value, "mentors_managers");
 }
-
-group("The result line follows every change");
 {
   const r = await renderProfile({
     id: "m3", name: "Taylor Smith", followUpFrequency: "quarterly",
     tier: "mentors_managers", reminderEnabled: true,
     lastContacted: "2026-08-07", interactions: [], companyHistory: [], followUps: []
   });
-  const t = r.querySelector("#cpTier");
-  t.value = "inner_circle";
-  t.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
-  eq("changing the tier restates the cadence",
+  r.querySelector("#cpAdjust").click();
+  const f = r.querySelector("#cpFrequency");
+  f.value = "monthly"; fire(f, "change");
+  eq("the sentence follows the interval",
     r.querySelector("#cpCadenceText").textContent, "Reaching out every month.");
-
-  t.value = "none";
-  t.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  f.value = "none"; fire(f, "change");
   eq("opting out reads as a choice, not an empty schedule",
     r.querySelector("#cpCadenceText").textContent, "No reminders — kept on file.");
-
-  t.value = "met_once";
-  t.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
-  eq("a custom preset is described in days",
-    r.querySelector("#cpCadenceText").textContent, "Reaching out every 365 days.");
-
-  r.querySelector("#cpAdjust").click();
+  f.value = "custom"; fire(f, "change");
   const daysEl = r.querySelector("#cpCustomDays");
-  daysEl.value = "60";
-  daysEl.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+  daysEl.value = "60"; fire(daysEl, "input");
   eq("typing a day count restates it live",
     r.querySelector("#cpCadenceText").textContent, "Reaching out every 60 days.");
 }
 
-// ── The quick-add widget ─────────────────────────────────────────────────────
-// Creating a contact is where "how many days?" is least answerable, so the tier
-// has to be here too — a picker that only exists on the profile leaves the
-// original problem in place at the one moment it matters most.
-
-function mountWidget() {
-  document.body.innerHTML = '<div id="root"></div>';
-  const host = document.getElementById("root");
-  host.innerHTML = main.conversationWidgetHtml();
-  return host;
-}
-const submit = async (host) => {
-  host.querySelector(".cw-form").dispatchEvent(
-    new dom.window.Event("submit", { bubbles: true, cancelable: true }));
-  await tick(); await tick();
-};
-
-group("The widget asks for a tier when creating someone");
-{
-  resetState();
-  const host = mountWidget();
-  main.wireConversationWidget(host, () => [], async () => {});
-  const t = host.querySelector(".cw-tier");
-  ok("a tier select is present", t);
-  // Whether monthly is right for someone just met is ORB-51's question; what
-  // matters here is that the two controls do not contradict each other on load.
-  eq("it agrees with the interval default rather than contradicting it",
-    t.value, tierForFrequency(host.querySelector(".cw-freq").value));
-}
-
-group("Choosing a tier sets the interval here too");
-{
-  resetState();
-  const host = mountWidget();
-  main.wireConversationWidget(host, () => [], async () => {});
-  const t = host.querySelector(".cw-tier");
-  t.value = "professional_network";
-  t.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
-  eq("switches to custom", host.querySelector(".cw-freq").value, "custom");
-  eq("and pre-fills twice-yearly", host.querySelector(".cw-custom-days").value, "180");
-}
-
-group("A saved conversation carries the tier");
-{
-  resetState();
-  const host = mountWidget();
-  main.wireConversationWidget(host, () => [], async () => {});
-  host.querySelector(".cw-name").value = "Hunter Rapoza";
-  host.querySelector(".cw-notes").value = "Met at the meetup.";
-  const t = host.querySelector(".cw-tier");
-  t.value = "met_once";
-  t.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
-  await submit(host);
-
-  eq("one contact written", state.saves.length, 1);
-  eq("with the chosen tier", state.saves[0].tier, "met_once");
-  eq("and the interval that tier implies", state.saves[0].followUpFrequency, "custom:365");
-}
-
-group("Logging against an existing person does not reclassify them");
+group("Logging a conversation never reclassifies anyone");
 {
   resetState();
   const existing = normalizeContact({
-    id: "e1", name: "Chris Rule", email: "chris@x.com", tier: "inner_circle",
-    followUpFrequency: "monthly", reminderEnabled: true,
-    lastContacted: "2026-08-01", interactions: []
+    id: "e1", name: "Priya Raman", followUpFrequency: "quarterly",
+    tier: "mentors_managers", reminderEnabled: true, interactions: []
   });
-  state.store.set("e1", existing);
+  state.store.set(existing.id, existing);
 
-  const host = mountWidget();
+  document.body.innerHTML = '<div id="w"></div>';
+  const host = document.getElementById("w");
+  host.innerHTML = main.conversationWidgetHtml();
   main.wireConversationWidget(host, () => [existing], async () => {});
-  host.querySelector(".cw-name").value = "Chris Rule";
-  host.querySelector(".cw-name").dispatchEvent(
-    new dom.window.Event("input", { bubbles: true }));
-  await new Promise((r) => setTimeout(r, 20));
-  document.querySelector(".combo-list li")
-    ?.dispatchEvent(new dom.window.Event("mousedown", { bubbles: true }));
+  host.querySelector(".cw-name").value = "Priya Raman";
+  fire(host.querySelector(".cw-name"), "input");
+  host.querySelector(".combo-item")?.dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true }));
+  host.querySelector(".cw-notes").value = "Caught up about the payments team.";
+  host.querySelector(".cw-form").dispatchEvent(new dom.window.Event("submit", { bubbles: true, cancelable: true }));
+  await tick(); await tick();
 
-  eq("their tier is mirrored into the picker",
-    host.querySelector(".cw-tier").value, "inner_circle");
-
-  host.querySelector(".cw-notes").value = "Quarterly catch-up.";
-  await submit(host);
-  eq("and survives the save unchanged", state.saves[0].tier, "inner_circle");
+  const saved = state.saves[state.saves.length - 1];
+  ok("something was saved", saved);
+  eq("their tier is untouched", saved.tier, "mentors_managers");
+}
+{
+  // A brand-new person created through the widget arrives with no tier at all,
+  // rather than with the default the picker used to pre-select.
+  resetState();
+  document.body.innerHTML = '<div id="w"></div>';
+  const host = document.getElementById("w");
+  host.innerHTML = main.conversationWidgetHtml();
+  main.wireConversationWidget(host, () => [], async () => {});
+  host.querySelector(".cw-name").value = "Brand New";
+  host.querySelector(".cw-notes").value = "First coffee.";
+  host.querySelector(".cw-form").dispatchEvent(new dom.window.Event("submit", { bubbles: true, cancelable: true }));
+  await tick(); await tick();
+  eq("a new person carries no tier", state.saves[state.saves.length - 1].tier, "");
 }
 
 done();

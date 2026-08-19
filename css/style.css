@@ -682,14 +682,24 @@ body.dark .contact-alpha-header { border-bottom-color: rgba(255,255,255,0.06); }
   border-bottom-color: rgba(217,119,6,0.2);
 }
 body.dark .contact-alpha-header.mentor-header { color: #fbbf24; border-bottom-color: rgba(251,191,36,0.2); }
-.contact-star-btn.starred { color: #d97706; }
-body.dark .contact-star-btn { color: #555; }
-body.dark .contact-star-btn.starred { color: #fbbf24; }
-body.dark .contact-star-btn:hover { color: #fbbf24; }
-.cp-star-btn.starred { color: #d97706; }
-body.dark .cp-star-btn { color: #555; }
-body.dark .cp-star-btn.starred { color: #fbbf24; }
-body.dark .cp-star-btn:hover { color: #fbbf24; }
+/* ── The star (ORB-93) ───────────────────────────────────────────
+   Replaces .contact-star-btn and .cp-star-btn, which styled a control that no
+   markup had rendered for some time. Same amber, one class. */
+.star-btn {
+  background: none; border: 0; cursor: pointer; padding: 0.1rem 0.25rem;
+  font-size: 1.05rem; line-height: 1; color: var(--text-faint);
+  border-radius: var(--radius-btn); transition: color var(--trans), transform var(--trans);
+}
+.star-btn:hover { color: #d97706; transform: scale(1.12); }
+.star-btn.starred { color: #d97706; }
+.star-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+/* The name carries the star too, so the state is legible in a scan of the list
+   without hunting the control at the far right of the row. */
+.star-inline { color: #d97706; font-size: 0.82em; }
+body.dark .star-btn { color: #555; }
+body.dark .star-btn:hover, body.dark .star-btn.starred, body.dark .star-inline { color: #fbbf24; }
+/* The profile's star sits beside an h1, so it is scaled to it. */
+.profile-star { font-size: 1.35rem; vertical-align: middle; margin-left: 0.35rem; }
 body.dark .weekly-contact-card { border-bottom-color: rgba(255,255,255,0.06); }
 
 /* ── Stat grid (keep existing) ───────────────────────────────── */

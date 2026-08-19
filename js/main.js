@@ -1664,6 +1664,11 @@ function normalizeContact(contact = {}) {
     // persisting it would make ORB-57's "changed from the default" metric
     // unmeasurable, since every contact would look deliberately classified.
     tier: contact.tier || "",
+    // ORB-93. One bit, set by pointing rather than classifying, and the reason
+    // the tier above is on its way out (ORB-94). Stored, never inferred — the
+    // moment something derives this, ORB-57's first metric stops measuring
+    // anything, because every contact would look deliberately marked.
+    starred: contact.starred === true,
     nextReminder,
     reminderEnabled: frequency !== "none" ? (contact.reminderEnabled !== false) : false,
     notes: (contact.notes || "").trim(),
@@ -1729,6 +1734,11 @@ function cadenceKey(contact) {
 // Used by every page that lists connections, so the same question is asked the
 // same way everywhere.
 
+const STARRED_FILTER = { key: "starred", label: "Starred", options: [
+  { value: "", label: "Everyone" },
+  { value: "1", label: "Starred only" }
+] };
+
 const CADENCE_FILTER = { key: "cadence", label: "Cadence", options: [
   { value: "", label: "Any cadence" },
   { value: "weekly", label: "Every week" },
@@ -1758,7 +1768,11 @@ const SILENCE_FILTER = { key: "silent", label: "Last spoke", options: [
 ] };
 
 /** True when a contact passes the cadence / health / silence filters. */
-function matchesConnectionFilters(contact, { cadence, status, silent }) {
+function matchesConnectionFilters(contact, { cadence, status, silent, starred }) {
+  // "Starred only" is a filter; there is deliberately no "unstarred only". An
+  // outline star means the question was never answered, so a list of them is a
+  // list of nothing in particular (ORB-93).
+  if (starred === "1" && contact.starred !== true) return false;
   if (cadence && cadenceKey(contact) !== cadence) return false;
   if (status && getHealth(contact).band !== status) return false;
   if (silent) {
@@ -1768,12 +1782,22 @@ function matchesConnectionFilters(contact, { cadence, status, silent }) {
   return true;
 }
 
-/** Scheduled connections that have slipped, most overdue first. */
+/**
+ * Scheduled connections that have slipped — starred first, then most overdue.
+ *
+ * The star is a statement about who matters, so it belongs ahead of the clock
+ * rather than beside it (ORB-93). Within each group the old ordering is
+ * untouched, so nothing is hidden: a starred person who is barely drifting
+ * still sits above an unstarred one who is badly overdue, which is the point.
+ *
+ * ORB-92 will replace the second term with a trigger. It should keep the first.
+ */
 function needsAttention(contacts) {
   return contacts
     .map((c) => ({ contact: c, health: getHealth(c) }))
     .filter((x) => x.health.scheduled && x.health.band !== "good")
-    .sort((a, b) => a.health.pct - b.health.pct);
+    .sort((a, b) => (b.contact.starred === true) - (a.contact.starred === true)
+      || a.health.pct - b.health.pct);
 }
 
 function countByBand(contacts) {
@@ -2385,14 +2409,9 @@ function conversationWidgetHtml() {
     + '<input type="text" class="cw-company" placeholder="Where they work" /></div>'
     + '<div class="field-group"><label>Email</label>'
     + '<input type="email" class="cw-email" placeholder="email@example.com" /></div>'
-    // ORB-52: the tier is asked first here too. Creating a contact is exactly
-    // where "how many days?" is least answerable — you have just met them.
-    // Defaults to the tier matching the existing `monthly` default, so the two
-    // controls agree on first render. Whether monthly is the right default for
-    // someone you have just met is a separate question and belongs to ORB-51 —
-    // it is deliberately not changed here.
-    + '<div class="field-group"><label>What kind of relationship?</label>'
-    + '<select class="cw-tier">' + tierOptionsHtml(tierForFrequency("monthly")) + '</select></div>'
+    // ORB-94 removed the tier picker here too. Logging a conversation is the
+    // worst place of the three to be asked to classify a relationship — you are
+    // mid-thought about what was said, not about what the person is to you.
     + '<div class="field-group"><label>Reach out again?</label>'
     + '<select class="cw-freq">' + freqOptions
     + '<option value="custom">Custom…</option></select>'
@@ -2466,22 +2485,6 @@ function wireConversationWidget(root, getContacts, onSaved) {
     if (freqEl.value === "custom") $(".cw-custom-days").focus();
   });
 
-  // Same relationship as on the profile: the tier fills in an interval, the
-  // interval remains editable. No focus jump here — unlike the change above,
-  // this one was not initiated by someone reaching for the day count.
-  const tierEl = $(".cw-tier");
-  tierEl?.addEventListener("change", () => {
-    const preset = frequencyForTier(tierEl.value);
-    if (preset.startsWith("custom:")) {
-      freqEl.value = "custom";
-      customWrap.classList.remove("hidden");
-      $(".cw-custom-days").value = preset.slice(7);
-    } else {
-      freqEl.value = preset;
-      customWrap.classList.add("hidden");
-    }
-  });
-
   // ── Autocomplete ─────────────────────────────────────────────────────
   const closeList = () => {
     listEl.hidden = true;
@@ -2520,10 +2523,6 @@ function wireConversationWidget(root, getContacts, onSaved) {
       freqEl.value = freq;
       customWrap.classList.add("hidden");
     }
-    // And their tier, for the same reason — logging a conversation with someone
-    // must not silently reclassify the relationship.
-    if (tierEl) tierEl.value = effectiveTier(contact);
-
     setLinked(contact);
     closeList();
     $(".cw-notes").focus();
@@ -2654,7 +2653,9 @@ function wireConversationWidget(root, getContacts, onSaved) {
       interactions: merged,
       lastContacted: merged[0].date,
       followUpFrequency: frequency,
-      tier: tierEl ? tierEl.value : (base.tier || ""),
+      // ORB-94: the widget no longer asks, so an existing contact keeps
+      // whatever tier they already had and a new one gets none.
+      tier: base.tier || "",
       reminderEnabled: frequency !== "none",
       // A conversation puts the relationship on its normal rhythm. The grace
       // window only applies when a cadence is switched on without one.
@@ -2791,14 +2792,16 @@ function addConnectionFormHtml() {
     + '<input type="email" id="acEmail" class="ac-email" placeholder="email@example.com" /></div>'
     + '</div>'
 
-    // Same tier-first shape as the profile and the conversation widget (ORB-52):
-    // "what kind of relationship is this" is answerable the moment you meet
-    // someone; "how many days" is not. The interval stays available as the
-    // override, behind Adjust, so the result line is the only cadence control
-    // most people ever touch.
-    + '<div class="field-group"><label for="acTier">What kind of relationship?</label>'
-    + '<select id="acTier" class="ac-tier">' + tierOptionsHtml(defaultTier) + '</select>'
-    + '<p class="tiny muted ac-tier-hint">' + escapeHtml(TIERS[defaultTier].hint) + '</p></div>'
+    // ORB-94 removed the tier picker that stood here. ORB-52 put it first
+    // because "what kind of relationship is this" is answerable the moment you
+    // meet someone and "how many days" is not — but Survey 1 found 3 of 5 could
+    // not answer it either, and the two who could are now served by a star
+    // (ORB-93) that costs one click and no taxonomy.
+    //
+    // The tier's interval survives as the default: `defaultTier` still decides
+    // what the cadence line says, it is simply no longer asked about. TIERS and
+    // frequencyForTier are kept for that, and for ORB-86 if it ever revives
+    // tiers as a suggestion.
     + '<p class="cadence-result tiny ac-cadence-line">'
     + '<span class="ac-cadence-text">' + escapeHtml(cadenceSentence(frequencyForTier(defaultTier))) + '</span> '
     + '<button type="button" class="link-btn ac-adjust">Adjust</button></p>'
@@ -2838,7 +2841,6 @@ function wireAddConnectionForm(root, getContacts, onSaved) {
   const $ = (sel) => form.querySelector(sel);
   const nameEl = $(".ac-name");
   const listEl = $(".combo-list");
-  const tierEl = $(".ac-tier");
   const freqEl = $(".ac-freq");
   const freqGroup = $(".ac-freq-group");
   const customWrap = $(".ac-custom");
@@ -2855,20 +2857,6 @@ function wireAddConnectionForm(root, getContacts, onSaved) {
   const refreshCadenceLine = () => {
     $(".ac-cadence-text").textContent = cadenceSentence(chosenFrequency());
   };
-
-  tierEl.addEventListener("change", () => {
-    $(".ac-tier-hint").textContent = TIERS[tierEl.value]?.hint || "";
-    const preset = frequencyForTier(tierEl.value);
-    if (preset.startsWith("custom:")) {
-      freqEl.value = "custom";
-      customWrap.classList.remove("hidden");
-      $(".ac-custom-days").value = preset.slice(7);
-    } else {
-      freqEl.value = preset;
-      customWrap.classList.add("hidden");
-    }
-    refreshCadenceLine();
-  });
 
   $(".ac-adjust").addEventListener("click", () => {
     freqGroup.classList.toggle("hidden");
@@ -2997,7 +2985,8 @@ function wireAddConnectionForm(root, getContacts, onSaved) {
       company: $(".ac-company").value,
       email: $(".ac-email").value,
       dateMet: $(".ac-datemet").value || "",
-      tier: tierEl.value,
+      // No tier. ORB-94 removed the question, and recording the default as
+      // though it were an answer is exactly what would rot ORB-86's evidence.
       followUpFrequency: frequency,
       reminderEnabled: frequency !== "none",
       // No conversation has happened, so there is no anchor to count a cadence
@@ -3370,11 +3359,57 @@ async function markReachedOut(contact, onChanged) {
 
 // ── Shared row renderers ──────────────────────────────────────────────────────
 
+/**
+ * The star (ORB-93).
+ *
+ * A filled star means "this is one of mine"; an outline means the question has
+ * not been answered, which is not the same as answering no. That distinction is
+ * why this is `aria-pressed` on a button rather than a checkbox — a toggle with
+ * two states, not a field carrying a value.
+ *
+ * The label names the person because these appear in a list. "Star" repeated
+ * forty times tells a screen reader user nothing about which one they are on.
+ */
+function starButtonHtml(contact) {
+  const on = contact.starred === true;
+  const label = (on ? "Unstar " : "Star ") + (contact.name || "this person");
+  return '<button class="star-btn' + (on ? ' starred' : '') + '" type="button"'
+    + ' data-toggle-star="' + escapeHtml(contact.id) + '"'
+    + ' aria-pressed="' + (on ? "true" : "false") + '"'
+    + ' aria-label="' + escapeHtml(label) + '" title="' + escapeHtml(label) + '">'
+    + (on ? "\u2605" : "\u2606") + '</button>';
+}
+
+/**
+ * Toggle it, and say so.
+ *
+ * Optimistic: the button flips before the save returns, because a star that
+ * lags feels broken at the speed people click these. A failed save re-renders
+ * from the store and puts it back — silently leaving it lit would be the ORB-14
+ * problem, where the screen claims something the database never accepted.
+ */
+async function toggleStar(contact, onChanged) {
+  const next = !(contact.starred === true);
+  const saved = await db.saveContact(normalizeContact({ ...contact, starred: next }));
+  if (!saved) {
+    showToast("Could not save that — " + contact.name + " is unchanged.");
+    if (onChanged) await onChanged();
+    return false;
+  }
+  showToast(next
+    ? contact.name + " is one of your people."
+    : "Unstarred " + contact.name + ".");
+  if (onChanged) await onChanged();
+  return true;
+}
+
 function personRowHtml(contact, health, { showReconnect = false, prompt = false } = {}) {
   return '<li class="person-row" data-open-contact="' + escapeHtml(contact.id) + '" role="button" tabindex="0">'
     + '<div class="person-avatar" aria-hidden="true">' + escapeHtml(initialsFor(contact.name)) + '</div>'
     + '<div class="person-main">'
-    + '<p class="person-name">' + escapeHtml(contact.name) + '</p>'
+    + '<p class="person-name">' + escapeHtml(contact.name)
+    + (contact.starred === true ? ' <span class="star-inline" aria-hidden="true">\u2605</span>' : '')
+    + '</p>'
     + '<p class="tiny">' + escapeHtml(contact.role || "Role not set")
     + (contact.company ? ' @ <strong>' + escapeHtml(contact.company) + '</strong>' : '') + '</p>'
     // Two registers, on purpose. `prompt` is a row that is ASKING for something
@@ -3397,6 +3432,7 @@ function personRowHtml(contact, health, { showReconnect = false, prompt = false 
     + (contact.industry ? '<span class="token token-industry">' + escapeHtml(contact.industry) + '</span>' : '')
     + '</div>'
     + '<div class="person-side">'
+    + starButtonHtml(contact)
     + healthBarHtml(health)
     // Past tense, one click, because this reports something already done.
     // The draft/snooze/remove-schedule options keep their modal, demoted to the
@@ -3433,6 +3469,19 @@ function wirePersonRows(root, contacts, onChanged) {
       // onChanged re-renders and replaces this button, so nothing needs to
       // re-enable it. The toast lives on document.body and survives that.
       await markReachedOut(contact, onChanged);
+    });
+  });
+  root.querySelectorAll("[data-toggle-star]").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      // The whole row opens the contact. Starring must not.
+      e.stopPropagation();
+      const contact = contacts.find((c) => c.id === btn.dataset.toggleStar);
+      if (!contact) return;
+      const next = !(contact.starred === true);
+      btn.classList.toggle("starred", next);
+      btn.setAttribute("aria-pressed", next ? "true" : "false");
+      btn.textContent = next ? "\u2605" : "\u2606";
+      await toggleStar(contact, onChanged);
     });
   });
   root.querySelectorAll("[data-remind-contact]").forEach((btn) => {
@@ -3566,6 +3615,7 @@ async function initMyNetwork() {
   barRoot.innerHTML = filterBarHtml({
     placeholder: "Search name, role, company, industry…",
     filters: [
+      STARRED_FILTER,
       STATUS_FILTER,
       CADENCE_FILTER,
       SILENCE_FILTER,
@@ -3642,6 +3692,7 @@ async function initNetworkingLog() {
   barRoot.innerHTML = filterBarHtml({
     placeholder: "Search name, role, company, notes…",
     filters: [
+      STARRED_FILTER,
       STATUS_FILTER,
       CADENCE_FILTER,
       SILENCE_FILTER,
@@ -3789,13 +3840,10 @@ async function initContactPage() {
       .map(([v, l]) => '<option value="' + v + '"' + (freqSelectValue === v ? " selected" : "") + '>' + l + '</option>')
       .join("")
       + '<option value="custom"' + (isCustomFreq ? " selected" : "") + '>Custom…</option>';
-    // ORB-52. Falls back to the tier the interval implies, so a contact saved
-    // before tiers existed still shows one rather than an empty select.
+    // ORB-94 took the picker away; effectiveTier stays because it is still how
+    // "is this interval deliberate?" gets answered below, and because ORB-86
+    // may revive tiers as a suggestion rather than a question.
     const shownTier = effectiveTier(c);
-    const tierOptions = TIER_ORDER
-      .map((t) => '<option value="' + t + '"' + (shownTier === t ? " selected" : "") + '>'
-        + escapeHtml(TIERS[t].label) + '</option>')
-      .join("");
     // An interval the tier would not have produced was chosen on purpose — the
     // seasonal mentor you see twice a year, the custom:150 back-fills. Showing
     // the control expanded means a deliberate override is never hidden from the
@@ -3818,6 +3866,10 @@ async function initContactPage() {
         ? '<input type="text" id="cpNameInput" class="profile-name-input" value="'
           + escapeHtml(c.name) + '" aria-label="Name" />'
         : '<h1 class="profile-name">' + escapeHtml(c.name || "Unnamed") + '</h1>')
+      // The star belongs beside the name, not in the reach-out strip. It is a
+      // statement about the person, not about their schedule (ORB-93).
+      + (editing ? '' : starButtonHtml(c).replace('class="star-btn',
+          'class="star-btn profile-star'))
       // One line, derived, read-only. Every one of these facts used to appear
       // twice — as a labelled block here AND as an input directly below — which
       // is what made this card long and lopsided. A field that is editable in
@@ -3906,12 +3958,6 @@ async function initContactPage() {
       + '</dl>'
       + '</div>'
       + '<div class="reachout-controls">'
-      // Tier first, because "what kind of relationship is this" is a question
-      // you can answer; "how many days" is one most people cannot (ORB-51).
-      // The interval below stays editable as the override.
-      + '<div class="field-group"><label for="cpTier">What kind of relationship?</label>'
-      + '<select id="cpTier">' + tierOptions + '</select>'
-      + '<p class="tiny muted" id="cpTierHint">' + escapeHtml(TIERS[shownTier].hint) + '</p></div>'
       // The result line, so the tier's consequence is visible without a second
       // control competing with it. An interval that does not match the tier's
       // default is an override the user set deliberately, so it opens expanded
@@ -4014,6 +4060,14 @@ async function initContactPage() {
       const newName = e.target.value.trim();
       if (!newName) { e.target.value = (await freshContact())?.name || ""; return; }
       await save((cur) => ({ ...cur, name: newName }));
+    });
+
+    // ORB-93. Uses the same toggleStar as the row so the toast, the failure
+    // path and the stored value cannot differ between the two places you can
+    // star someone.
+    root.querySelector("[data-toggle-star]")?.addEventListener("click", async () => {
+      const cur = await freshContact();
+      if (cur) await toggleStar(cur, renderPage);
     });
 
     $("#cpEditBtn")?.addEventListener("click", async () => {
@@ -4191,7 +4245,6 @@ async function initContactPage() {
     const freqSelect = $("#cpFrequency");
     const customGroup = $("#cpCustomDaysGroup");
     const freqGroup = $("#cpFreqGroup");
-    const tierSelect = $("#cpTier");
 
     /** The interval the controls currently describe, in stored form. */
     const chosenFrequency = () => {
@@ -4218,25 +4271,6 @@ async function initContactPage() {
       freqSelect.focus();
     });
 
-    // Picking a tier fills in that tier's interval. The two are not locked
-    // together: the tier is what the relationship is, the interval is what is
-    // realistic for it — a close mentor you can only reach twice a year is a
-    // mentor on a long interval, not a lesser tier.
-    tierSelect.addEventListener("change", () => {
-      const preset = frequencyForTier(tierSelect.value);
-      $("#cpTierHint").textContent = TIERS[tierSelect.value]?.hint || "";
-      if (preset.startsWith("custom:")) {
-        freqSelect.value = "custom";
-        if (!freqGroup.classList.contains("hidden")) customGroup.classList.remove("hidden");
-        const daysEl = $("#cpCustomDays");
-        if (daysEl) daysEl.value = preset.slice(7);
-      } else {
-        freqSelect.value = preset;
-        customGroup.classList.add("hidden");
-      }
-      refreshCadenceLine();
-    });
-
     $("#cpSaveReminderBtn").addEventListener("click", async () => {
       let newFreq = freqSelect.value;
       if (newFreq === "custom") {
@@ -4249,10 +4283,13 @@ async function initContactPage() {
         return {
           ...cur,
           followUpFrequency: newFreq,
-          // Saved even when it matches what the interval already implied —
-          // pressing Save is the user answering the question, and ORB-57
-          // measures how many answered it rather than took the default.
-          tier: tierSelect.value,
+          // The tier is deliberately NOT written here any more (ORB-94). It
+          // used to be saved on every schedule save, because pressing Save was
+          // the user answering the tier question — there is no longer a tier
+          // question, so writing `effectiveTier(c)` would record an inference
+          // as a choice. Whatever tier a contact already carries is left
+          // exactly as it was, which is what keeps ORB-86's future evidence
+          // honest.
           reminderEnabled: newFreq !== "none",
           // Switching a schedule ON grants the one-week grace window if the
           // cadence alone would already be blown. Editing an existing cadence

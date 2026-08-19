@@ -131,6 +131,8 @@ const EXPORTS = [
   "LONG_SILENCE_DAYS", "showReminderModal",
   // what has accumulated (ORB-80)
   "relationshipLedger", "ledgerLine",
+  // the star (ORB-93)
+  "starButtonHtml", "toggleStar", "STARRED_FILTER",
   // behaviour
   "markReachedOut", "showToast",
   "conversationWidgetHtml", "wireConversationWidget",

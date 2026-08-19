@@ -120,7 +120,13 @@ check("trims name", n.name, "Ada Lovelace");
 check("derives lastContacted from dateMet", n.lastContacted, daysAgo(3));
 check("derives nextReminder", n.nextReminder.length > 0, true);
 check("defaults arrays", [n.interactions, n.followUps, n.companyHistory], [[], [], []]);
-check("no starred key (column does not exist)", "starred" in n, false);
+// Was "no starred key (column does not exist)". Migration 013 adds it (ORB-93),
+// and the default is the important half: absent must mean unanswered, not
+// starred, or every contact arrives already claiming to matter.
+check("starred defaults to false", n.starred, false);
+check("and is a boolean, never a truthy string", typeof n.starred, "boolean");
+check("an explicit star survives", normalizeContact({ starred: true }).starred, true);
+check("only true means true", normalizeContact({ starred: "yes" }).starred, false);
 checkFn("empty object does not throw", () => normalizeContact({}).name === "");
 
 console.log("\n── needsAttention ordering ──");

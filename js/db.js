@@ -136,6 +136,11 @@ let emailsSupported = true;
 // not the save. The interval keeps running either way, which is the whole point
 // of keeping follow_up_frequency as the effective schedule (ORB-52).
 let tierSupported = true;
+// `starred` arrives with 013. Same treatment again, and it matters more here
+// than it did for `tier`: starring is the control ORB-57's first metric is
+// measured against, so a silent save failure would look like nobody stars
+// anyone rather than like a missing migration (ORB-93).
+let starredSupported = true;
 
 /**
  * True when `error` says this specific column is missing.
@@ -164,6 +169,7 @@ export async function saveContact(contact) {
   if (!industrySupported) delete row.industry;
   if (!emailsSupported) delete row.emails;
   if (!tierSupported) delete row.tier;
+  if (!starredSupported) delete row.starred;
 
   let { data, error } = await upsert(row);
 
@@ -175,6 +181,16 @@ export async function saveContact(contact) {
     );
     tierSupported = false;
     delete row.tier;
+    ({ data, error } = await upsert(row));
+  }
+
+  if (error && starredSupported && isMissingColumn(error, "starred")) {
+    console.warn(
+      "[DB] contacts.starred is missing — saving without it, so stars will not " +
+      "persist. To enable them run supabase/migrations/013_starred_contacts.sql"
+    );
+    starredSupported = false;
+    delete row.starred;
     ({ data, error } = await upsert(row));
   }
 
@@ -210,6 +226,14 @@ export function isIndustrySupported() {
 /** Same, for tiers. The picker falls back to the interval when this is false. */
 export function isTierSupported() {
   return tierSupported;
+}
+
+/**
+ * Same, for stars. False hides the control rather than showing one that
+ * silently forgets — a star that does not stick is worse than no star.
+ */
+export function isStarredSupported() {
+  return starredSupported;
 }
 
 export async function deleteContact(contactId) {
@@ -249,6 +273,7 @@ function rowToContact(row) {
     lastContacted: row.last_contacted || "",
     followUpFrequency: row.follow_up_frequency || "none",
     tier: row.tier || "",
+    starred: row.starred === true,
     notes: row.notes || "",
     adviceGiven: row.advice_given || "",
     interests: row.interests || "",
@@ -285,11 +310,9 @@ function contactToRow(contact, userId) {
     interests: contact.interests || "",
     reminder_enabled: contact.reminderEnabled || false,
     next_reminder: contact.nextReminder || null,
-    // NOTE: no `starred` here — the contacts table has no such column, so
-    // writing it would make every contact save fail. To enable starring:
-    //   alter table public.contacts add column starred boolean not null default false;
-    // then add `starred: contact.starred || false,` to this object and to
-    // rowToContact() above.
+    // ORB-93, migration 013. Written by the user and never by inference — see
+    // ORB-86 before anything starts deriving this.
+    starred: contact.starred === true,
     interactions: contact.interactions || [],
     company_history: contact.companyHistory || [],
     follow_ups: contact.followUps || []

@@ -157,8 +157,9 @@ group("Someone you have not spoken to owes you a first reach-out");
   resetState();
   const { host, $ } = mountForm();
   $(".ac-name").value = "On File";
-  $(".ac-tier").value = "none";
-  $(".ac-tier").dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  click($(".ac-adjust"));
+  $(".ac-freq").value = "none";
+  $(".ac-freq").dispatchEvent(new dom.window.Event("change", { bubbles: true }));
   await submit($, host);
   const c = normalizeContact(state.saves[0]);
   eq("choosing no schedule means no deadline", c.nextReminder, "");
@@ -166,34 +167,41 @@ group("Someone you have not spoken to owes you a first reach-out");
   eq("they are not chased", needsAttention([c]).length, 0);
 }
 
-group("The tier picker behaves as it does everywhere else");
+// ── ORB-94 ───────────────────────────────────────────────────────────────────
+// This form used to open with "What kind of relationship is this?". Survey 1
+// found 3 of 5 could not answer it at that moment, and the 2 who could are now
+// served by a star (ORB-93). The tier's INTERVAL survives as the default — the
+// form still opens on monthly — it is simply no longer asked about.
+group("The tier question is gone, the cadence it implied is not");
 {
   const { $ } = mountForm();
-  eq("defaults to the inner circle, matching the monthly default",
-    $(".ac-tier").value, "inner_circle");
-  ok("the result line says what that means",
+  ok("no tier select", !$(".ac-tier"));
+  ok("and no tier hint", !$(".ac-tier-hint"));
+  ok("the result line still states the default in plain words",
     /every month/i.test($(".ac-cadence-text").textContent));
-  ok("the interval control starts hidden behind Adjust",
+  ok("the interval control still starts hidden behind Adjust",
     $(".ac-freq-group").classList.contains("hidden"));
 
-  $(".ac-tier").value = "met_once";
-  $(".ac-tier").dispatchEvent(new dom.window.Event("change", { bubbles: true }));
-  ok("changing the tier updates the sentence",
-    /365|year/i.test($(".ac-cadence-text").textContent));
-  ok("and the hint", /not yet a relationship/i.test($(".ac-tier-hint").textContent));
-
   click($(".ac-adjust"));
-  ok("Adjust reveals the interval", !$(".ac-freq-group").classList.contains("hidden"));
+  ok("Adjust reveals it", !$(".ac-freq-group").classList.contains("hidden"));
+  $(".ac-freq").value = "quarterly";
+  $(".ac-freq").dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  ok("and changing it restates the sentence",
+    /3 months/i.test($(".ac-cadence-text").textContent));
 }
 {
+  // The failure worth guarding: adding someone must not record a tier nobody
+  // chose. A derived tier saved as a chosen one is what would make ORB-86's
+  // evidence — and ORB-57's first metric — meaningless.
   resetState();
   const { host, $ } = mountForm();
-  $(".ac-name").value = "Tiered";
-  $(".ac-tier").value = "mentors_managers";
-  $(".ac-tier").dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  $(".ac-name").value = "Untiered";
   await submit($, host);
-  eq("the chosen tier is stored", state.saves[0].tier, "mentors_managers");
-  eq("with its interval", state.saves[0].followUpFrequency, "quarterly");
+  eq("a new connection carries no tier at all", state.saves[0].tier, "");
+  eq("but does carry the interval the default implied",
+    state.saves[0].followUpFrequency, "monthly");
+  eq("and no star either — that is a thing you say, not a default",
+    state.saves[0].starred, false);
 }
 
 // ── Guardrails ───────────────────────────────────────────────────────────────
