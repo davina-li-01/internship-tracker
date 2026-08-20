@@ -1939,7 +1939,15 @@ function conversationPreview(contact, limit = 150) {
   const latest = (contact.interactions || [])
     .filter((i) => i.notes)
     .sort((a, b) => b.date.localeCompare(a.date))[0];
-  const text = latest?.notes || contact.notes || "";
+  // ORB-102. A conversation whose whole content is an attachment used to fall
+  // through to the contact's own notes, or to nothing — so the row said less
+  // than the app knew.
+  const withFile = (contact.interactions || [])
+    .filter((i) => (i.fileIds || []).length)
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+  const text = latest?.notes
+    || (withFile && !latest ? conversationHeadline(withFile, []) || "" : "")
+    || contact.notes || "";
   const clips = (contact.interactions || [])
     .reduce((n, i) => n + ((i.fileIds || []).length), 0);
   // A conversation logged with only a PDF and no notes used to render nothing
@@ -2435,6 +2443,27 @@ function conversationTitle(item) {
 }
 
 /** The note text, with a legacy baked-in title taken back off the front. */
+/**
+ * What a conversation is called when the row is closed (ORB-102).
+ *
+ * The meeting name, else the first line of the notes, else **the file you
+ * attached**. That last fallback is the ticket: ORB-20 made PDFs attachable and
+ * a conversation carrying only a deck still rendered as "no notes", which reads
+ * as a conversation you failed to write up rather than one you documented by
+ * handing over the document.
+ *
+ * It is a fallback and not a promotion — a file never displaces words you
+ * actually wrote. And it is the file NAME, not its contents: reading the PDF is
+ * ORB-95, and this ticket deliberately does not open it.
+ */
+function conversationHeadline(item, attached = []) {
+  const written = stripNoteMarks(
+    conversationTitle(item) || (conversationNotes(item) || "").split("\n")[0]).trim();
+  if (written) return written;
+  const first = attached.find((f) => f && f.name);
+  return first ? first.name : "";
+}
+
 function conversationNotes(item) {
   const notes = item?.notes || "";
   if (item?.title) return notes;              // already separate
@@ -2470,8 +2499,7 @@ function renderInteractionTimeline(interactions, files = [], { name = "", dateMe
     // punctuation someone forgot to close.
     const shownTitle = conversationTitle(item);
     const shownNotes = conversationNotes(item);
-    const headline = stripNoteMarks(
-      shownTitle || (shownNotes || "").split("\n")[0]).trim();
+    const headline = conversationHeadline(item, attached);
 
     const summary = '<summary class="convo-summary">'
       + '<span class="convo-caret" aria-hidden="true">▸</span>'
@@ -3605,9 +3633,14 @@ const CSV_FIELDS = [
   { key: "name",    label: "Name",         required: true,
     match: ["name", "full name", "fullname", "contact", "contact name", "person"] },
   { key: "first",   label: "First name",   split: true,
-    match: ["first name", "firstname", "given name", "first"] },
+    match: ["first name", "firstname", "given name", "first"],
+    avoid: ["contact", "spoke", "date", "message", "activity", "reach"] },
   { key: "last",    label: "Last name",    split: true,
-    match: ["last name", "lastname", "surname", "family name", "last"] },
+    match: ["last name", "lastname", "surname", "family name", "last"],
+    // A column called "Last Contacted" was being imported as a SURNAME, because
+    // "last contacted" contains "last" and the partial pass took it (ORB-103).
+    // Every one of these words means the column is about time, not a name.
+    avoid: ["contact", "spoke", "date", "message", "activity", "reach", "seen"] },
   { key: "role",    label: "Role",
     match: ["role", "title", "job title", "jobtitle", "position", "headline"] },
   { key: "company", label: "Company",
@@ -3620,6 +3653,14 @@ const CSV_FIELDS = [
   { key: "dateMet", label: "When you met",
     match: ["date met", "met", "met on", "first met", "connected on",
             "connected", "date connected", "connection date"] },
+  // ORB-103. The fact a spreadsheet most often carries and Orbit had no field
+  // for. Without it a sheet of people you have definitely spoken to imports as
+  // "Not contacted yet" — wrong about the recent ones, and equally wrong about
+  // the dormant ones, so the whole import reads as one undifferentiated grey.
+  { key: "lastContacted", label: "When you last spoke",
+    match: ["last contacted", "last contact", "last spoke", "last spoken",
+            "last conversation", "last message", "last activity", "last touch",
+            "last reach out", "last outreach"] },
   { key: "notes",   label: "Notes",
     match: ["notes", "note", "comments", "description", "about"] }
 ];
@@ -3639,7 +3680,9 @@ function guessColumnMap(headers) {
       if (map[f.key] !== undefined) continue;
       const i = norm.findIndex((h, idx) => !taken.has(idx) && h && (pass === "exact"
         ? f.match.includes(h)
-        : f.match.some((m) => h.includes(m))));
+        // `avoid` only applies to partial matching. An exact match is an exact
+        // match — a column literally called "last" is a surname.
+        : f.match.some((m) => h.includes(m)) && !(f.avoid || []).some((w) => h.includes(w))));
       if (i !== -1) { map[f.key] = i; taken.add(i); }
     }
   }
@@ -3675,6 +3718,11 @@ function csvRowsToContacts(headers, rows, map, { frequency = "none" } = {}) {
       email: at(row, "email"),
       industry: at(row, "industry"),
       dateMet: normaliseCsvDate(at(row, "dateMet")),
+      // ORB-103. A date, not a conversation — ORB-73's rule is that adding
+      // someone does not invent a conversation, and this invents none. It
+      // states when you last spoke, which is the thing the app had no way to
+      // be told and was guessing at.
+      lastContacted: normaliseCsvDate(at(row, "lastContacted")),
       notes: at(row, "notes"),
       followUpFrequency: frequency,
       reminderEnabled: frequency !== "none",
@@ -3835,6 +3883,13 @@ function wireCsvImport(root, getContacts, onSaved) {
                 ? '<span class="tiny muted"> ' + escapeHtml([p.role, p.company].filter(Boolean).join(" at ")) + '</span>'
                 : '')
               + (p.email ? '<span class="tiny muted"> · ' + escapeHtml(p.email) + '</span>' : '')
+              // ORB-103. Shown because it is the field most likely to be mapped
+              // to the wrong column, and the one with the largest consequence
+              // if it is — it decides whether this person reads as current or
+              // as someone you have lost touch with.
+              + (p.lastContacted
+                ? '<span class="tiny muted"> · last spoke ' + escapeHtml(relativeDayLabel(p.lastContacted)) + '</span>'
+                : '')
               + '</li>').join("")
           + (fresh.length > shown.length
             ? '<li class="tiny muted">and ' + (fresh.length - shown.length) + ' more</li>' : '')
@@ -3888,11 +3943,18 @@ function wireCsvImport(root, getContacts, onSaved) {
     const failed = [];
     for (const person of fresh) {
       const contact = normalizeContact(person);
-      // ORB-73's rule, applied after normalising rather than by weakening the
-      // fallback for everyone: a spreadsheet row is not a conversation, so
-      // there is nothing for lastContacted to be.
-      contact.lastContacted = "";
-      contact.nextReminder = frequency === "none" ? "" : firstDeadlineFor("", frequency);
+      // ORB-73's rule still holds — a spreadsheet row is not a conversation, so
+      // normalizeContact's fallback to dateMet is cleared. But ORB-103 draws
+      // the line one step further out: if the FILE says when you last spoke,
+      // that is a fact you supplied, not one Orbit inferred, and throwing it
+      // away is what made every import read "Not contacted yet".
+      contact.lastContacted = person.lastContacted || "";
+      contact.nextReminder = frequency === "none"
+        ? ""
+        // firstDeadlineFor grants the grace window when the cadence alone would
+        // already be blown, so someone you last spoke to in 2023 gets a week to
+        // make the first reach-out rather than arriving overdue.
+        : firstDeadlineFor(contact.lastContacted, frequency);
       const ok = await db.saveContact(contact);
       if (ok) saved++; else failed.push(person.name);
     }

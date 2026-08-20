@@ -146,6 +146,8 @@ const EXPORTS = [
   "TOUCHPOINT_TYPE", "isTouchpoint", "conversationsOf", "lastConversationEntry",
   "INTERACTION_TYPES",
   // importing a spreadsheet (ORB-98)
+  // a file can name the conversation (ORB-102)
+  "conversationHeadline",
   "parseCsv", "guessColumnMap", "csvRowsToContacts", "findCsvDuplicates",
   "normaliseCsvDate", "CSV_FIELDS", "csvImportFormHtml", "wireCsvImport",
   "openCsvImportModal",
