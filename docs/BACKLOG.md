@@ -305,6 +305,72 @@ test of **ORB-90/91/92** and had nothing to do with tiers.
 
 ---
 
+## Survey re-read at n = 9 — one finding reversed, Aug 19
+
+Four more responses on the **same instrument**, so this supersedes the n = 5
+reading rather than sitting beside it. Confluence page 10256385 restated with
+old figures shown beside new ones.
+
+### The correction that matters
+
+**"Only 1 in 5 acted on a reminder they set themselves" is wrong.** At n = 9 it
+is **3 of 9**, tied with guilt at 3 of 9. That sentence went into the
+justification for **ORB-90, ORB-91 and ORB-92** and into their commit messages.
+
+The tickets are still right, for a reason that survives the correction: a
+trigger and a timer are not competing, and ORB-92 **demotes** the clock to a
+fallback rather than removing it. But the evidence is **an even split, not a
+rout**, and the way it was written overstates it. Guilt remains joint-first, so
+**ORB-79** is untouched.
+
+### What strengthened
+
+| | n = 5 | n = 9 |
+|---|---|---|
+| Realised outside any tool | 5 of 5 | **8 of 9** — 4 lying awake |
+| Recruiting-weighted outreach | 3 of 5 | **6 of 9** |
+| Cannot say who matters at first contact | 3 of 5 | **6 of 9** |
+| Self-rated system quality | — | **median 2/5; 8 of 9 rate ≤ 3** |
+
+**Retrieval is now the confirmed pain, and one respondent named the mechanism
+outright** — asked what stopped them messaging someone: *"I didn't want to look
+up our old conversation to see when the last time we spoke was. Procrastination
+got in the way."* That is precisely the friction **ORB-78** and **ORB-80** remove
+by putting the elapsed time and the last exchange into the prompt. Unprompted
+confirmation of two tickets shipped hours earlier.
+
+### What it says about decisions already made
+
+- **ORB-93's star is more justified, not less.** The split went from two-way to
+  four-way: 3 know at first contact, 2 after two or three conversations, 2 after
+  months, 2 only in hindsight. **Six of nine cannot answer** the question the
+  tier picker asked.
+- **Deferring ORB-83 is right on the numbers.** **8 of 9 already knew the
+  recruiting timeline** by sophomore year. The addressable population is one
+  respondent in nine — arrived at independently, and this is the figure that
+  justifies it.
+- **The primary persona is under-specified at the top end.** Median contacts
+  moved to 26–50 and a third have 50+.
+
+### Two gaps closed, two did not
+
+First-gen went 0 → 2, juniors 0 → 1. **And first-gen is not a proxy for
+beginner**, which the personas quietly assumed: R6 is first-generation and the
+**only respondent with a working system** — a CRM, self-rated 5/5, the highest
+score on the page.
+
+Still missing after two rounds: **first-years and anyone with about four
+contacts.** The entire secondary persona. Two rounds failing to reach them is a
+recruiting problem with the instrument, not bad luck.
+
+Interview pool 3 → 5: **Adith Kannan** (50+ contacts, no system, *"not too much,
+just contact details, not names"* — the clearest statement on the page that
+contact details are not the valuable part) and **Kaavya Chandrasekhar** (chose a
+dedicated tool and still rated it 2, which makes her the most useful interview
+on the list).
+
+---
+
 ## ORB-76 read, and two defects it exposed (ORB-96, ORB-97) — Aug 19
 
 Read **eight days early**. Eleven tickets shipped on the 19th and the app changed
