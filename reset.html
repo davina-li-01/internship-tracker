@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Orbit — Choose a new password</title>
+  <meta name="robots" content="noindex" />
+  <meta name="theme-color" content="#F97316" />
+
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png" />
+  <link rel="icon" href="assets/favicon-16.png" sizes="16x16" type="image/png" />
+  <link rel="apple-touch-icon" href="assets/favicon-180.png" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body data-page="reset">
+
+  <main class="auth-main">
+    <div class="auth-card card">
+
+      <div style="margin-bottom:1.5rem">
+        <p class="sidebar-brand" style="font-size:1.25rem;margin:0 0 0.25rem">◍ Orbit</p>
+        <p class="muted" style="font-size:0.85rem">Keep your people in orbit.</p>
+      </div>
+
+      <!-- Checking. Shown until we know whether the link was good, so the page
+           never flashes a form that cannot possibly work. -->
+      <div id="checkingPanel" class="auth-form">
+        <p style="font-size:1rem;font-weight:700;margin-bottom:0.25rem">Checking your link…</p>
+        <p class="muted" style="font-size:0.85rem">One moment.</p>
+      </div>
+
+      <!-- The form. Only rendered once a recovery session actually exists. -->
+      <form id="newPasswordForm" class="auth-form hidden" novalidate>
+        <p style="font-size:1rem;font-weight:700;margin-bottom:0.25rem">Choose a new password</p>
+        <p class="muted" style="font-size:0.85rem;margin-bottom:0.85rem" id="resetForEmail"></p>
+
+        <div class="field-group">
+          <label for="npPassword">New password</label>
+          <input id="npPassword" type="password" autocomplete="new-password" required placeholder="Choose a strong password" />
+          <div class="pw-meter" id="npMeter" hidden>
+            <div class="pw-meter-track"><div class="pw-meter-fill" id="npMeterFill"></div></div>
+            <p class="pw-meter-label" id="npMeterLabel" aria-live="polite"></p>
+          </div>
+          <div id="npAdvice"></div>
+        </div>
+
+        <div class="field-group">
+          <label for="npConfirm">Confirm new password</label>
+          <input id="npConfirm" type="password" autocomplete="new-password" required placeholder="Type it again" />
+        </div>
+
+        <p id="npError" class="error" aria-live="polite"></p>
+        <p id="npSuccess" class="success" aria-live="polite"></p>
+        <button class="btn" type="submit" id="npBtn">Update password</button>
+      </form>
+
+      <!-- Expired, already used, or arrived with no link at all. Recoverable
+           here rather than sending someone back to sign in to start again. -->
+      <div id="expiredPanel" class="auth-form hidden">
+        <p style="font-size:1rem;font-weight:700;margin-bottom:0.25rem" id="expiredTitle">This link has expired</p>
+        <p class="muted" style="font-size:0.85rem;margin-bottom:0.85rem" id="expiredBody">
+          Reset links last one hour and can only be used once. Enter your email and we will send a new one.
+        </p>
+        <div class="field-group">
+          <label for="againEmail">Email</label>
+          <input id="againEmail" type="email" autocomplete="email" placeholder="you@example.com" />
+        </div>
+        <p id="againError" class="error" aria-live="polite"></p>
+        <p id="againSuccess" class="success" aria-live="polite"></p>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+          <button class="btn" type="button" id="againBtn" style="flex:1">Send a new link</button>
+          <button class="btn btn-secondary" type="button" id="backBtn" style="flex:1">Back to sign in</button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script type="module">
+    import { supabase } from "./js/supabase.js";
+    import { MIN_PASSWORD, attachStrengthMeter, passwordAdviceHtml } from "./js/password.js";
+
+    /**
+     * The page a password reset link lands on (ORB-104).
+     *
+     * WHY THIS IS A PAGE AND NOT A PANEL ON auth.html
+     *
+     * It used to be. `resetPasswordForEmail` pointed at auth.html, and auth.html
+     * opens with "if there is a user, go to index.html". Clicking a reset link
+     * makes Supabase establish a RECOVERY SESSION, so that redirect fired and
+     * the user landed on their dashboard — signed in, with the old password
+     * still in place and nothing asked of them.
+     *
+     * Nothing errored. That is why it survived: the email arrived, the link
+     * worked, and the app said "Reset link sent!". Someone who had genuinely
+     * forgotten their password got in once and was locked out again when the
+     * session expired.
+     *
+     * A reset needs a screen whose job is to ask for a new password. The sign-in
+     * page cannot be that screen, because its whole purpose is to move an
+     * authenticated user out of the way. So: a page, with no app shell, no
+     * main.js, and deliberately no requireAuth().
+     */
+    const $ = (id) => document.getElementById(id);
+    const checking = $("checkingPanel");
+    const form     = $("newPasswordForm");
+    const expired  = $("expiredPanel");
+
+    const show = (panel) => {
+      [checking, form, expired].forEach((p) => p.classList.add("hidden"));
+      panel.classList.remove("hidden");
+    };
+
+    function showExpired(title, body) {
+      if (title) $("expiredTitle").textContent = title;
+      if (body) $("expiredBody").textContent = body;
+      show(expired);
+    }
+
+    /**
+     * Supabase has changed the recovery link format twice, and old emails stay
+     * in inboxes, so all three shapes are handled rather than the current one.
+     *
+     *   ?token_hash=...&type=recovery   current templates — verified explicitly
+     *   #access_token=...&type=recovery implicit flow — the client exchanges it
+     *   ?error=... or #error=...        what an expired link actually returns
+     *
+     * Read from both the query and the fragment because which one carries the
+     * payload depends on the flow, and reading only one is how this silently
+     * stops working after a Supabase upgrade.
+     */
+    function authParams() {
+      const query = new URLSearchParams(window.location.search);
+      const hash  = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+      return (name) => query.get(name) || hash.get(name);
+    }
+
+    async function establishSession() {
+      const param = authParams();
+
+      // An expired or already-used link comes back as an error, not as an
+      // absent token, and it is by far the most common way to arrive here.
+      const error = param("error") || param("error_code");
+      if (error) {
+        const description = (param("error_description") || "").replace(/\+/g, " ");
+        return { ok: false, expired: /expired|invalid|otp/i.test(error + description) };
+      }
+
+      const tokenHash = param("token_hash");
+      if (tokenHash && (param("type") || "recovery") === "recovery") {
+        const { error: verifyError } =
+          await supabase.auth.verifyOtp({ token_hash: tokenHash, type: "recovery" });
+        if (verifyError) return { ok: false, expired: true, message: verifyError.message };
+      }
+
+      // With the implicit flow the client picks the tokens out of the fragment
+      // on load, which may or may not have finished by the time this runs — so
+      // the session is polled briefly rather than read once.
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const { data } = await supabase.auth.getSession();
+        if (data?.session) return { ok: true, session: data.session };
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      return { ok: false, expired: false };
+    }
+
+    (async () => {
+      const result = await establishSession();
+
+      if (!result.ok) {
+        // Arriving with no link at all — a bookmark, a typed URL — is not an
+        // error, but it is not a form either. Both land on the same recovery
+        // state, because a password form that cannot succeed is worse than a
+        // sentence explaining why.
+        showExpired(
+          result.expired ? "This link has expired" : "We could not open that link",
+          result.expired
+            ? "Reset links last one hour and can only be used once. Enter your email and we will send a new one."
+            : "Reset links only work once, and only from the email they were sent in. Enter your email and we will send a new one."
+        );
+        return;
+      }
+
+      const email = result.session?.user?.email || "";
+      $("resetForEmail").textContent = email ? "for " + email : "";
+      $("npAdvice").innerHTML = passwordAdviceHtml();
+      $("npPassword").placeholder = `At least ${MIN_PASSWORD} characters`;
+      attachStrengthMeter($("npPassword"), $("npMeter"), () => email);
+      show(form);
+      $("npPassword").focus();
+    })();
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const btn = $("npBtn");
+      const err = $("npError");
+      const ok  = $("npSuccess");
+      err.textContent = ""; ok.textContent = "";
+
+      const password = $("npPassword").value;
+      const confirm  = $("npConfirm").value;
+
+      // Checked here so a mismatch or a short password costs nothing. Supabase
+      // enforces its own minimum on top; this must never claim to be stricter.
+      if (password.length < MIN_PASSWORD) {
+        err.textContent = "Use at least " + MIN_PASSWORD + " characters.";
+        return;
+      }
+      if (password !== confirm) {
+        err.textContent = "The two passwords do not match.";
+        return;
+      }
+
+      btn.disabled = true;
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) {
+        btn.disabled = false;
+        // The session can lapse while the form is open, and "Auth session
+        // missing" means the link died rather than the password being bad.
+        if (/session|expired|jwt/i.test(error.message)) {
+          showExpired("This link has expired",
+            "It timed out while you were on this page. Enter your email and we will send a new one.");
+          return;
+        }
+        err.textContent = error.message;
+        return;
+      }
+
+      ok.textContent = "Password updated. Taking you to Orbit…";
+      // Already authenticated by the recovery session, and they have just
+      // proved they own the address — so there is nothing left to ask.
+      setTimeout(() => { window.location.replace("index.html"); }, 900);
+    });
+
+    $("againBtn").addEventListener("click", async () => {
+      const email = $("againEmail").value.trim();
+      const err = $("againError");
+      const ok  = $("againSuccess");
+      err.textContent = ""; ok.textContent = "";
+      if (!email) { err.textContent = "Enter your email."; return; }
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: new URL("reset.html", window.location.href).href
+      });
+      if (error) { err.textContent = error.message; return; }
+      ok.textContent = "Sent. Check your email — the new link replaces the old one.";
+    });
+
+    $("backBtn").addEventListener("click", () => {
+      window.location.href = "auth.html";
+    });
+  </script>
+</body>
+</html>

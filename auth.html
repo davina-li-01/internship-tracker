@@ -120,8 +120,23 @@
     import { supabase, getUser } from "./js/supabase.js";
     import { MIN_PASSWORD, attachStrengthMeter, passwordAdviceHtml } from "./js/password.js";
 
-    // Already logged in → go to workspace
-    getUser().then((user) => { if (user) window.location.href = "index.html"; });
+    // Already logged in → go to workspace.
+    //
+    // ORB-104: unless this is a recovery landing. Supabase is told to send
+    // those to reset.html, but an email sent before that change — or a
+    // redirectTo that failed the dashboard allowlist and silently fell back to
+    // Site URL — still arrives here, and this redirect would swallow it.
+    const looksLikeRecovery = () => {
+      const query = new URLSearchParams(window.location.search);
+      const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+      const get = (name) => query.get(name) || hash.get(name);
+      return get("type") === "recovery" || Boolean(get("token_hash"));
+    };
+    if (looksLikeRecovery()) {
+      window.location.replace("reset.html" + window.location.search + window.location.hash);
+    } else {
+      getUser().then((user) => { if (user) window.location.href = "index.html"; });
+    }
 
     /**
      * Where an emailed auth link should send someone back to.
@@ -311,8 +326,12 @@
       const successEl = document.getElementById("resetSuccess");
       errEl.textContent = ""; successEl.textContent = "";
       if (!email) { errEl.textContent = "Enter your email."; return; }
+      // ORB-104: reset.html, NOT auth.html. Pointing recovery back here is
+      // what made a reset link sign people in without resetting anything —
+      // this page opens by redirecting an authenticated user to the dashboard,
+      // and a recovery link authenticates them.
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: authReturnUrl()
+        redirectTo: new URL("reset.html", window.location.href).href
       });
       if (error) { errEl.textContent = error.message; }
       else { successEl.textContent = "Reset link sent! Check your email."; }
