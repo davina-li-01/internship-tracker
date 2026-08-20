@@ -145,6 +145,10 @@ const EXPORTS = [
   // reach-outs are touchpoints; the echo dates itself (ORB-96, ORB-97)
   "TOUCHPOINT_TYPE", "isTouchpoint", "conversationsOf", "lastConversationEntry",
   "INTERACTION_TYPES",
+  // importing a spreadsheet (ORB-98)
+  "parseCsv", "guessColumnMap", "csvRowsToContacts", "findCsvDuplicates",
+  "normaliseCsvDate", "CSV_FIELDS", "csvImportFormHtml", "wireCsvImport",
+  "openCsvImportModal",
   "reachOutNudgeHtml", "showReachOutNudge", "checkRemindersOnLoad",
   "nudgeAllowed", "markNudgeShown", "getNudgeMode",
   // behaviour

@@ -2473,6 +2473,28 @@ body.dark .token-industry { color: var(--accent); }
 /* ORB-97: only rendered when the quote is older than the date above it. */
 .prompt-echo-when { font-style: normal; color: var(--text-faint); }
 
+/* ── Importing a spreadsheet (ORB-98) ────────────────────────── */
+.csv-card { max-width: 620px; }
+.csv-map-grid { display: grid; gap: 0.5rem; margin-top: 0.5rem; }
+.csv-map-row { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(0, 1.4fr);
+  gap: 0.6rem; align-items: center; }
+.csv-map-row label { font-size: 0.78rem; margin: 0; }
+.csv-map-row select { width: 100%; }
+.csv-req { font-size: 0.62rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--primary-deep); }
+/* The preview is the guardrail, so it is given a surface rather than set as a
+   list of grey lines under a form. */
+.csv-preview { margin-top: 0.9rem; padding: 0.75rem 0.85rem;
+  border-radius: var(--radius-card); background: rgba(249,115,22,0.06);
+  border: 1px solid rgba(249,115,22,0.14); }
+.csv-rows { list-style: none; margin: 0.4rem 0 0; padding: 0;
+  display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.84rem; }
+.csv-counts { margin: 0.6rem 0 0; font-size: 0.78rem; color: var(--text-muted); }
+.csv-error:empty { display: none; }
+@media (max-width: 560px) {
+  .csv-map-row { grid-template-columns: 1fr; gap: 0.2rem; }
+}
+
 /* ── The nudge on open (ORB-58) ──────────────────────────────── */
 /* A bar, not a dialog. It does not cover the page or trap focus — the whole
    complaint about the modal it replaces was that it interrupted more than the

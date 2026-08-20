@@ -3540,6 +3540,400 @@ function openCaptureModal(contacts, onSaved) {
   modal.querySelector(".capture-who").focus();
 }
 
+/**
+ * Importing a spreadsheet of people you already know (ORB-98).
+ *
+ * This reverses a decision made the same morning. ORB-76 dropped bulk entry
+ * because there was no evidence anyone needed it and metric 3 — the only
+ * instrument pointed at it — turned out to be structurally incapable of
+ * producing any. The evidence arrived hours later and from exactly the
+ * direction that decision named: a real user with 50+ contacts already in an
+ * Excel sheet, and the observation that people who do not need Orbit still keep
+ * a CRM, and every CRM exports CSV.
+ *
+ * IT IS NOT THE BULK PASTE THAT WAS DROPPED. That was free text typed into a
+ * box, which needs a parser that guesses at everything. A file has a header
+ * row, and the header row is what makes the guessing tractable.
+ */
+
+/**
+ * CSV, close enough to RFC 4180 for what spreadsheets actually emit.
+ *
+ * Written out rather than split on commas because the fields that break a
+ * naive split are exactly the ones this feature exists for: "Smith, Jane" in a
+ * name column, a note containing a comma, an address wrapped in quotes. A
+ * doubled quote inside a quoted field is an escaped quote, which is how Excel,
+ * Sheets and every CRM export write one.
+ *
+ * CRLF is normalised on the way in — Excel on Windows is the single most likely
+ * source of these files.
+ */
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let quoted = false;
+  const src = String(text || "").replace(/\r\n?/g, "\n");
+
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (quoted) {
+      if (ch !== '"') { field += ch; continue; }
+      if (src[i + 1] === '"') { field += '"'; i++; continue; }
+      quoted = false;
+      continue;
+    }
+    if (ch === '"') { quoted = true; continue; }
+    if (ch === ",") { row.push(field); field = ""; continue; }
+    if (ch === "\n") { row.push(field); rows.push(row); row = []; field = ""; continue; }
+    field += ch;
+  }
+  // A file not ending in a newline still has a last row, and a trailing newline
+  // must not produce an empty one.
+  if (field !== "" || row.length) { row.push(field); rows.push(row); }
+  return rows.filter((r) => r.some((c) => String(c).trim()));
+}
+
+/**
+ * Which Orbit field each column probably is.
+ *
+ * A guess, shown to the user and correctable — never applied silently. The
+ * synonyms come from what LinkedIn, HubSpot, Salesforce and a hand-rolled
+ * spreadsheet actually call these columns.
+ */
+const CSV_FIELDS = [
+  { key: "name",    label: "Name",         required: true,
+    match: ["name", "full name", "fullname", "contact", "contact name", "person"] },
+  { key: "first",   label: "First name",   split: true,
+    match: ["first name", "firstname", "given name", "first"] },
+  { key: "last",    label: "Last name",    split: true,
+    match: ["last name", "lastname", "surname", "family name", "last"] },
+  { key: "role",    label: "Role",
+    match: ["role", "title", "job title", "jobtitle", "position", "headline"] },
+  { key: "company", label: "Company",
+    match: ["company", "organization", "organisation", "employer", "account",
+            "company name", "current company"] },
+  { key: "email",   label: "Email",
+    match: ["email", "e-mail", "email address", "work email", "primary email"] },
+  { key: "industry", label: "Industry",
+    match: ["industry", "sector", "vertical"] },
+  { key: "dateMet", label: "When you met",
+    match: ["date met", "met", "met on", "first met", "connected on",
+            "connected", "date connected", "connection date"] },
+  { key: "notes",   label: "Notes",
+    match: ["notes", "note", "comments", "description", "about"] }
+];
+
+const normHeader = (h) => String(h || "").trim().toLowerCase().replace(/[_\-]+/g, " ")
+  .replace(/\s+/g, " ");
+
+function guessColumnMap(headers) {
+  const map = {};
+  const taken = new Set();
+  const norm = headers.map(normHeader);
+  // Exact matches first, across every field, before anything falls back to a
+  // partial one — otherwise "Company" can be claimed by a "company size"
+  // column that happened to come earlier.
+  for (const pass of ["exact", "partial"]) {
+    for (const f of CSV_FIELDS) {
+      if (map[f.key] !== undefined) continue;
+      const i = norm.findIndex((h, idx) => !taken.has(idx) && h && (pass === "exact"
+        ? f.match.includes(h)
+        : f.match.some((m) => h.includes(m))));
+      if (i !== -1) { map[f.key] = i; taken.add(i); }
+    }
+  }
+  return map;
+}
+
+/**
+ * The rows as contacts, in the shape ORB-73 established.
+ *
+ * No conversation, no last-contacted date, no tier and no star. Importing
+ * fifty people is not fifty conversations, and a star is something you say
+ * rather than something a file says for you.
+ *
+ * The cadence is applied to everyone at once and defaults to none. Fifty
+ * contacts imported on a monthly cadence would arrive as fifty overdue people
+ * on the dashboard — the exact "contacts with no conversation clutter Reach out
+ * next" risk the ORB-73 PRD raised, at fifty times the scale.
+ */
+function csvRowsToContacts(headers, rows, map, { frequency = "none" } = {}) {
+  const at = (row, key) => {
+    const i = map[key];
+    return i === undefined || i < 0 ? "" : String(row[i] ?? "").trim();
+  };
+  const out = [];
+  for (const row of rows) {
+    let name = at(row, "name");
+    if (!name) name = [at(row, "first"), at(row, "last")].filter(Boolean).join(" ");
+    if (!name) continue;   // a row with no name is not a person
+    out.push({
+      name,
+      role: at(row, "role"),
+      company: at(row, "company"),
+      email: at(row, "email"),
+      industry: at(row, "industry"),
+      dateMet: normaliseCsvDate(at(row, "dateMet")),
+      notes: at(row, "notes"),
+      followUpFrequency: frequency,
+      reminderEnabled: frequency !== "none",
+      interactions: []
+    });
+  }
+  return out;
+}
+
+/**
+ * A date, or nothing.
+ *
+ * Nothing is the right answer for an unparseable one. `dateMet` anchors a
+ * cadence, and ORB-73 established that a guessed date is indistinguishable from
+ * a known one once stored — so a column that turns out to be "Q3" or "last
+ * spring" must produce an empty field rather than today.
+ */
+function normaliseCsvDate(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  if (iso) return raw.slice(0, 10);
+  // US-style, which is what a spreadsheet in this market emits. Ambiguous
+  // against day-first and knowably so — flagged in the preview rather than
+  // resolved by guessing.
+  const slash = /^(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4})$/.exec(raw);
+  if (slash) {
+    const [, m, d, y] = slash;
+    const year = y.length === 2 ? "20" + y : y;
+    const out = [year, m.padStart(2, "0"), d.padStart(2, "0")].join("-");
+    return parseDateOnly(out) ? out : "";
+  }
+  return "";
+}
+
+/** Names already in the network, matched the way the rest of the app does. */
+function findCsvDuplicates(candidates, existing) {
+  const have = new Set((existing || []).map((c) => (c.name || "").trim().toLowerCase()));
+  const seen = new Set();
+  const dupes = new Set();
+  candidates.forEach((c, i) => {
+    const key = c.name.trim().toLowerCase();
+    // Duplicated against the network, and against earlier rows of the same
+    // file — an export that lists someone twice is common and neither half of
+    // it should silently win.
+    if (have.has(key) || seen.has(key)) dupes.add(i);
+    seen.add(key);
+  });
+  return dupes;
+}
+
+/**
+ * The import screen: map, preview, then commit (ORB-98).
+ *
+ * Nothing is written until the preview has been seen. That is the guardrail
+ * that makes the guessing safe — a wrong column is obvious in a preview and
+ * invisible in a success message, and undoing fifty bad contacts is far worse
+ * than undoing one.
+ */
+function csvImportFormHtml() {
+  const freqOptions = Object.entries(FREQUENCY_LABELS)
+    .map(([v, l]) => '<option value="' + v + '"' + (v === "none" ? " selected" : "") + '>'
+      + escapeHtml(l) + '</option>').join("");
+  return '<form class="csv-form" novalidate>'
+    + '<div class="field-group"><label for="csvFile">Your spreadsheet</label>'
+    + '<input type="file" id="csvFile" class="csv-file" accept=".csv,text/csv" />'
+    + '<p class="tiny muted">A CSV exported from LinkedIn, a CRM, Excel or Sheets. '
+    + 'Nothing is saved until you have seen the preview.</p></div>'
+    + '<div class="csv-mapping hidden"></div>'
+    + '<div class="csv-preview hidden"></div>'
+    + '<div class="field-group csv-cadence hidden">'
+    + '<label for="csvFreq">Reach out to these people…</label>'
+    + '<select id="csvFreq" class="csv-freq">' + freqOptions + '</select>'
+    + '<p class="tiny muted">Applies to everyone in the file. '
+    + 'No schedule is the default — putting fifty people on a cadence at once fills '
+    + 'Reach out next with people you have not decided about yet.</p></div>'
+    + '<p class="error csv-error" aria-live="polite"></p>'
+    + '<button type="submit" class="btn csv-submit hidden">Import</button>'
+    + '</form>';
+}
+
+/**
+ * A file as text.
+ *
+ * `Blob.text()` is what every current browser offers and what this used to
+ * call directly. It is unimplemented in jsdom, which meant the read path — the
+ * first thing that runs and the easiest to break — could not be tested at all.
+ * FileReader is the fallback and is universally available, so the fast path
+ * stays and the code stops being untestable.
+ */
+function readFileText(file) {
+  if (typeof file?.text === "function") return file.text();
+  // Looked up rather than referenced bare, for the same reason DOMParser is in
+  // htmlToMarks (ORB-77): these live on `window` and are not globals in every
+  // environment the module is loaded into.
+  const Reader = (typeof FileReader !== "undefined" && FileReader)
+    || (typeof window !== "undefined" && window.FileReader);
+  if (!Reader) return Promise.reject(new Error("no file reader available"));
+  return new Promise((resolve, reject) => {
+    const reader = new Reader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("read failed"));
+    reader.readAsText(file);
+  });
+}
+
+function wireCsvImport(root, getContacts, onSaved) {
+  const form = root.querySelector(".csv-form");
+  if (!form) return;
+  const $ = (sel) => form.querySelector(sel);
+  const errEl = $(".csv-error");
+  let headers = [];
+  let rows = [];
+
+  const currentMap = () => {
+    const map = {};
+    form.querySelectorAll("[data-csv-field]").forEach((sel) => {
+      const i = parseInt(sel.value, 10);
+      if (!Number.isNaN(i) && i >= 0) map[sel.dataset.csvField] = i;
+    });
+    return map;
+  };
+
+  function renderMapping(guess) {
+    const options = (selected) => '<option value="-1">— not in this file —</option>'
+      + headers.map((h, i) => '<option value="' + i + '"' + (selected === i ? " selected" : "")
+        + '>' + escapeHtml(h || "column " + (i + 1)) + '</option>').join("");
+    $(".csv-mapping").innerHTML = '<p class="label">Which column is which?</p>'
+      + '<p class="tiny muted">Guessed from the header row. Change anything that is wrong.</p>'
+      + '<div class="csv-map-grid">'
+      + CSV_FIELDS.map((f) => '<div class="csv-map-row">'
+          + '<label for="csvmap-' + f.key + '">' + escapeHtml(f.label)
+          + (f.required ? ' <span class="csv-req">required</span>' : '')
+          + (f.split ? ' <span class="tiny muted">(if the name is split in two)</span>' : '')
+          + '</label>'
+          + '<select id="csvmap-' + f.key + '" data-csv-field="' + f.key + '">'
+          + options(guess[f.key]) + '</select>'
+          + '</div>').join("")
+      + '</div>';
+    $(".csv-mapping").classList.remove("hidden");
+    form.querySelectorAll("[data-csv-field]").forEach((sel) =>
+      sel.addEventListener("change", renderPreview));
+  }
+
+  function renderPreview() {
+    const map = currentMap();
+    const people = csvRowsToContacts(headers, rows, map);
+    const dupes = findCsvDuplicates(people, getContacts());
+    const fresh = people.filter((_, i) => !dupes.has(i));
+    const shown = fresh.slice(0, 5);
+
+    const noName = rows.length - people.length;
+    $(".csv-preview").innerHTML = '<p class="label">What will be added</p>'
+      + (fresh.length
+        ? '<ul class="csv-rows">'
+          + shown.map((p) => '<li><strong>' + escapeHtml(p.name) + '</strong>'
+              + (p.role || p.company
+                ? '<span class="tiny muted"> ' + escapeHtml([p.role, p.company].filter(Boolean).join(" at ")) + '</span>'
+                : '')
+              + (p.email ? '<span class="tiny muted"> · ' + escapeHtml(p.email) + '</span>' : '')
+              + '</li>').join("")
+          + (fresh.length > shown.length
+            ? '<li class="tiny muted">and ' + (fresh.length - shown.length) + ' more</li>' : '')
+          + '</ul>'
+        : '<p class="empty">Nothing to add — check the Name column above.</p>')
+      + '<p class="csv-counts">'
+      + '<strong>' + fresh.length + '</strong> to add'
+      + (dupes.size ? ' · <strong>' + dupes.size + '</strong> already in your network, skipped' : '')
+      + (noName > 0 ? ' · ' + noName + ' row' + (noName === 1 ? "" : "s") + ' with no name, skipped' : '')
+      + '</p>';
+    $(".csv-preview").classList.remove("hidden");
+    $(".csv-cadence").classList.toggle("hidden", !fresh.length);
+    $(".csv-submit").classList.toggle("hidden", !fresh.length);
+    $(".csv-submit").textContent = fresh.length === 1
+      ? "Import 1 person" : "Import " + fresh.length + " people";
+    return { fresh, dupes };
+  }
+
+  $(".csv-file").addEventListener("change", async (e) => {
+    errEl.textContent = "";
+    const file = e.target.files?.[0];
+    if (!file) return;
+    let text = "";
+    try { text = await readFileText(file); }
+    catch { errEl.textContent = "Could not read that file."; return; }
+
+    const parsed = parseCsv(text);
+    if (parsed.length < 2) {
+      errEl.textContent = "That file has no rows under its header.";
+      return;
+    }
+    headers = parsed[0];
+    rows = parsed.slice(1);
+    renderMapping(guessColumnMap(headers));
+    renderPreview();
+  });
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    errEl.textContent = "";
+    const frequency = $(".csv-freq").value;
+    const map = currentMap();
+    const people = csvRowsToContacts(headers, rows, map, { frequency });
+    const dupes = findCsvDuplicates(people, getContacts());
+    const fresh = people.filter((_, i) => !dupes.has(i));
+    if (!fresh.length) { errEl.textContent = "Nothing to import."; return; }
+
+    const btn = $(".csv-submit");
+    btn.disabled = true;
+    let saved = 0;
+    const failed = [];
+    for (const person of fresh) {
+      const contact = normalizeContact(person);
+      // ORB-73's rule, applied after normalising rather than by weakening the
+      // fallback for everyone: a spreadsheet row is not a conversation, so
+      // there is nothing for lastContacted to be.
+      contact.lastContacted = "";
+      contact.nextReminder = frequency === "none" ? "" : firstDeadlineFor("", frequency);
+      const ok = await db.saveContact(contact);
+      if (ok) saved++; else failed.push(person.name);
+    }
+    btn.disabled = false;
+
+    if (!saved) { errEl.textContent = "Nothing saved — the database refused every row."; return; }
+    // Partial success is reported as partial. "Imported 50" when 6 failed is
+    // the ORB-14 problem at scale.
+    if (failed.length) {
+      errEl.textContent = failed.length + " row" + (failed.length === 1 ? "" : "s")
+        + " could not be saved: " + failed.slice(0, 3).join(", ")
+        + (failed.length > 3 ? "…" : "");
+    }
+    showToast("Added " + saved + " " + (saved === 1 ? "person" : "people") + " to your network.");
+    if (onSaved) await onSaved();
+  });
+}
+
+function openCsvImportModal(contacts, onSaved) {
+  document.getElementById("csvImportModal")?.remove();
+  const modal = document.createElement("div");
+  modal.id = "csvImportModal";
+  modal.className = "modal-overlay";
+  modal.innerHTML = '<div class="modal-card csv-card" role="dialog" aria-modal="true"'
+    + ' aria-labelledby="csvTitle">'
+    + '<div class="quick-add-header">'
+    + '<h3 id="csvTitle">Import from a spreadsheet</h3>'
+    + '<button class="icon-btn" id="csvClose" type="button" aria-label="Close">✕</button>'
+    + '</div>'
+    + csvImportFormHtml()
+    + '</div>';
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector("#csvClose").addEventListener("click", close);
+  modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+  wireCsvImport(modal, () => contacts, async () => {
+    close();
+    if (onSaved) await onSaved();
+  });
+}
+
 function openQuickAddChooser(contacts, onSaved) {
   document.getElementById("quickAddChooser")?.remove();
 
@@ -3567,6 +3961,11 @@ function openQuickAddChooser(contacts, onSaved) {
     + '</button></li>'
     // Third and last, because it is the smallest act of the three and the one
     // you already know you want when you open this (ORB-81).
+    + '<li><button type="button" class="chooser-option" id="chooseImport">'
+    + '<span class="chooser-title">Import from a spreadsheet</span>'
+    + '<span class="chooser-desc">A CSV from LinkedIn, a CRM or Excel. '
+    + 'You map the columns and see a preview before anything is saved.</span>'
+    + '</button></li>'
     + '<li><button type="button" class="chooser-option" id="chooseCapture">'
     + '<span class="chooser-title">Note to self about someone</span>'
     + '<span class="chooser-desc">A thought you do not want to lose. '
@@ -3597,6 +3996,10 @@ function openQuickAddChooser(contacts, onSaved) {
   modal.querySelector("#chooseCapture").addEventListener("click", () => {
     close();
     openCaptureModal(contacts, onSaved);
+  });
+  modal.querySelector("#chooseImport").addEventListener("click", () => {
+    close();
+    openCsvImportModal(contacts, onSaved);
   });
 
   modal.querySelector("#chooseAddConnection").focus();

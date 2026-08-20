@@ -276,9 +276,10 @@ group("It is reachable from the + on every page");
   document.getElementById("quickAddChooser")?.remove();
   openQuickAddChooser([person()], () => {});
   const opts = [...document.querySelectorAll(".chooser-option")];
-  eq("three ways in", opts.length, 3);
-  ok("catching a thought is one of them", /note to self/i.test(opts[2].textContent));
-  opts[2].click();
+  eq("four ways in", opts.length, 4);
+  const capture = opts.find((o) => /note to self/i.test(o.textContent));
+  ok("catching a thought is one of them", capture);
+  capture.click();
   ok("and it opens the capture, not a form", document.getElementById("captureModal"));
   ok("headed by the words it was chosen with",
     /Note to self about someone/.test(document.querySelector("#captureModal h3").textContent));

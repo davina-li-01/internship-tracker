@@ -68,12 +68,14 @@ async function headingBehind(optionId) {
   document.getElementById("addConnectionModal")?.remove();
   document.getElementById("quickAddModal")?.remove();
   document.getElementById("captureModal")?.remove();
+  document.getElementById("csvImportModal")?.remove();
   openQuickAddChooser([], () => {});
   click(document.getElementById(optionId));
   await tick();
   const modal = document.getElementById("addConnectionModal")
     || document.getElementById("quickAddModal")
-    || document.getElementById("captureModal");
+    || document.getElementById("captureModal")
+    || document.getElementById("csvImportModal");
   const heading = clean(modal.querySelector("h3").textContent);
   modal.remove();
   return heading;
@@ -116,7 +118,7 @@ group("Each chooser option is headed by the words it was chosen with");
 {
   // Three since ORB-81. The count is asserted so a fourth cannot be added
   // without someone reading the rule below it.
-  eq("there are three options", options.length, 3);
+  eq("there are four options", options.length, 4);
   for (const opt of options) {
     const heading = await headingBehind(opt.id);
     eq('"' + opt.title + '" opens a dialog headed the same', heading, opt.title);

@@ -293,11 +293,13 @@ group("The + asks which of the two things you meant");
   ok("and not the conversation logger", !document.getElementById("quickAddModal"));
 
   const opts = chooser.querySelectorAll(".chooser-option");
-  eq("three options", opts.length, 3);
+  eq("four options", opts.length, 4);
   ok("adding a connection comes first", /add a connection/i.test(opts[0].textContent));
   ok("logging a conversation second", /log a conversation/i.test(opts[1].textContent));
-  // ORB-81 added the third. Last, because it is the smallest act of the three.
-  ok("catching a thought third", /note to self/i.test(opts[2].textContent));
+  // ORB-98 added the third: arriving with a list is the first thing a new user
+  // does, so it sits above the smallest act rather than below it.
+  ok("importing a spreadsheet third", /spreadsheet/i.test(opts[2].textContent));
+  ok("catching a thought last", /note to self/i.test(opts[3].textContent));
   // Two bare buttons would not have removed the ambiguity — the descriptions
   // are the part that does.
   ok("each explains what it does",
