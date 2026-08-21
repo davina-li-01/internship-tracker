@@ -3171,9 +3171,13 @@ function wireAddConnectionForm(root, getContacts, onSaved) {
     $(".ac-cadence-text").textContent = cadenceSentence(chosenFrequency());
   };
 
+  // ORB-109. Latches open, matching the profile. It used to toggle, so a second
+  // click hid the control you had just asked to see — and the documentation
+  // asserted "once open it stays open", which was true of one surface and
+  // written as the rule.
   $(".ac-adjust").addEventListener("click", () => {
-    freqGroup.classList.toggle("hidden");
-    if (!freqGroup.classList.contains("hidden")) freqEl.focus();
+    freqGroup.classList.remove("hidden");
+    freqEl.focus();
   });
 
   freqEl.addEventListener("change", () => {
@@ -4151,6 +4155,25 @@ function buildReminderEmailText(contact, yourName) {
   return "Subject: Great catching up!\n\nHi " + name + ",\n\nHope you have been doing well! I wanted to reconnect and see how things have been going on your end.\n\nWould love to catch up soon.\n\nBest,\n" + safeName;
 }
 
+/**
+ * A draft as a mailto: URL.
+ *
+ * The first line is the subject, by the same convention the draft is written
+ * in — `Subject: …` — and everything after the blank line is the body. A draft
+ * the user has rewritten without that first line simply has no subject, which
+ * is better than guessing one from their words.
+ */
+function mailtoUrl(email, text) {
+  const [subjectLine, ...bodyLines] = String(text || "").split("\n");
+  const hasSubject = /^Subject:\s*/i.test(subjectLine);
+  const subject = hasSubject ? subjectLine.replace(/^Subject:\s*/i, "") : "";
+  const body = (hasSubject ? bodyLines.join("\n") : String(text || ""))
+    .replace(/^\n+/, "");
+  return "mailto:" + encodeURIComponent(email || "")
+    + "?subject=" + encodeURIComponent(subject)
+    + "&body=" + encodeURIComponent(body);
+}
+
 async function showReminderModal(contact, onChanged) {
   document.getElementById("reminderModal")?.remove();
 
@@ -4182,7 +4205,10 @@ async function showReminderModal(contact, onChanged) {
     + '</div>'
     + '<div class="modal-email">'
     + '<p class="label">Draft message</p>'
-    + '<textarea class="email-draft" readonly rows="8">' + escapeHtml(emailText) + '</textarea>'
+    // ORB-108. Was readonly, so you could copy a message to a real person and
+    // not change a word of it first.
+    + '<textarea class="email-draft" rows="8" aria-label="Draft message">'
+    + escapeHtml(emailText) + '</textarea>'
     + '<div class="modal-draft-actions">'
     + '<button class="btn btn-secondary" id="modalCopyEmail" type="button">Copy</button>'
     + (contact.email
@@ -4226,9 +4252,14 @@ async function showReminderModal(contact, onChanged) {
     });
     await finish();
   });
+  // ORB-108. Both actions read the textarea rather than the string the dialog
+  // was built from, or an edit is silently discarded — which is the worse half
+  // of the bug: the box would look editable and quietly not be.
+  const draftText = () => modal.querySelector(".email-draft").value;
+
   modal.querySelector("#modalCopyEmail").addEventListener("click", async () => {
     try {
-      await navigator.clipboard.writeText(emailText);
+      await navigator.clipboard.writeText(draftText());
       modal.querySelector("#modalCopyMsg").textContent = "Copied to clipboard.";
     } catch {
       modal.querySelector("#modalCopyMsg").textContent = "Copy failed — please copy manually.";
@@ -4236,13 +4267,13 @@ async function showReminderModal(contact, onChanged) {
   });
   // Hands the draft to whatever email client the OS has. Orbit runs entirely in
   // the browser, so it cannot send mail itself — this is the closest it gets.
+  //
+  // The URL is built by a function rather than inline because `window.location`
+  // cannot be stubbed in jsdom, so an inline version is untestable — and what
+  // needs testing is that it uses the EDITED draft (ORB-108), not the generated
+  // one. **ORB-113** adds Gmail and Outlook beside this.
   modal.querySelector("#modalMailto")?.addEventListener("click", () => {
-    const [subjectLine, ...bodyLines] = emailText.split("\n");
-    const subject = subjectLine.replace(/^Subject:\s*/i, "");
-    const body = bodyLines.join("\n").replace(/^\n+/, "");
-    window.location.href = "mailto:" + encodeURIComponent(contact.email)
-      + "?subject=" + encodeURIComponent(subject)
-      + "&body=" + encodeURIComponent(body);
+    window.location.href = mailtoUrl(contact.email, draftText());
   });
 
   modal.querySelector("#modalClose").addEventListener("click", () => modal.remove());
@@ -5254,6 +5285,16 @@ async function initContactPage() {
       await save((cur) => {
         const wasOff = !cur.reminderEnabled || cur.followUpFrequency === "none";
         const anchor = cur.lastContacted || cur.dateMet;
+        // ORB-107. Pressing Save used to recompute the deadline unconditionally,
+        // which silently threw away a snooze: "Remind me in 3 days", then Save
+        // without touching anything, and the three days were gone. Nothing
+        // errored and the button reported success.
+        //
+        // A deadline is only recomputed when the cadence actually changed.
+        // Otherwise `nextReminder` is left exactly as it is — it is the single
+        // source of truth precisely because it carries the grace window and any
+        // snooze, and recomputing it from the interval discards both.
+        const unchanged = !wasOff && newFreq === cur.followUpFrequency;
         return {
           ...cur,
           followUpFrequency: newFreq,
@@ -5269,6 +5310,7 @@ async function initContactPage() {
           // cadence alone would already be blown. Editing an existing cadence
           // keeps the normal deadline — the grace is not re-granted.
           nextReminder: newFreq === "none" ? ""
+            : unchanged ? cur.nextReminder
             : wasOff ? firstDeadlineFor(anchor, newFreq)
                      : calculateNextReminder(anchor, newFreq)
         };
@@ -7261,11 +7303,38 @@ async function checkRemindersOnLoad() {
   }, 900);
 }
 
+/**
+ * The name you typed at sign-up (ORB-106).
+ *
+ * `auth.html` collects "Your Name" and stores it on the Supabase Auth user as
+ * `user_metadata.full_name`. Drafts read `preferences.your_name` — a different
+ * store, written only by the settings modal. So the name was collected and
+ * never used, and every draft signed off `[Your Name]` until you went looking
+ * for a setting you had no reason to know about.
+ *
+ * Backfilled rather than written at sign-up, because at sign-up there is no
+ * confirmed session to write preferences with — and because this way it also
+ * repairs every account created before the bug was found.
+ *
+ * Runs once, only when the preference is genuinely empty. It must never
+ * overwrite a name the user set themselves: the settings field is the answer,
+ * and the sign-up metadata is only a better default than nothing.
+ */
+async function backfillNameFromSignUp(user) {
+  const signUpName = String(user?.user_metadata?.full_name || "").trim();
+  if (!signUpName) return;
+  const prefs = await db.getPreferences();
+  if (String(prefs?.your_name || "").trim()) return;
+  await db.savePreferences({ your_name: signUpName });
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 (async () => {
   const user = await requireAuth();
   if (!user) return;
+  // Before anything renders a draft. Failing is not worth blocking the app for.
+  await backfillNameFromSignUp(user).catch(() => {});
   initSidebarToggle();
   initNavDropdown();
   applyTheme();

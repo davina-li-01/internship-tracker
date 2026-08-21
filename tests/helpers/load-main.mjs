@@ -37,6 +37,10 @@ export const state = {
   saves: [],
   uploads: [],
   files: [],
+  // Preferences are a real store now, not a constant — ORB-106 backfills into
+  // them, so a test has to be able to see what was written.
+  prefs: { your_name: "Davina" },
+  prefSaves: [],
   failSave: false,
   failUpload: false
 };
@@ -46,6 +50,8 @@ export function resetState() {
   state.saves.length = 0;
   state.uploads.length = 0;
   state.files.length = 0;
+  state.prefs = { your_name: "Davina" };
+  state.prefSaves.length = 0;
   state.failSave = false;
   state.failUpload = false;
   document.querySelectorAll(".toast-stack").forEach((n) => n.remove());
@@ -79,8 +85,12 @@ export async function fetchStorageFilesByContact(id) {
   return globalThis.__orbit.files.filter((f) => f.contactId === id);
 }
 export async function fetchAllStorageFiles() { return globalThis.__orbit.files; }
-export async function getPreferences() { return { your_name: "Davina" }; }
-export async function savePreferences() { return { ok: true, skipped: [] }; }
+export async function getPreferences() { return { ...globalThis.__orbit.prefs }; }
+export async function savePreferences(updates) {
+  globalThis.__orbit.prefSaves.push(updates);
+  Object.assign(globalThis.__orbit.prefs, updates);
+  return { ok: true, skipped: [] };
+}
 export function isIndustrySupported() { return true; }
 export async function renameStorageFile() { return true; }
 export async function deleteStorageFile() { return true; }
@@ -151,6 +161,8 @@ const EXPORTS = [
   "parseCsv", "guessColumnMap", "csvRowsToContacts", "findCsvDuplicates",
   "normaliseCsvDate", "CSV_FIELDS", "csvImportFormHtml", "wireCsvImport",
   "openCsvImportModal",
+  // the 20 Aug usability fixes (ORB-106..109)
+  "backfillNameFromSignUp", "buildReminderEmailText", "mailtoUrl",
   "reachOutNudgeHtml", "showReachOutNudge", "checkRemindersOnLoad",
   "nudgeAllowed", "markNudgeShown", "getNudgeMode",
   // behaviour
