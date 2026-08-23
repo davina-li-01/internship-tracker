@@ -69,18 +69,22 @@ checkFn("empty contact does not throw", () => getHealth({}).scheduled === false)
 console.log("\n── getHealth: a cadence with no anchor date (ORB-69) ──");
 const noAnchor = { followUpFrequency: "monthly", reminderEnabled: true, lastContacted: "" };
 check("is scheduled, not 'No schedule'", getHealth(noAnchor).scheduled, true);
-check("counts as a grace window — a first reach-out is owed",
-  getHealth(noAnchor).grace, true);
-check("never reads as 'in touch', since nothing has happened yet",
-  getHealth(noAnchor).band, "warning");
-check("the deadline is the grace window, not today",
-  getHealth(noAnchor).daysLeft, GRACE_DAYS);
+// ORB-124 amended what happens next. ORB-69's fix stands — they are scheduled,
+// they are counted, the digest and the dashboard agree. What changed is that
+// they no longer arrive owing a first reach-out inside a week. Grace is for a
+// deadline already missed; nothing has been missed here.
+check("no grace window — nothing has been missed",
+  getHealth(noAnchor).grace, false);
+check("so they read as on schedule rather than already behind",
+  getHealth(noAnchor).band, "good");
+check("the deadline is their cadence, counted from today",
+  getHealth(noAnchor).daysLeft, 30);
 check("elapsed stays null — there genuinely is nothing to measure",
   getHealth(noAnchor).elapsed, null);
-check("appears in Reach out next",
-  needsAttention([normalizeContact({ id: "n1", name: "New", ...noAnchor })]).length, 1);
-check("counted in the rings rather than dropped",
-  countByBand([normalizeContact({ id: "n1", name: "New", ...noAnchor })]).warning, 1);
+check("not on Reach out next on day one",
+  needsAttention([normalizeContact({ id: "n1", name: "New", ...noAnchor })]).length, 0);
+check("but still counted in the rings, never dropped — ORB-69's point",
+  countByBand([normalizeContact({ id: "n1", name: "New", ...noAnchor })]).good, 1);
 
 // A stored deadline still wins, so a snooze survives the missing anchor date.
 check("an explicit nextReminder overrides the grace default",

@@ -1494,6 +1494,57 @@ sits on `send.` while inbound uses the root.
 
 ---
 
+## ORB-124 — adding someone does not start a seven-day clock
+
+Shipped 23 Aug. **A deliberate reversal of part of ORB-69 and ORB-75**, on the
+user's own report that the behaviour was friction in the wrong place.
+
+**What was happening.** `firstDeadlineFor` had one grace window and two callers
+that meant different things by it:
+
+| Case | What it means | Grace is |
+|---|---|---|
+| Back-filling a conversation from 2023 onto a monthly cadence | The deadline is already two years past. Arriving overdue punishes you for recording history | **Right.** A week to make the first reach-out |
+| Adding someone you have never spoken to | Nothing is late. There was never a deadline to miss | **Wrong.** It invents one, seven days out, whatever cadence you chose |
+
+The second case also set `grace: true` on the health, which pins the band to
+`warning` no matter how much of the window is left — so the person landed on
+Reach out next the moment they were saved. **Moving the date without the band
+would have been cosmetic: the right deadline, still shouting.**
+
+**The fix, three edits in `js/main.js`.**
+
+- `firstDeadlineFor` — no anchor date at all now returns `today + interval`.
+  A blown cadence still gets `GRACE_DAYS`.
+- `getHealth` — `grace` is `!firstContact && (…)`. A never-contacted person runs
+  the ordinary countdown like everybody else.
+- the health detail line — `first reach-out in 30 days` rather than
+  `7 days to first reach-out`, and `due today` at zero rather than `in 0 days`.
+
+**Also fixed, without being asked.** CSV import passes `contact.lastContacted`,
+which is empty for rows where the file gave no last-spoke date. Fifty imported
+contacts all became due in the same week. They now start their cadences today.
+
+**What did not change, and why it matters.** ORB-75's whole point was that
+never-contacted people must not be filed somewhere gentler. They are still
+scheduled, still counted in the rings, still get `Not contacted yet` rather than
+`Overdue`, and once their deadline does pass they are on Reach out next in the
+same band as everyone else. What moved is *when*, not *whether*.
+
+**Tests.** Thirteen assertions across five suites were asserting the old
+behaviour and had to be rewritten rather than deleted — each now records what
+changed and why, so nobody restores the window as a bug fix. One fixture in
+`add-connection.test.mjs` was passing for the wrong reason: it re-ran
+`normalizeContact` on the saved row, which re-derived `lastContacted` from
+`dateMet` and turned a never-contacted person into a contacted one. It now
+mirrors the shipped shape. 1680 assertions, 44 suites, green.
+
+**No migration.** Existing contacts keep whatever `next_reminder` they were
+given, including seven-day ones already written. They resolve themselves the
+first time a conversation is logged or the cadence is changed.
+
+---
+
 ## ORB-52 — the four decisions, made Aug 11
 
 | Question | Decision |

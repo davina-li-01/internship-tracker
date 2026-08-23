@@ -25,7 +25,7 @@ const dom = globalThis.__dom;
 const {
   addConnectionFormHtml, wireAddConnectionForm, openAddConnectionModal,
   openQuickAddChooser, initQuickAddButton,
-  normalizeContact, getHealth, needsAttention, GRACE_DAYS
+  normalizeContact, getHealth, needsAttention
 } = main;
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -121,37 +121,77 @@ group("When you met is optional, and never guessed");
 
 // ── Cadence: they must surface, and must not read as healthy ─────────────────
 
-group("Someone you have not spoken to owes you a first reach-out");
+// ORB-124 REVERSED THIS GROUP, ON PURPOSE.
+//
+// Adding someone used to hand them a seven-day deadline: the grace window was
+// applied to a person with no anchor date, so they landed in "warning" and on
+// Reach out next the instant they were saved. Every add ended in an obligation
+// to message a stranger within the week, which is friction placed exactly where
+// the app most wants the habit to feel cheap.
+//
+// The cadence is the answer now. They are scheduled, counted, and visible on
+// their profile from day one — they simply are not shouted about until the
+// rhythm they were given comes round. `first-contact.test.mjs` holds the other
+// half: once the deadline does pass, they are still on the list.
+group("Someone you have not spoken to is on a cadence, not on the clock");
+
+// The shape the form actually saves, not a re-normalised one. `normalizeContact`
+// falls back to `dateMet` for `lastContacted`, and the add path clears it again
+// afterwards (asserted above) precisely so a meeting is not filed as a
+// conversation. Re-normalising here would put the date back and quietly turn a
+// never-contacted person into a contacted one — the tests would then be checking
+// a state the app never reaches.
+const saved = () => ({
+  ...normalizeContact(state.saves[0]),
+  lastContacted: state.saves[0].lastContacted
+});
 {
   resetState();
   const { host, $ } = mountForm();
   $(".ac-name").value = "Grace Case";
   await submit($, host);
-  const c = normalizeContact(state.saves[0]);
+  const c = saved();
 
-  eq("the deadline is the grace window, not a cadence from nowhere",
-    c.nextReminder, daysAhead(GRACE_DAYS));
+  eq("the deadline is the default cadence, counted from today",
+    c.nextReminder, daysAhead(30));
   const h = getHealth(c);
   ok("they are scheduled", h.scheduled);
-  ok("but NOT 'in touch' — nothing has been said yet", h.band !== "good");
-  eq("they appear in Reach out next", needsAttention([c]).length, 1);
+  eq("and they read as on schedule — adding someone is not a debt",
+    h.band, "good");
+  eq("so they do not appear in Reach out next", needsAttention([c]).length, 0);
 }
 {
-  // The case that would otherwise slip through: a recent meeting date would
-  // give a natural deadline a month out, and the person would read as healthy
-  // without a word having been exchanged — the exact bug ORB-73 is about,
-  // re-entering through `dateMet` instead of through a fabricated interaction.
+  // `dateMet` must not shorten the cadence in either direction. Met yesterday
+  // still gets the full interval, because the interval is a promise about how
+  // often you intend to talk, not a countdown from the handshake.
   resetState();
   const { host, $ } = mountForm();
   $(".ac-name").value = "Met Yesterday";
   $(".ac-datemet").value = daysAgo(1);
   await submit($, host);
-  const c = normalizeContact(state.saves[0]);
+  const c = saved();
 
-  eq("a recent meeting does not buy a full cadence",
-    c.nextReminder, daysAhead(GRACE_DAYS));
-  ok("still not 'in touch'", getHealth(c).band !== "good");
-  eq("still listed for a reach-out", needsAttention([c]).length, 1);
+  eq("a recent meeting does not shorten the cadence",
+    c.nextReminder, daysAhead(30));
+  eq("on schedule", getHealth(c).band, "good");
+  eq("not listed for a reach-out", needsAttention([c]).length, 0);
+}
+{
+  // The mirror case, and the one ORB-124 most has to protect. Someone met three
+  // months ago has a natural deadline two months in the past, so deriving the
+  // deadline from `dateMet` would greet a brand-new contact as overdue — the
+  // same friction the seven-day window caused, arriving from the other side.
+  resetState();
+  const { host, $ } = mountForm();
+  $(".ac-name").value = "Met In May";
+  $(".ac-datemet").value = daysAgo(90);
+  await submit($, host);
+  const c = saved();
+
+  eq("an old meeting date does not arrive overdue",
+    c.nextReminder, daysAhead(30));
+  eq("on schedule, same as everyone else", getHealth(c).band, "good");
+  eq("and not on the list", needsAttention([c]).length, 0);
 }
 {
   resetState();

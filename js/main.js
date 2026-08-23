@@ -1118,7 +1118,14 @@ function getHealth(contact) {
   // deliberately extended — the one-week grace on a fresh schedule, or a snooze.
   // No anchor date is the same situation by definition: you owe a first
   // reach-out and nothing has been measured yet.
-  const grace = !naturalNext || Boolean(next && next > naturalNext);
+  //
+  // ORB-124 excludes the never-contacted deliberately. `grace` pins the band to
+  // "warning" however much of the window is left, which is what put someone on
+  // Reach out next the moment they were added. Moving their deadline out to the
+  // cadence without this would have been cosmetic: the right date, still
+  // shouting. They now run the ordinary countdown like everybody else.
+  const grace = !firstContact
+    && (!naturalNext || Boolean(next && next > naturalNext));
   const window = grace ? GRACE_DAYS : interval;
 
   // daysSince is negative for future dates, so this is "days until the deadline".
@@ -1156,20 +1163,28 @@ function getHealth(contact) {
 /**
  * The deadline to use when a cadence is switched on.
  *
- * If the last touchpoint already blows the cadence — which is the norm when you
- * are back-filling old conversations — the natural deadline is in the past and
- * the contact would land on the dashboard as overdue the instant you saved.
- * Instead you get GRACE_DAYS from today to make that first reach-out. This is
- * granted once, at the moment of switching on; logging a conversation moves the
- * deadline onto the normal cadence and it never comes back.
+ * TWO CASES, AND ORB-124 SEPARATED THEM.
+ *
+ * Back-filling an old conversation: the last touchpoint already blows the
+ * cadence, the natural deadline is in the past, and the contact would land on
+ * the dashboard as overdue the instant you saved. GRACE_DAYS from today, granted
+ * once at the moment of switching on; logging a conversation moves the deadline
+ * onto the normal cadence and it never comes back.
+ *
+ * Nothing to count from at all: someone was just added and no word has been
+ * exchanged. This used to take the same grace window, so adding a person quietly
+ * created a seven-day deadline nobody had asked for — on the screen you had just
+ * used to do the right thing. Adding someone is not a debt you have taken on.
+ * The cadence chosen for them is the answer, and it starts today.
  */
 function firstDeadlineFor(lastContacted, frequency) {
   const interval = getIntervalDays(frequency);
   if (!interval) return "";
   const natural = addDays(lastContacted, interval);
-  const graceUntil = addDays(todayDateString(), GRACE_DAYS);
-  if (!natural) return graceUntil;
-  return natural < todayDateString() ? graceUntil : natural;
+  if (!natural) return addDays(todayDateString(), interval);
+  return natural < todayDateString()
+    ? addDays(todayDateString(), GRACE_DAYS)
+    : natural;
 }
 
 /**
@@ -1480,6 +1495,12 @@ function healthBarHtml(health) {
       ? `quiet ${days} day${plural(days)}`
     : health.daysLeft < 0
       ? `${days} day${plural(days)} over`
+      // Not contacted yet and not yet due (ORB-124). The cadence has this one,
+      // and saying so is the difference between a plan and a debt.
+      : health.firstContact
+        ? (days === 0
+            ? "first reach-out due today"
+            : `first reach-out in ${days} day${plural(days)}`)
       : health.grace
         ? `${days} day${plural(days)} to first reach-out`
         : `${days} day${plural(days)} left`;
@@ -3307,11 +3328,11 @@ function wireAddConnectionForm(root, getContacts, onSaved) {
       followUpFrequency: frequency,
       reminderEnabled: frequency !== "none",
       // No conversation has happened, so there is no anchor to count a cadence
-      // from — which is precisely the case firstDeadlineFor answers with the
-      // grace window. Passed explicitly rather than derived, because deriving
-      // it would let a recent `dateMet` set a natural deadline and the person
-      // would read "In touch" without a word having been exchanged. ORB-69
-      // made this state coherent; before it, they would have been invisible.
+      // from — the case firstDeadlineFor answers by starting the cadence today
+      // (ORB-124: it used to answer with a seven-day grace window, which turned
+      // adding someone into a deadline). Passed explicitly rather than derived,
+      // because deriving it would let a `dateMet` from two months ago produce a
+      // deadline already in the past and greet a brand-new contact as overdue.
       nextReminder: frequency === "none" ? "" : firstDeadlineFor("", frequency),
       // Stated rather than implied. This is the entire ticket.
       interactions: []
@@ -3957,7 +3978,10 @@ function wireCsvImport(root, getContacts, onSaved) {
         ? ""
         // firstDeadlineFor grants the grace window when the cadence alone would
         // already be blown, so someone you last spoke to in 2023 gets a week to
-        // make the first reach-out rather than arriving overdue.
+        // make the first reach-out rather than arriving overdue. Rows with no
+        // last-spoke date have nothing to blow, so they start their cadence
+        // today (ORB-124) — importing fifty people does not make fifty of them
+        // due next week.
         : firstDeadlineFor(contact.lastContacted, frequency);
       const ok = await db.saveContact(contact);
       if (ok) saved++; else failed.push(person.name);

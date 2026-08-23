@@ -16,7 +16,18 @@
  * drives colour, ordering and the dashboard counts, so a new one would quietly
  * move these people out of Reach out next — solving the wording by hiding the
  * person. So only the words change, and the assertions below check both halves:
- * the vocabulary is different AND the placement is identical.
+ * the vocabulary is different AND the placement follows the same rules as
+ * everybody else's.
+ *
+ * ORB-124 AMENDED THE SECOND HALF, AND THE DISTINCTION IS THE POINT.
+ *
+ * "Identical placement" used to mean *on Reach out next immediately*, which was
+ * an accident of the grace window rather than a decision: seven days from being
+ * added, whatever cadence you chose. That is a deadline for having met someone.
+ * The rule is now literally the same as for everyone else — the cadence decides
+ * — and the thing this suite still guards is that nothing files them somewhere
+ * gentler. Once their deadline passes they are on the list, in the same band,
+ * with different words.
  *
  * The other risk is over-claiming. A contact whose only conversation was deleted
  * under ORB-64 has an empty array too, but a real `lastContacted` behind it —
@@ -31,7 +42,7 @@ const main = await loadMain();
 const {
   getHealth, normalizeContact, needsAttention, countByBand,
   statusChip, healthBarHtml, personRowHtml, renderInteractionTimeline,
-  firstDeadlineFor, GRACE_DAYS
+  firstDeadlineFor
 } = main;
 
 /**
@@ -152,7 +163,13 @@ group("The old vocabulary survives wherever it is still true");
 group("Renaming the state does not hide the person");
 {
   const c = added();
-  eq("still listed in Reach out next", needsAttention([c]).length, 1);
+  // ORB-124 moved WHEN, and only when. Placement used to be immediate, because
+  // the seven-day grace window pinned a never-contacted person to "warning" from
+  // the moment they were saved. That made adding someone an obligation. They now
+  // run the ordinary countdown and arrive on the list when their cadence says
+  // so — the block below is the same person once it has, and they are there.
+  eq("not on Reach out next on the day they are added",
+    needsAttention([c]).length, 0);
   const counts = countByBand([c, spokenTo]);
   eq("still counted under a real band, not a new one",
     Object.keys(counts).filter((k) => k !== "starredCritical").sort().join(","),
@@ -161,7 +178,8 @@ group("Renaming the state does not hide the person");
   // that, because a fifth band would break every denominator on the dashboard.
   ok("and the ORB-54 subset never exceeds the band it is drawn from",
     counts.starredCritical <= counts.critical);
-  eq("the never-contacted person lands in warning during grace", counts.warning, 1);
+  eq("the never-contacted person is counted on their cadence, like anyone else",
+    counts.good, 2);
   ok("no band is undefined", !Object.values(counts).some((n) => Number.isNaN(n)));
 }
 {

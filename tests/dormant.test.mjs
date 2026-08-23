@@ -135,10 +135,14 @@ group("Only a genuine lapse is reframed");
     followUpFrequency: "monthly", reminderEnabled: true, interactions: []
   });
   fresh.lastContacted = "";
+  // Stated outright rather than inferred from the cadence. ORB-124 moved when a
+  // never-contacted person becomes late, and this test is not about when — it is
+  // about which vocabulary they get once they are.
+  fresh.nextReminder = daysAgo(9);
   const h = getHealth(fresh);
   eq("never contacted keeps ORB-75's words, not ORB-54's",
     bandWords(h).label, FIRST_CONTACT_META.label);
-  ok("even when they are past the deadline", h.daysLeft < 0 || h.grace);
+  ok("even when they are past the deadline", h.daysLeft < 0);
 }
 {
   const unscheduled = normalizeContact({

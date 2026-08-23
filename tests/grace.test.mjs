@@ -19,8 +19,15 @@ check("recent contact keeps its natural deadline",
   firstDeadlineFor(daysAgo(5), "monthly"), daysAhead(25));
 check("contacted today keeps natural deadline",
   firstDeadlineFor(today(), "monthly"), daysAhead(30));
-check("no date at all still gets a grace window",
-  firstDeadlineFor("", "monthly"), daysAhead(GRACE_DAYS));
+// ORB-124. Nothing to count from is not the same situation as a blown cadence.
+// A blown cadence is a deadline you have already missed, and the week buys you
+// time to fix it. Someone just added has missed nothing — handing them a
+// seven-day deadline made adding a person feel like taking on a debt. They
+// start their cadence today.
+check("no date at all starts the cadence today, not a seven-day window",
+  firstDeadlineFor("", "monthly"), daysAhead(30));
+check("and the cadence they were given is the one that runs",
+  firstDeadlineFor("", "custom:90"), daysAhead(90));
 check("no cadence means no deadline",
   firstDeadlineFor(daysAgo(10), "none"), "");
 check("custom cadence respected",
