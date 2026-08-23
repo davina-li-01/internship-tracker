@@ -1762,6 +1762,12 @@ h3 {
   font-size: clamp(0.8rem, 0.76rem + 0.2vw, 0.92rem);
 }
 
+/* ORB-119. The empty network is the only screen where every user starts, so it
+   is the one place a dead end costs the most. */
+.network-empty { text-align: center; padding: 1.75rem 1rem 1.5rem; }
+.network-empty-title { margin: 0 0 0.35rem; font-weight: 700; font-size: 1rem; }
+.network-empty .tiny { max-width: 44ch; margin: 0 auto 1.1rem; }
+
 /* An empty conversation history is a starting point, not a fault (ORB-75).
    Given room and a second line so it reads as a deliberate state rather than
    a card that failed to load — this is where every contact added through
@@ -2243,6 +2249,12 @@ body.dark {
   gap: var(--space-md);
 }
 .page-header { margin-bottom: 0.25rem; }
+/* ORB-119. Wraps rather than shrinking the button: a primary action that has
+   been squeezed to two words on a narrow screen is the ORB-118 problem again. */
+.page-header-actions {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 0.75rem 1rem; flex-wrap: wrap;
+}
 .page-header .page-heading { margin: 0 0 0.3rem; }
 .page-header .page-subheading { margin: 0; }
 
@@ -2710,15 +2722,25 @@ body.dark .file-card-link { color: var(--accent); }
 .file-delete-btn:hover { color: var(--danger); border-color: var(--danger); }
 
 /* ── FAB + modals ────────────────────────────────────────────── */
+/* ORB-118. A 56px orange circle containing "+" — the entry point to the whole
+   product, and the usability session found it by accident. It carried an
+   aria-label, so a screen reader was told what it does and a sighted user was
+   not. It is a pill with the words on it now; the circle stays only in the
+   sense that the radius is still round. Nothing collapses it back to an icon at
+   any width, because "small screen" is not a reason to stop saying what a
+   button does. */
 .fab {
   position: fixed; right: 1.5rem; bottom: 1.5rem; z-index: 60;
-  width: 56px; height: 56px; border-radius: 50%; border: none; cursor: pointer;
-  font-size: 1.9rem; line-height: 1; color: #fff;
+  min-height: 52px; border-radius: 999px; border: none; cursor: pointer;
+  padding: 0 1.25rem 0 1rem; color: #fff;
+  font-family: inherit; font-size: 0.9rem; font-weight: 700; line-height: 1;
+  letter-spacing: -0.01em;
   background: linear-gradient(135deg, var(--primary), var(--primary-deep));
   box-shadow: 0 6px 20px rgba(249,115,22,0.4);
-  display: grid; place-items: center;
+  display: inline-flex; align-items: center; gap: 0.5rem;
   transition: transform var(--trans), box-shadow var(--trans);
 }
+.fab-icon { font-size: 1.5rem; line-height: 1; margin-top: -2px; }
 .fab:hover { transform: scale(1.07); box-shadow: 0 8px 26px rgba(249,115,22,0.5); }
 .fab:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
 

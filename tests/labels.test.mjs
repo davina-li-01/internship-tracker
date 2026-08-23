@@ -26,7 +26,7 @@ import { eq, ok, group, done } from "./helpers/assert.mjs";
 
 const main = await loadMain();
 const dom = globalThis.__dom;
-const { openQuickAddChooser } = main;
+const { openQuickAddChooser, ADD_TO_NETWORK_LABEL, networkEmptyHtml } = main;
 
 const click = (el) => el.dispatchEvent(
   new dom.window.MouseEvent("click", { bubbles: true, cancelable: true }));
@@ -40,14 +40,22 @@ const pages = readdirSync(ROOT)
   .map((f) => ({ file: f, html: readFileSync(join(ROOT, f), "utf8") }))
   .filter((p) => p.html.includes('id="quickAddBtn"'));
 
-/** Pulls the attributes off the + as it is actually written in the page. */
+/** Pulls the + apart as it is actually written in the page. */
 function fab(html) {
-  const tag = html.match(/<button[^>]*id="quickAddBtn"[^>]*>/s);
-  if (!tag) return null;
+  const m = html.match(/<button[^>]*id="quickAddBtn"[^>]*>([\s\S]*?)<\/button>/);
+  if (!m) return null;
+  const open = m[0].slice(0, m[0].indexOf(">") + 1);
   return {
-    aria: (tag[0].match(/aria-label="([^"]*)"/) || [])[1],
-    title: (tag[0].match(/title="([^"]*)"/) || [])[1]
+    label: clean((m[1].match(/<span class="fab-label">([^<]*)<\/span>/) || [])[1]),
+    aria: (open.match(/aria-label="([^"]*)"/) || [])[1],
+    title: (open.match(/title="([^"]*)"/) || [])[1]
   };
+}
+
+/** The visible text of any element carrying an id, straight from the markup. */
+function labelOf(html, id) {
+  const m = html.match(new RegExp('<button[^>]*id="' + id + '"[^>]*>([\\s\\S]*?)<\\/button>'));
+  return m ? clean(m[1]) : null;
 }
 
 // ── What the chooser and the dialogs actually say ────────────────────────────
@@ -92,19 +100,54 @@ group("Every page with a + was found, and none was assumed");
   // add it above and the rules below will hold it to the same standard.
 }
 
+// ORB-118 CHANGED WHAT "ANNOUNCES" MEANS HERE.
+//
+// The + used to satisfy this suite with an aria-label and a title and no visible
+// words at all — so the rule passed while a sighted user still had to click an
+// orange circle to discover the entry point to the whole product. The 20 Aug
+// session found it exactly that way: "I didn't even know about Add a connection
+// until I clicked the + button."
+//
+// The label is now the visible text, and the attributes are gone rather than
+// duplicated. Three copies of one string is three chances to drift, and this
+// suite exists because that is precisely what happened last time.
 group("The + announces the same thing to everyone");
 for (const { file, html } of pages) {
   const f = fab(html);
-  ok(file + " has an aria-label", Boolean(f.aria));
-  ok(file + " has a title", Boolean(f.title));
-  eq(file + ": the tooltip and the screen-reader label match", f.title, f.aria);
+  ok(file + " says what it does in words anyone can read", Boolean(f.label));
+  eq(file + ": no aria-label to drift from the visible text", f.aria, undefined);
+  eq(file + ": no title to drift from it either", f.title, undefined);
+  ok(file + ": the + itself is hidden from screen readers, being decoration",
+    /<span class="fab-icon" aria-hidden="true">\+<\/span>/.test(html));
 }
 
 group("The + names what it opens, not one of the things inside it");
 for (const { file, html } of pages) {
-  eq(file + ": the label is the chooser's heading", fab(html).aria, chooserHeading);
+  eq(file + ": the label is the chooser's heading", fab(html).label, chooserHeading);
   ok(file + ": it no longer claims to add a connection",
     !/Add a new connection/.test(html));
+}
+
+// ── ORB-119: three more controls, one string ─────────────────────────────────
+
+group("Every control that opens the chooser calls it the same thing");
+{
+  eq("the constant is the chooser's heading", ADD_TO_NETWORK_LABEL, chooserHeading);
+
+  const contacts = pages.find((p) => p.file === "contacts.html").html;
+  eq("My Network's header button agrees with the dialog it opens",
+    labelOf(contacts, "networkAddBtn"), chooserHeading);
+
+  const empty = networkEmptyHtml();
+  eq("and so does the one in the empty state",
+    labelOf(empty, "networkEmptyAdd"), chooserHeading);
+
+  // The point of the constant. If someone types the words instead of using it,
+  // this still passes — until they type them slightly differently, which is the
+  // failure this whole suite was written for.
+  const src = readFileSync(join(ROOT, "js", "main.js"), "utf8");
+  eq("main.js declares the label exactly once",
+    (src.match(/const ADD_TO_NETWORK_LABEL = /g) || []).length, 1);
 }
 {
   // The specific historical bug, asserted by name so it cannot come back

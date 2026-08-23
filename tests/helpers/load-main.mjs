@@ -176,8 +176,10 @@ const EXPORTS = [
   // integrations
   "calendarCardHtml", "timeAgo",
   "openCalendarReviewModal", "applyCalendarCandidates",
+  // one name for one action, and the action where the intent is (ORB-118/119)
+  "ADD_TO_NETWORK_LABEL", "networkEmptyHtml",
   // whole-page renderers, for structural tests
-  "initContactPage"
+  "initContactPage", "initMyNetwork"
 ];
 
 let cached = null;

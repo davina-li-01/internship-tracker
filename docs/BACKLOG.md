@@ -1494,6 +1494,58 @@ sits on `send.` while inbound uses the root.
 
 ---
 
+## ORB-118 + ORB-119 — the way in says what it is
+
+Shipped 23 Aug, from item 22 of the 20 Aug session: *"I didn't even know about
+Add a connection until I clicked the + button."*
+
+**ORB-118.** The entry point to the entire product was a 56px orange circle
+containing `+`. It carried `aria-label="Add to your network"` and a matching
+`title`, so **a screen reader user was told what it does and a sighted user was
+not** — and `labels.test.mjs` passed the whole time, because the rule it checked
+was "the label agrees with the dialog", not "there is a label anyone can see".
+
+It is a pill with the words on it now. The `aria-label` and `title` are **gone
+rather than kept**: three copies of one string is three chances to drift, which
+is the exact failure ORB-74 was written for. The visible text is the accessible
+name. Nothing collapses it back to an icon at any width — "small screen" is not
+a reason to stop saying what a button does.
+
+**ORB-119.** My Network is where you go when you want to add somebody, and it
+was the only page with no visible way to do it. Two placements:
+
+- a button in the page header, wrapping rather than shrinking on narrow screens
+- the empty state, which said `Nobody in your network yet.` and offered nothing —
+  the first screen every new account sees, and a dead end
+
+The empty state **names the spreadsheet route**, because ORB-98 shipped and
+nothing anywhere announced it. Someone with fifty contacts in Excel would
+otherwise have started typing them in one at a time.
+
+**One string, four controls.** `ADD_TO_NETWORK_LABEL` is declared once and used
+by the chooser heading, the header button and the empty-state button. The two
+`.html` files cannot import it, so `labels.test.mjs` checks the markup against
+the constant instead — a test standing in for an import.
+
+Filters matching nobody deliberately does **not** offer the action. That nothing
+is fixed by changing the filters; offering "add someone" there answers a question
+nobody asked.
+
+**Judgement call worth revisiting.** The floating button stays on My Network
+alongside the header button, so two controls with identical labels are on screen
+at once. Removing it from one page would make the one persistent affordance
+inconsistent, which seemed the worse trade — but if the duplication reads as
+clutter in use, the header button is the one to keep.
+
+**Tests.** `labels.test.mjs` rewritten for what "announces" now means, plus a new
+`network-add.test.mjs` holding the wiring: every control lands in the *same*
+chooser with all four routes, and the loaded contact list travels with it. That
+last one is the failure that would have looked fine — a button wired to an empty
+array opens every dialog correctly and makes each behave as though the network
+were empty. 1700 assertions, 45 suites, green.
+
+---
+
 ## ORB-124 — adding someone does not start a seven-day clock
 
 Shipped 23 Aug. **A deliberate reversal of part of ORB-69 and ORB-75**, on the

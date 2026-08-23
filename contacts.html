@@ -97,9 +97,14 @@
     <div class="main-scroll">
       <div class="page-content">
 
-        <div class="page-header">
-          <h1 class="page-heading">My Network</h1>
-          <p class="page-subheading">Everyone you know, whether or not you have a reach-out schedule for them.</p>
+        <div class="page-header page-header-actions">
+          <div>
+            <h1 class="page-heading">My Network</h1>
+            <p class="page-subheading">Everyone you know, whether or not you have a reach-out schedule for them.</p>
+          </div>
+          <!-- ORB-119. Wired in initMyNetwork(); opens the same chooser as the
+               floating button rather than a fifth way to add a person. -->
+          <button id="networkAddBtn" class="btn" type="button">Add to your network</button>
         </div>
 
         <div class="card">
@@ -111,9 +116,9 @@
       </div>
     </div>
 
-    <button id="quickAddBtn" class="fab" type="button"
-            aria-label="Add to your network" title="Add to your network">
-      <span aria-hidden="true">+</span>
+    <button id="quickAddBtn" class="fab" type="button">
+      <span class="fab-icon" aria-hidden="true">+</span>
+      <span class="fab-label">Add to your network</span>
     </button>
 
     <nav class="mobile-bottom-nav" aria-label="Primary">

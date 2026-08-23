@@ -4024,6 +4024,37 @@ function openCsvImportModal(contacts, onSaved) {
   });
 }
 
+/**
+ * One name for one action (ORB-118, ORB-119).
+ *
+ * Four controls now open this dialog: the floating button on every page, the
+ * button in the My Network header, the one in its empty state, and the dialog's
+ * own title. ORB-74's rule is that a label agrees with what it opens, and four
+ * hand-written strings is four chances for that to stop being true. There is one
+ * string, and `entry-points.test.mjs` checks the static HTML against it — the
+ * markup cannot import a constant, so a test stands in for the import.
+ */
+const ADD_TO_NETWORK_LABEL = "Add to your network";
+
+/**
+ * The My Network empty state (ORB-119).
+ *
+ * It used to be five words in a list item: "Nobody in your network yet." A
+ * statement of fact with no way out, on the one page whose entire purpose is
+ * the thing you cannot do from it. The spreadsheet route is named here because
+ * ORB-98 shipped and nothing anywhere announces it — someone with fifty
+ * contacts in Excel would otherwise start typing them in one at a time.
+ */
+function networkEmptyHtml() {
+  return '<div class="network-empty">'
+    + '<p class="network-empty-title">Nobody in your network yet.</p>'
+    + '<p class="tiny muted">Add someone you have met, or bring a whole list in '
+    + 'at once — a CSV from LinkedIn, a CRM or a spreadsheet.</p>'
+    + '<button type="button" class="btn" id="networkEmptyAdd">'
+    + escapeHtml(ADD_TO_NETWORK_LABEL) + '</button>'
+    + '</div>';
+}
+
 function openQuickAddChooser(contacts, onSaved) {
   document.getElementById("quickAddChooser")?.remove();
 
@@ -4033,7 +4064,7 @@ function openQuickAddChooser(contacts, onSaved) {
   modal.innerHTML = '<div class="modal-card chooser-card" role="dialog" aria-modal="true"'
     + ' aria-labelledby="chooserTitle">'
     + '<div class="quick-add-header">'
-    + '<h3 id="chooserTitle">Add to your network</h3>'
+    + '<h3 id="chooserTitle">' + escapeHtml(ADD_TO_NETWORK_LABEL) + '</h3>'
     + '<button class="icon-btn" id="chooserClose" type="button" aria-label="Close">✕</button>'
     + '</div>'
     + '<ul class="chooser-list">'
@@ -4682,9 +4713,14 @@ async function initMyNetwork() {
       : `${people.length} of ${cached.length}`);
 
     if (!people.length) {
-      list.innerHTML = '<li class="empty">'
-        + (cached.length ? "Nobody matches those filters." : "Nobody in your network yet.")
-        + '</li>';
+      // Two different nothings. Filters matching nobody is fixed by changing the
+      // filters, so offering "add someone" there would answer a question nobody
+      // asked. An empty network is fixed by adding someone (ORB-119).
+      list.innerHTML = cached.length
+        ? '<li class="empty">Nobody matches those filters.</li>'
+        : '<li class="empty">' + networkEmptyHtml() + '</li>';
+      list.querySelector("#networkEmptyAdd")
+        ?.addEventListener("click", () => openQuickAddChooser(cached, load));
       return;
     }
 
@@ -4702,6 +4738,14 @@ async function initMyNetwork() {
     list.innerHTML = html;
     wirePersonRows(list, cached, load);
   }
+
+  // ORB-119. My Network is where you go when you want to add somebody, and it
+  // was the one page with no visible way to do it — the only route was a
+  // floating circle you had to click to find out about. Same dialog as the
+  // floating button, deliberately: a fifth entry point with its own behaviour is
+  // how four ways to add a contact became impossible to reason about.
+  document.getElementById("networkAddBtn")
+    ?.addEventListener("click", () => openQuickAddChooser(cached, load));
 
   await load();
   window.__orbitRefresh = load;
