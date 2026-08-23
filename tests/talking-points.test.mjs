@@ -23,12 +23,14 @@
  *   - **Grouping making a short list feel longer.** The PRD named this risk
  *     against its own solution. One group renders flat.
  */
-import { loadMain, resetState } from "./helpers/load-main.mjs";
+import { loadMain, state, resetState } from "./helpers/load-main.mjs";
 import { eq, ok, group, done } from "./helpers/assert.mjs";
 import { today, daysAgo } from "./helpers/dates.mjs";
 
 const main = await loadMain();
+const dom = globalThis.__dom;
 const {
+  initContactPage,
   normalizeContact, normalizeFollowUpItem, groupFollowUps, lastConversationDate,
   renderFollowUpItems, followUpOriginLabel, generateFollowUpSuggestions,
   FOLLOWUP_GROUPS, TOUCHPOINT_TYPE
@@ -212,6 +214,53 @@ group("Where it came from survives the conversation being deleted");
     [point({ id: "a", sourceInteractionId: "i1", createdAt: at(daysAgo(1)) })]);
   ok("and it reaches the rendered row",
     /followup-origin/.test(renderFollowUpItems(c)));
+}
+
+// ── When it was ticked ───────────────────────────────────────────────────────
+
+group("A tick records when, not only whether");
+{
+  // `completed` is a bare boolean, so ORB-122's secondary KPI — points ticked
+  // before the next conversation — could not be read at all. One jsonb field,
+  // no migration.
+  eq("an untouched point has no completion date", point().completedAt, "");
+  eq("a tick carries its date",
+    point({ completed: true, completedAt: at(daysAgo(1)) }).completedAt, at(daysAgo(1)));
+  eq("and a date on a live point is not honoured — it would be a lie",
+    point({ completed: false, completedAt: at(daysAgo(1)) }).completedAt, "");
+  eq("points ticked before the field existed simply carry none",
+    point({ completed: true }).completedAt, "");
+}
+{
+  resetState();
+  const c = person([convo({ id: "i1", date: daysAgo(10) })],
+    [point({ id: "p1", text: "Ask about the move", createdAt: at(daysAgo(2)) })]);
+  state.store.set(c.id, c);
+  dom.reconfigure({ url: "https://orbit.test/contact.html?id=c1" });
+  document.body.innerHTML = "";
+  const root = document.createElement("section");
+  root.id = "contactPageContent";
+  document.body.appendChild(root);
+  await initContactPage();
+
+  const box = root.querySelector(".fu-checkbox");
+  box.checked = true;
+  box.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+
+  const ticked = state.store.get("c1").followUps[0];
+  ok("ticking on the profile stamps the date", Boolean(ticked.completedAt));
+  eq("and it is today", ticked.completedAt.slice(0, 10), today());
+
+  const box2 = root.querySelector(".fu-checkbox");
+  box2.checked = false;
+  box2.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+
+  eq("un-ticking clears it rather than leaving a stale completion",
+    state.store.get("c1").followUps[0].completedAt, "");
 }
 
 done();

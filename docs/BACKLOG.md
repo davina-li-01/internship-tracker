@@ -1553,11 +1553,25 @@ label instead would have frozen a deleted date on screen forever.
 it. What remains is the half item 21 actually asked — the ticked group itself
 still grows without limit — and that is capping or archiving, not grouping.
 
-**Not built, and deliberately.** The three PRD KPIs have no measurement behind
-them yet: median list length, points ticked before the next conversation, and the
-guardrail — points surviving a conversation untouched should trend down and never
-reach zero. Zero would be its own failure. That wants an `orb-122-metrics.sql`
-alongside ORB-76's.
+**Measurement, added the same day.** `supabase/scripts/orb-122-metrics.sql` —
+one statement, one paste, same shape as ORB-76's.
+
+Writing it surfaced a KPI that could not be read at all. *Points ticked before
+the next conversation* needs to know **when** a point was ticked, and `completed`
+was a bare boolean. So `completedAt` was added alongside it — stamped on the
+tick, cleared on the un-tick, no migration. Points ticked before today carry
+none, so that half reads `0 of N` on the first run and becomes real from the
+second.
+
+**The SQL was run before it was shipped.** A throwaway Postgres in Docker, a
+table with the same jsonb columns, and five seeded contacts chosen to exercise
+every branch: a touchpoint that must not move the pivot, a point raised on the
+day of a conversation, an ancient point on a contact with no conversation at
+all, a contact with zero points that must stay in the median denominator, and a
+legacy tick with no `completedAt`. Every number matched what was computed by
+hand, and the empty-account case was checked separately for division by zero.
+That is the ORB-76 lesson applied one step earlier — a plausible-looking query
+that silently answers a different question costs a whole reading.
 
 **Tests.** New `talking-points.test.mjs`, 31 assertions. The three it exists for
 are the ones that would ship looking fine: a stored flag instead of a derived

@@ -1749,6 +1749,12 @@ function normalizeFollowUpItem(item = {}) {
     text: (item.text || "").trim(),
     source: FOLLOWUP_SOURCES.includes(item.source) ? item.source : "manual",
     completed: item.completed === true,
+    // ORB-122's secondary KPI is "points ticked before the next conversation",
+    // and `completed` is a bare boolean — it says a point is done and nothing
+    // about when, so the KPI could not be read at all. One more jsonb field, no
+    // migration. It is only ever set alongside the tick, so a point ticked
+    // before today carries "" and the measure starts from here.
+    completedAt: item.completed === true ? (item.completedAt || "") : "",
     // ORB-121. The conversation that prompted this, when there was one. Empty
     // for a capture and for anything typed on the profile, which is not a gap
     // — those genuinely came from nowhere in particular.
@@ -5620,7 +5626,11 @@ async function initContactPage() {
         cb.addEventListener("change", async () => {
           await save((cur) => ({
             ...cur,
-            followUps: (cur.followUps || []).map((f) => f.id !== cb.dataset.fuId ? f : { ...f, completed: cb.checked })
+            followUps: (cur.followUps || []).map((f) => f.id !== cb.dataset.fuId ? f
+              // Stamped on the way in and cleared on the way out, so un-ticking
+              // does not leave a completion date on a live point.
+              : { ...f, completed: cb.checked,
+                  completedAt: cb.checked ? new Date().toISOString() : "" })
           }));
           await refreshFollowUps();
         });
