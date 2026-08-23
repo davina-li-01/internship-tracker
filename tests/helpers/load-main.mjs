@@ -148,6 +148,11 @@ const EXPORTS = [
   // catching a thought in one gesture (ORB-81)
   "captureFormHtml", "wireCaptureForm", "openCaptureModal", "openCaptures",
   "normalizeFollowUpItem", "FOLLOWUP_SOURCES",
+  // a talking point knows where it came from, and the list has a lifecycle
+  // (ORB-121, ORB-122)
+  "lastConversationDate", "groupFollowUps", "FOLLOWUP_GROUPS",
+  "renderFollowUpItems", "followUpItemHtml", "followUpOriginLabel",
+  "generateFollowUpSuggestions",
   // a reason, two triggers, and trigger before timer (ORB-90/91/92)
   "reachOutReason", "reasonRank", "justMetTrigger", "anniversaryTrigger",
   "REACH_OUT_REASONS", "JUST_MET_DAYS", "ANNIVERSARY_WINDOW_DAYS",

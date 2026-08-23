@@ -1749,8 +1749,73 @@ function normalizeFollowUpItem(item = {}) {
     text: (item.text || "").trim(),
     source: FOLLOWUP_SOURCES.includes(item.source) ? item.source : "manual",
     completed: item.completed === true,
+    // ORB-121. The conversation that prompted this, when there was one. Empty
+    // for a capture and for anything typed on the profile, which is not a gap
+    // — those genuinely came from nowhere in particular.
+    //
+    // No migration: `follow_ups` is jsonb, the same reason ORB-96 could add a
+    // touchpoint type for free. Old items simply read "".
+    sourceInteractionId: item.sourceInteractionId || "",
     createdAt: item.createdAt || new Date().toISOString()
   };
+}
+
+/**
+ * A talking point had no relationship to time (ORB-121).
+ *
+ * It was created, it sat on the contact, and nothing connected it to the
+ * conversation it came from or the one it was for. So the list could not be
+ * short — it had no basis on which to drop anything, no way to tell a point
+ * raised before last week's coffee from one raised this morning, and no idea
+ * whether the coffee happened. Item 21 of the 20 Aug session — "is this section
+ * just going to get longer and longer?" — was not a complaint about volume. It
+ * was the correct observation that the list has no lifecycle.
+ *
+ * WHY THIS IS DERIVED AND NOT STORED. A "has been through a conversation" flag
+ * would need maintaining, and would go stale the moment a conversation was
+ * edited or deleted under ORB-64. A comparison cannot go stale.
+ *
+ * CONVERSATIONS ONLY, NOT TOUCHPOINTS (ORB-96). Pressing "Reached out" is you
+ * sending a message, not a conversation in which a point could have been
+ * raised. Counting it would retire talking points for a conversation that never
+ * happened.
+ */
+function lastConversationDate(contact) {
+  return conversationsOf(contact)
+    .map((i) => String(i.date || ""))
+    .filter(Boolean)
+    .sort()
+    .pop() || "";
+}
+
+/**
+ * The three groups (ORB-122), in the order the list reads.
+ *
+ * SAME-DAY COUNTS AS STILL TO COME. `createdAt` is a timestamp and an
+ * interaction's `date` is a day, so a point raised on the day of a conversation
+ * cannot be ordered against it. It stays in "raised since", because the safe
+ * failure is leaving a fresh point visible — and in practice a point typed on
+ * the day you logged a conversation is usually for the next one.
+ */
+const FOLLOWUP_GROUPS = [
+  { key: "since", label: "Raised since your last conversation" },
+  { key: "carried", label: "Carried over" },
+  { key: "ticked", label: "Ticked" }
+];
+
+function groupFollowUps(contact) {
+  const pivot = lastConversationDate(contact);
+  const out = { since: [], carried: [], ticked: [] };
+  for (const item of contact?.followUps || []) {
+    if (item.completed) { out.ticked.push(item); continue; }
+    // No conversation has ever happened, so nothing has had its chance yet.
+    const raised = String(item.createdAt || "").slice(0, 10);
+    (!pivot || raised >= pivot ? out.since : out.carried).push(item);
+  }
+  for (const key of Object.keys(out)) {
+    out[key].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  }
+  return out;
 }
 
 /**
@@ -2277,20 +2342,27 @@ function generateFollowUpSuggestions(contact) {
   const name = contact.name || "them";
   const sentences = [];
 
+  // ORB-121: each sentence remembers which conversation it was lifted from, so
+  // the point it becomes can say where it came from. Sentences taken from the
+  // contact's own notes have no conversation behind them and carry "".
   for (const interaction of (contact.interactions || []).slice(0, 3)) {
     if (!interaction.notes) continue;
     stripNoteMarks(interaction.notes).split(/[.!?\n]+/).forEach((s) => {
       const trimmed = s.trim();
-      if (trimmed.length > 8) sentences.push({ text: trimmed, source: "interaction" });
+      if (trimmed.length > 8) {
+        sentences.push({ text: trimmed, source: "interaction", interactionId: interaction.id || "" });
+      }
     });
   }
   if (contact.notes) {
     contact.notes.split(/[.!?\n]+/).forEach((s) => {
       const trimmed = s.trim();
-      if (trimmed.length > 8) sentences.push({ text: trimmed, source: "notes" });
+      if (trimmed.length > 8) sentences.push({ text: trimmed, source: "notes", interactionId: "" });
     });
   }
-  if (!sentences.length) return ["Send " + name + " a quick check-in message"];
+  if (!sentences.length) {
+    return [{ text: "Send " + name + " a quick check-in message", sourceInteractionId: "" }];
+  }
 
   const actionWords = /\b(mentioned|said|working on|planning|considering|wants to|will|might|should|asked|wondering|interested in|excited about|worried about|discussed|brought up|follow up|check back|update|revisit|explore|look into|thinking about|decided|going to|hope|looking for|applied|interviewing|offered|accepted|waiting|heard back|need to|want to)\b/i;
 
@@ -2306,7 +2378,10 @@ function generateFollowUpSuggestions(contact) {
     const key = s.text.toLowerCase().slice(0, 40);
     if (seen.has(key)) continue;
     seen.add(key);
-    suggestions.push("Follow up on: " + s.text.charAt(0).toUpperCase() + s.text.slice(1));
+    suggestions.push({
+      text: "Follow up on: " + s.text.charAt(0).toUpperCase() + s.text.slice(1),
+      sourceInteractionId: s.interactionId || ""
+    });
     if (suggestions.length >= 5) break;
   }
   return suggestions;
@@ -2314,23 +2389,64 @@ function generateFollowUpSuggestions(contact) {
 
 // ── Render helpers ────────────────────────────────────────────────────────────
 
-function renderFollowUpItems(followUps) {
-  if (!followUps || !followUps.length) {
-    return '<p class="empty">No talking points yet. Add one, or use Suggest.</p>';
-  }
-  const sorted = [...followUps].sort((a, b) => {
-    if (a.completed !== b.completed) return a.completed ? 1 : -1;
-    return b.createdAt.localeCompare(a.createdAt);
-  });
-  return sorted.map((item) => [
+/**
+ * Where a point came from, when it came from somewhere (ORB-121).
+ *
+ * Only rendered when `sourceInteractionId` resolves to a conversation that
+ * still exists — a conversation deleted under ORB-64 leaves the id dangling,
+ * and "from a conversation that is no longer here" is worse than silence.
+ */
+function followUpOriginLabel(item, contact) {
+  if (!item.sourceInteractionId) return "";
+  const from = (contact?.interactions || [])
+    .find((i) => i.id === item.sourceInteractionId);
+  return from?.date ? "from " + relativeDayLabel(from.date) : "";
+}
+
+function followUpItemHtml(item, contact) {
+  const origin = followUpOriginLabel(item, contact);
+  return [
     '<div class="followup-item ' + (item.completed ? "followup-done" : "") + '" data-fu-id="' + item.id + '">',
     '  <label class="followup-check">',
     '    <input type="checkbox" class="fu-checkbox" data-fu-id="' + item.id + '" ' + (item.completed ? "checked" : "") + ' />',
-    '    <span class="followup-text">' + escapeHtml(item.text) + '</span>',
+    '    <span class="followup-text">' + escapeHtml(item.text)
+      + (origin ? ' <span class="followup-origin">' + escapeHtml(origin) + '</span>' : '')
+      + '</span>',
     '  </label>',
     '  <button class="fu-delete" type="button" data-fu-id="' + item.id + '" title="Delete" aria-label="Delete talking point">✕</button>',
     '</div>'
-  ].join("\n")).join("\n");
+  ].join("\n");
+}
+
+/**
+ * The list becomes a filter rather than an archive (ORB-122).
+ *
+ * Sorting by completed-last was the whole lifecycle: a point raised before a
+ * conversation that has since happened sat exactly where it did the day it was
+ * written, indistinguishable from one raised this morning. Three groups say
+ * which is which, and nothing is deleted to achieve it — the ORB-64 rule holds
+ * here too.
+ *
+ * HEADINGS ONLY WHEN THERE IS SOMETHING TO SEPARATE. The PRD's own risk was
+ * that grouping makes a short list feel longer: three headings over four items
+ * is furniture, not structure. A single non-empty group renders flat, exactly
+ * as it did before this ticket.
+ */
+function renderFollowUpItems(contact) {
+  const items = contact?.followUps || [];
+  if (!items.length) {
+    return '<p class="empty">No talking points yet. Add one, or use Suggest.</p>';
+  }
+  const groups = groupFollowUps(contact);
+  const filled = FOLLOWUP_GROUPS.filter((g) => groups[g.key].length);
+  const headings = filled.length > 1;
+  return filled.map((g) =>
+    (headings
+      ? '<h4 class="followup-group">' + escapeHtml(g.label)
+        + ' <span class="followup-group-count">' + groups[g.key].length + '</span></h4>'
+      : '')
+    + groups[g.key].map((item) => followUpItemHtml(item, contact)).join("\n")
+  ).join("\n");
 }
 
 /**
@@ -5091,10 +5207,10 @@ async function initContactPage() {
       + '<section class="card">'
       + '<div class="followup-section-header">'
       + '<div><h3 class="section-title">Things to bring up next</h3>'
-      + '<p class="section-sub muted">Check items off once you have discussed them.</p></div>'
+      + '<p class="section-sub muted">What is still to raise, what carried over from before your last conversation, and what you have ticked off.</p></div>'
       + '<button class="btn btn-secondary btn-sm" id="cpSuggestBtn" type="button">✦ Suggest</button>'
       + '</div>'
-      + '<div id="cpFollowUpList">' + renderFollowUpItems(c.followUps) + '</div>'
+      + '<div id="cpFollowUpList">' + renderFollowUpItems(c) + '</div>'
       + '<div class="followup-add-row">'
       + '<input type="text" id="cpNewFollowUp" placeholder="Add a talking point…" />'
       + '<button class="btn" id="cpAddFollowUpBtn" type="button">Add</button>'
@@ -5476,7 +5592,9 @@ async function initContactPage() {
       if (!fresh) return;
       const existing = new Set((fresh.followUps || []).map((f) => f.text.toLowerCase()));
       const deduped = generateFollowUpSuggestions(fresh)
-        .map((text) => normalizeFollowUpItem({ text, source: "ai" }))
+        .map((s) => normalizeFollowUpItem({
+          text: s.text, source: "ai", sourceInteractionId: s.sourceInteractionId
+        }))
         .filter((f) => !existing.has(f.text.toLowerCase()));
       const msg = $("#cpFollowUpMsg");
       if (!deduped.length) {
@@ -5493,7 +5611,7 @@ async function initContactPage() {
     async function refreshFollowUps() {
       const fresh = await freshContact();
       const listEl = $("#cpFollowUpList");
-      if (listEl && fresh) listEl.innerHTML = renderFollowUpItems(fresh.followUps);
+      if (listEl && fresh) listEl.innerHTML = renderFollowUpItems(fresh);
       attachFollowUpListeners();
     }
 

@@ -842,6 +842,28 @@ body.dark .followup-item { border-top-color: rgba(255,255,255,0.06); }
 .fu-tag-manual { background: rgba(22,163,74,0.1); color: var(--success); }
 .fu-delete { padding: 0.15rem 0.45rem !important; font-size: 0.72rem !important; opacity: 0.32; }
 .fu-delete:hover { opacity: 1; }
+
+/* ORB-122. Headings are quiet on purpose: they are separators, not sections.
+   Loud ones would make a four-item list feel like a document, which is the
+   risk the PRD named against the grouping itself. */
+.followup-group {
+  margin: 1rem 0 0.15rem; font-size: 0.7rem; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted);
+  display: flex; align-items: center; gap: 0.4rem;
+}
+.followup-group:first-child { margin-top: 0.25rem; }
+.followup-group + .followup-item { border-top: none; }
+.followup-group-count {
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 0;
+  padding: 0.05rem 0.4rem; border-radius: var(--radius-pill);
+  background: rgba(180,140,110,0.14); color: var(--text-muted);
+}
+body.dark .followup-group-count { background: rgba(255,255,255,0.09); }
+
+/* ORB-121. Provenance, not emphasis — it rides at the end of the sentence it
+   belongs to rather than claiming a line of its own. */
+.followup-origin { font-size: 0.74rem; color: var(--text-muted); white-space: nowrap; }
+
 .followup-add-row { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
 .followup-add-row input { flex: 1; min-width: 0; }
 

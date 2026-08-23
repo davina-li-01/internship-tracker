@@ -1494,6 +1494,78 @@ sits on `send.` while inbound uses the root.
 
 ---
 
+## ORB-121 + ORB-122 — the talking-points list gets a lifecycle
+
+Shipped 23 Aug, against **PRD: What to bring up next**.
+
+**The diagnosis was not volume.** Item 21 of the 20 Aug session — *"is this
+section just going to get longer and longer?"* — reads as a complaint about
+length and is not one. A talking point had no relationship to time: it was
+created, it sat on the contact, and nothing connected it to the conversation it
+came from or the one it was for. So the list *could not* be short. It had no
+basis on which to drop anything.
+
+**ORB-121 — two facts a point did not have.**
+
+- `sourceInteractionId` — the conversation that prompted it, or empty. A capture
+  has none and a point typed on the profile has none, and that is not a gap:
+  they genuinely came from nowhere in particular.
+- *Has a conversation happened since* — **derived, never stored.** A saved flag
+  would need maintaining and would go stale the moment a conversation was edited
+  or deleted under ORB-64. A comparison cannot go stale.
+
+No migration. `follow_ups` is jsonb, the same reason ORB-96 could add a
+touchpoint type for free; items written before today read `""`.
+
+`generateFollowUpSuggestions` now returns objects rather than strings, so each
+suggestion carries the conversation it was lifted from. Sentences taken from the
+contact's own notes carry `""` — claiming a conversation there would be an
+invented fact about provenance.
+
+**ORB-122 — three groups, and no deletions.**
+
+`raised since your last conversation · carried over · ticked`. Sorting by
+completed-last was the entire lifecycle before this, so a point raised before a
+conversation that has since happened sat exactly where it did the day it was
+written.
+
+**Headings appear only when there is more than one non-empty group.** That risk
+was named in the PRD against its own solution: three headings over four items is
+furniture, not structure. One group renders exactly as it did before this ticket.
+
+**Two decisions worth recording.**
+
+- **Only a conversation moves the pivot, never a touchpoint** (ORB-96). Pressing
+  *Reached out* is you sending a message. If it counted, following up on a point
+  would retire that point — the app closing an intention because you acted on it.
+- **Same-day counts as still to come.** `createdAt` is a timestamp and an
+  interaction `date` is a day, so a point raised on the day of a conversation
+  cannot be ordered against it. The safe failure is leaving a fresh point
+  visible, and in practice a point typed the day you logged a conversation is
+  usually for the next one.
+
+**Provenance is rendered, not just stored.** A point from a conversation reads
+`from 6 days ago`; a dangling id after an ORB-64 delete renders nothing, because
+"from a conversation that is no longer here" is worse than silence. Storing the
+label instead would have frozen a deleted date on screen forever.
+
+**ORB-116 is narrowed, not closed.** The *Ticked* group is the separation half of
+it. What remains is the half item 21 actually asked — the ticked group itself
+still grows without limit — and that is capping or archiving, not grouping.
+
+**Not built, and deliberately.** The three PRD KPIs have no measurement behind
+them yet: median list length, points ticked before the next conversation, and the
+guardrail — points surviving a conversation untouched should trend down and never
+reach zero. Zero would be its own failure. That wants an `orb-122-metrics.sql`
+alongside ORB-76's.
+
+**Tests.** New `talking-points.test.mjs`, 31 assertions. The three it exists for
+are the ones that would ship looking fine: a stored flag instead of a derived
+one, a touchpoint counting as a conversation, and grouping making a short list
+feel longer. 1731 assertions, 46 suites, green.
+
+---
+
 ## ORB-118 + ORB-119 — the way in says what it is
 
 Shipped 23 Aug, from item 22 of the 20 Aug session: *"I didn't even know about
