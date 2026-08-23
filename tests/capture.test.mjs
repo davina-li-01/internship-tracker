@@ -211,8 +211,14 @@ group("One required field, and it is the first thing you type");
   eq("the thought is stored as typed", saved.followUps[0].text, "Congratulate him on the move");
   eq("the form empties for the next one", $(".capture-who").value, "");
   eq("both fields", $(".capture-thought").value, "");
-  ok("and it is confirmed by name",
-    /Marcus Chen/.test(document.querySelector(".toast")?.textContent || ""));
+  const toast = document.querySelector(".toast")?.textContent || "";
+  ok("and it is confirmed by name", /Marcus/.test(toast));
+  // ORB-105. It used to end "it is on your list", which is the reported problem
+  // stated as a reassurance: there are several lists and it named none of them.
+  // Four of the twenty-two findings were people not knowing where the thought
+  // went, so the confirmation now says the section by its heading.
+  ok("and the confirmation says which list, by the name on the screen",
+    /Things to bring up next/.test(toast));
 }
 {
   resetState();

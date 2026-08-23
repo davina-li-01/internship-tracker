@@ -1494,6 +1494,58 @@ sits on `send.` while inbound uses the root.
 
 ---
 
+## ORB-105 + ORB-110 — say which list, and stop arguing a won case
+
+Shipped 23 Aug. Both from the 20 Aug session, and both are about saying less or
+saying it in the right place.
+
+**ORB-105 was the strongest signal in the set** — four of the twenty-two items
+are one problem. *"The thought goes to the checklist. Not sure if that's the
+right place. It's not clear where it goes."* ORB-81 shipped the capture input
+without its output being legible.
+
+- **Only what you did not type carries a label.** `You noted` for a capture,
+  `Suggested` for an AI point, nothing for something you typed. A tag on every
+  row would be noise on the majority to explain the minority.
+- **`You noted` is the dashboard's exact wording** (ORB-90), not a synonym. A
+  test asserts the two strings are the same value, because two words for one
+  concept is ORB-74's failure in miniature.
+- **The colour collision was real and specific.** `.fu-tag-ai` was
+  `rgba(249,115,22,0.1)` with `--primary-deep`; `.email-label` is
+  `rgba(249,115,22,0.12)` with `--primary-deep`. A tag on a talking point and a
+  `PERSONAL` badge on an address were the same colour, which is why a caught
+  thought read as contact information. Nothing in that list uses the primary hue
+  now. **`.fu-tag-manual` was deleted rather than recoloured**, so it cannot
+  return as a third colour.
+- **The confirmation names the place.** *"It is on your list"* was the reported
+  problem stated as a reassurance — there are several lists and it named none of
+  them. It now says `Things to bring up next, on their profile`, matching the
+  heading on screen.
+
+**ORB-110 reversed an argument this codebase made.** ORB-80's ledger was
+justified as *the prompt is where a relationship gets abandoned* — Remove
+schedule is on the same screen. Item 5 took that apart: it holds for the
+dashboard row, where the decision is still open, and not for the draft dialog,
+where **opening it is the decision**.
+
+The split that survived: **the ledger argues whether to reach out, the quote is
+material for what to say.** So the ledger goes and the echo stays — the ticket
+said "consider dropping the echo" and the answer is no, for that reason.
+
+`reachOutPromptHtml` gained a `ledger` flag beside ORB-97's existing `echo` flag.
+A test asserts the two are independent, so the older switch cannot be quietly
+co-opted into meaning "trim the dialog".
+
+**Tests.** New `capture-legible.test.mjs`, and the ORB-80 block in
+`reach-out-prompt.test.mjs` rewritten to record the reversal rather than deleted
+— the argument it used to assert is written out above the new assertions so
+nobody restores it. One assertion initially failed because a CSS *comment*
+explaining the deletion of `.fu-tag-manual` matched the regex looking for the
+rule; comments are stripped first now. Same trap as `password-reset.test.mjs`.
+1760 assertions, 47 suites, green.
+
+---
+
 ## ORB-121 + ORB-122 — the talking-points list gets a lifecycle
 
 Shipped 23 Aug, against **PRD: What to bring up next**.

@@ -837,9 +837,21 @@ body.dark .followup-item { border-top-color: rgba(255,255,255,0.06); }
 .followup-text { font-size: 0.875rem; line-height: 1.45; }
 .followup-done .followup-text { text-decoration: line-through; }
 .followup-right { display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
-.fu-tag { font-size: 0.68rem; padding: 0.1rem 0.45rem; border-radius: var(--radius-pill); font-weight: 700; white-space: nowrap; }
-.fu-tag-ai { background: rgba(249,115,22,0.1); color: var(--primary-deep); }
-.fu-tag-manual { background: rgba(22,163,74,0.1); color: var(--success); }
+/* ORB-105. These were orange on orange with .email-label, so a tag on a talking
+   point looked like a PERSONAL badge on an address — one of the four findings
+   was reading a caught thought as contact information. Nothing here uses the
+   primary hue any more, and .fu-tag-manual is gone rather than recoloured: a
+   point you typed yourself needs no label saying you typed it, and tagging
+   every row would be noise on the majority to explain the minority. */
+.fu-tag {
+  font-size: 0.6rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.05em; padding: 0.1rem 0.4rem; border-radius: 4px;
+  white-space: nowrap; margin-right: 0.4rem; vertical-align: 0.06em;
+}
+.fu-tag-capture { background: rgba(109,90,205,0.13); color: #5B4BB8; }
+.fu-tag-ai { background: rgba(120,113,108,0.15); color: var(--text-muted); }
+body.dark .fu-tag-capture { background: rgba(167,150,255,0.18); color: #C4B5FD; }
+body.dark .fu-tag-ai { background: rgba(255,255,255,0.09); color: var(--text-faint); }
 .fu-delete { padding: 0.15rem 0.45rem !important; font-size: 0.72rem !important; opacity: 0.32; }
 .fu-delete:hover { opacity: 1; }
 

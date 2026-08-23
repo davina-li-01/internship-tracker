@@ -152,6 +152,8 @@ const EXPORTS = [
   // (ORB-121, ORB-122)
   "lastConversationDate", "groupFollowUps", "FOLLOWUP_GROUPS",
   "renderFollowUpItems", "followUpItemHtml", "followUpOriginLabel",
+  // a capture is visibly a capture (ORB-105)
+  "followUpTagHtml", "FOLLOWUP_TAGS",
   "generateFollowUpSuggestions",
   // a reason, two triggers, and trigger before timer (ORB-90/91/92)
   "reachOutReason", "reasonRank", "justMetTrigger", "anniversaryTrigger",

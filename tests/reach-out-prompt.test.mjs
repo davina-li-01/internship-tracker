@@ -447,16 +447,32 @@ group("ORB-80 — it appears at the moment the decision is made");
     !/2 conversations over/.test(personRowHtml(c, getHealth(c), { showReconnect: true })));
 }
 {
-  // "Remove schedule" lives in this modal. That is the abandonment the ticket
-  // is about, so the ledger has to be on the same screen as the button.
+  // ORB-110 REVERSED THIS, AND THE ARGUMENT IT REVERSES WAS MADE HERE.
+  //
+  // The claim was: "Remove schedule" lives in this modal, that is the
+  // abandonment ORB-80 is about, so the ledger has to be on the same screen as
+  // the button. Item 5 of the 20 Aug session took it apart. It holds for the
+  // dashboard row, where the decision is still open. It does not hold here,
+  // because opening this dialog IS the decision — you came to write a message,
+  // and the ledger argues a case that has already been won, above the thing you
+  // came to do.
+  //
+  // The split that survived: the ledger argues WHETHER to reach out, the quote
+  // is material for WHAT to say. So one goes and one stays.
   document.getElementById("reminderModal")?.remove();
   const c = person({ interactions: [
     convo({ id: "a", date: daysAgo(700) }), convo({ id: "b", date: daysAgo(120) })
   ] });
   await main.showReminderModal(c, async () => {});
   const modal = document.getElementById("reminderModal");
-  ok("the modal shows what would be abandoned", /2 conversations over 2 years/.test(modal.textContent));
-  ok("beside the button that abandons it", modal.querySelector("#modalTurnOff"));
+  ok("the dialog does not re-argue the decision you already made",
+    !/2 conversations over 2 years/.test(modal.textContent));
+  ok("the button that abandons it is still here",
+    Boolean(modal.querySelector("#modalTurnOff")));
+  ok("and what they last said is still here, because that is what you write from",
+    Boolean(modal.querySelector(".prompt-echo")));
+  ok("as is the person and the silence",
+    Boolean(modal.querySelector(".prompt-line")));
   modal.remove();
 }
 

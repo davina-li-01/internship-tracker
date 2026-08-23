@@ -1436,7 +1436,8 @@ function longSilenceLine(contact, health = getHealth(contact)) {
  * escaping the name inside itself. A helper that returns half-escaped HTML
  * is a trap for whoever calls it next.
  */
-function reachOutPromptHtml(contact, health = getHealth(contact), { echo = true } = {}) {
+function reachOutPromptHtml(contact, health = getHealth(contact),
+                            { echo = true, ledger = true } = {}) {
   // ORB-97. The sentence above is built from `lastContacted`; the quote is the
   // most recent thing you actually WROTE. Those diverge the moment you use the
   // reach-out button, and the prompt then read "You last spoke to Marcus 3 days
@@ -1451,7 +1452,16 @@ function reachOutPromptHtml(contact, health = getHealth(contact), { echo = true 
     && entry.date < String(contact.lastContacted).slice(0, 10)
     ? ' <span class="prompt-echo-when">— ' + escapeHtml(relativeDayLabel(entry.date)) + '</span>'
     : "";
-  const ledger = ledgerLine(contact);
+  // ORB-110. Off in the draft dialog, and the reason invalidates an argument
+  // this codebase made for ORB-80. "The prompt is where a relationship gets
+  // abandoned" is true of the dashboard row, where Remove schedule sits beside
+  // it and the decision is still open. In the dialog the decision is already
+  // made — you are here to write — so the ledger is arguing a case that has
+  // been won, above the thing you came to do.
+  //
+  // The echo stays, and the split is the whole ticket: the ledger argues
+  // WHETHER to reach out, the quote is material for WHAT to say.
+  const ledgerText = ledger ? ledgerLine(contact) : "";
   // ORB-90. The reason leads, above the elapsed time, because when there is one
   // it is why this person is on the list at all — the clock is incidental. Only
   // the strongest is shown; a stack of them is a to-do list, and the profile is
@@ -1466,7 +1476,7 @@ function reachOutPromptHtml(contact, health = getHealth(contact), { echo = true 
         + escapeHtml(reason.text) + '</p>'
       : '')
     + '<p class="prompt-line">' + escapeHtml(lastSpokeSentence(contact, health)) + '</p>'
-    + (ledger ? '<p class="prompt-ledger">' + escapeHtml(ledger) + '</p>' : '')
+    + (ledgerText ? '<p class="prompt-ledger">' + escapeHtml(ledgerText) + '</p>' : '')
     + (words ? '<p class="prompt-echo">“' + escapeHtml(words) + '”' + stale + '</p>' : '');
 }
 
@@ -2409,13 +2419,40 @@ function followUpOriginLabel(item, contact) {
   return from?.date ? "from " + relativeDayLabel(from.date) : "";
 }
 
+/**
+ * Which of the four kinds of thing this is (ORB-105).
+ *
+ * Four of the twenty-two items in the 20 Aug session are one problem: "the
+ * thought goes to the checklist. Not sure if that's the right place." ORB-81
+ * shipped the capture input without its output being legible — a thought caught
+ * at 2am arrived here as an unlabelled line among talking points, so the list
+ * showed four different kinds of item and told you apart from none of them.
+ *
+ * ONLY WHAT YOU DID NOT TYPE IS TAGGED. A point you wrote in the box at the
+ * bottom needs no label saying you wrote it; a tag on every row would be noise
+ * on the majority to explain the minority.
+ *
+ * "You noted" is the dashboard's exact wording for the same thing (ORB-90), not
+ * a synonym. Two words for one concept is the ORB-74 failure in miniature.
+ */
+const FOLLOWUP_TAGS = {
+  capture: { label: "You noted", cls: "fu-tag-capture" },
+  ai: { label: "Suggested", cls: "fu-tag-ai" }
+};
+
+function followUpTagHtml(item) {
+  const tag = FOLLOWUP_TAGS[item.source];
+  if (!tag) return "";
+  return '<span class="fu-tag ' + tag.cls + '">' + escapeHtml(tag.label) + '</span>';
+}
+
 function followUpItemHtml(item, contact) {
   const origin = followUpOriginLabel(item, contact);
   return [
     '<div class="followup-item ' + (item.completed ? "followup-done" : "") + '" data-fu-id="' + item.id + '">',
     '  <label class="followup-check">',
     '    <input type="checkbox" class="fu-checkbox" data-fu-id="' + item.id + '" ' + (item.completed ? "checked" : "") + ' />',
-    '    <span class="followup-text">' + escapeHtml(item.text)
+    '    <span class="followup-text">' + followUpTagHtml(item) + escapeHtml(item.text)
       + (origin ? ' <span class="followup-origin">' + escapeHtml(origin) + '</span>' : '')
       + '</span>',
     '  </label>',
@@ -3684,7 +3721,10 @@ function wireCaptureForm(root, getContacts, onSaved) {
     thoughtEl.value = "";
     chosen = null;
     close();
-    showToast("Noted about " + match.name + " — it is on your list.");
+    // ORB-105. "It is on your list" was the whole problem stated as a
+    // reassurance: there are several lists and this named none of them.
+    showToast("Noted about " + firstNameOf(match.name)
+      + " — it is in Things to bring up next, on their profile.");
     whoEl.focus();
     if (onSaved) await onSaved();
   });
@@ -4371,7 +4411,7 @@ async function showReminderModal(contact, onChanged) {
     // question left is whether to send it. It led with "Every month · Next: 12
     // Sep", which is the schedule talking. It now leads with the person and the
     // silence (ORB-78), then answers the objection that silence raises (ORB-79).
-    + reachOutPromptHtml(contact, health)
+    + reachOutPromptHtml(contact, health, { ledger: false })
     + permissionLineHtml(contact, health)
     + '<p class="tiny muted">' + escapeHtml(getFreqLabel(contact.followUpFrequency))
     + ' · Next: ' + escapeHtml(nextStr) + '</p>'
