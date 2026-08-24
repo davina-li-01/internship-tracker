@@ -31,18 +31,37 @@
 --   * SAME DAY counts as still to come. `createdAt` is a timestamp and an
 --     interaction date is a day, so they cannot be ordered against each other.
 --   * NO CONVERSATION EVER means nothing has had its chance, however old it is.
+--   * A TIMESTAMP IS UTC AND A DATE IS LOCAL, so the two are converted before
+--     they are compared. `createdAt` is written with toISOString; an interaction
+--     date comes from a date input. In Pacific/Honolulu — UTC-10, which is where
+--     this app is actually being used — anything entered after 2pm is stamped
+--     with tomorrow's UTC date, so a plain `left(...,10)` reads the wrong day
+--     for half of every day and hides carried-over points. The reader's zone
+--     comes from preferences.timezone (migration 009), defaulting to UTC.
 --
 -- BASELINE, ___ ______ 2026 — fill this in the first time you run it, or the
 -- second reading has nothing to be compared against.
 
-with points as (
+-- One row per account, with the zone its dates should be read in.
+with zones as (
+  select user_id, coalesce(nullif(timezone, ''), 'UTC') as tz
+    from public.preferences
+),
+
+points as (
   select c.id                                             as contact_id,
          coalesce((f->>'completed')::boolean, false)      as completed,
-         left(coalesce(f->>'createdAt', ''), 10)          as raised_on,
+         -- The local calendar day, not the first ten characters. A malformed or
+         -- missing value falls back to the old slice rather than erroring, which
+         -- is what js/main.js does too.
+         coalesce(
+           ((f->>'createdAt')::timestamptz at time zone coalesce(z.tz, 'UTC'))::date::text,
+           left(coalesce(f->>'createdAt', ''), 10))       as raised_on,
          nullif(f->>'completedAt', '')                    as completed_at,
          nullif(f->>'sourceInteractionId', '')            as source_id,
          length(coalesce(f->>'text', ''))                 as text_len
     from public.contacts c
+    left join zones z on z.user_id = c.user_id
     cross join lateral jsonb_array_elements(coalesce(c.follow_ups, '[]'::jsonb)) f
 ),
 

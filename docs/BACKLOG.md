@@ -1494,6 +1494,85 @@ sits on `send.` while inbound uses the root.
 
 ---
 
+## ORB-126 — the clock observes, it does not oblige
+
+Shipped 23 Aug, out of interview 2. **Reverses part of ORB-54 and retires the
+word "overdue" from the product.**
+
+**The evidence.** Jack Witt, asked whether he ever reaches out with no reason:
+*"I don't randomly reach out — I want to respect their time."* He contacts the
+people he values most about once a year. Interview 1 never cited frequency in
+either direction. Two for two, and the second is the harder result: **silence
+can be an oversight, a stated principle cannot.**
+
+**The clock was doing three jobs and only two were wrong.**
+
+| Job | Verdict |
+|---|---|
+| **Ranks** — who is at the top of Reach out next | Already demoted behind triggers by ORB-92. Left alone |
+| **Obligates** — `Overdue`, `Reach out soon`, `N days over`, and a digest reading `3 months overdue` | **Gone.** This is what the app was calling failure |
+| **Observes** — how long it has actually been | **Kept.** Jack's own once-a-year trigger needs it: when he has something to ask, he has no idea whether it has been a year or three |
+
+`Overdue` → **`Long silence`**. `Reach out soon` → **`Going quiet`**. `N days over`
+→ **`quiet N days`**. ORB-54's distinction survives — a starred lapse and an
+unstarred one still read differently — but neither reads as a debt now.
+
+**The digest was fixed too, and it mattered most.** It is the only surface that
+reaches somebody with the app closed, so it is where a verdict costs the most.
+`overdueLabel` is `silenceLabel`, **renamed rather than left returning the word
+"quiet" under the old name** — a function whose name disagrees with what it does
+is how the vocabulary drifted apart in the first place. Deno is not installed on
+this machine so `test:functions` could not run; the label logic was transliterated
+into node and checked against the same six cases, and the Deno assertions were
+updated to match.
+
+## The reported bug, and the half of it that was not a bug
+
+*"It keeps saying say thank you to Hunter. I already sent the thank you message.
+I want to keep dismissing it, but it keeps popping up."*
+
+**The thank-you was a capture, and she sent the message from her own email.** The
+app never heard, so the capture stayed open. That is not a defect and it cannot
+be fixed by noticing harder — the app cannot see outside itself, and the answer
+is to make being wrong cheap rather than to nag until it is right.
+
+**The ✕ was a defect.** It removed a DOM node and recorded nothing, so the same
+person returned the next morning with the same sentence, for ever. Dismissal cost
+nothing and bought nothing.
+
+Now: 30 days, per person, in localStorage beside the nudge's other settings.
+**Thirty rather than seven** — a week's silence is a pause for breath, not a
+dismissal, to somebody who reaches out annually. The person stays on the
+dashboard the whole time; the nudge moves to the next one. Quieter is not hidden,
+which is the ORB-64 rule. Reaching out clears the snooze.
+
+## A timezone bug found on the way, and it was live
+
+This machine is **Pacific/Honolulu, UTC-10** — the account's real timezone.
+
+Every DATE in Orbit is local (`todayDateString`, a date input). Every TIMESTAMP
+is UTC (`toISOString`). ORB-121 compared them by slicing ten characters off the
+timestamp, which is a **UTC** day. In Honolulu anything entered after 2pm carries
+tomorrow's UTC date, so a talking point raised the evening before a conversation
+read as raised the day of it — **and landed in the wrong group.** The bug hid
+carried-over points, which is precisely the guardrail ORB-125 is going to read.
+
+`localDayOf` converts before comparing. The same fix went into
+`orb-122-metrics.sql`, which now reads the zone from `preferences.timezone`
+(migration 009) and defaults to UTC. Verified against a throwaway Postgres with
+a Honolulu fixture: a point stored at `2026-08-20T01:00:00Z` against a
+conversation on `2026-08-20` is **carried over**, where the old slice called it
+raised-since.
+
+It surfaced as a test failing by one day — `completedAt` reading 24 Aug on the
+23rd — which is the harmless version of the same fault.
+
+**Tests.** New `nudge-dismiss.test.mjs` (24), and nine assertions across three
+suites rewritten to record the reversal rather than deleted. 1787 assertions,
+48 suites, green.
+
+---
+
 ## ORB-105 + ORB-110 — say which list, and stop arguing a won case
 
 Shipped 23 Aug. Both from the 20 Aug session, and both are about saying less or

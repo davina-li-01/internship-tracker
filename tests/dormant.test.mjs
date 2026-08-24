@@ -53,9 +53,21 @@ group("The same lapse reads two ways, and the star is the difference");
   const mine = getHealth(lapsed({ starred: true }));
   const theirs = getHealth(lapsed());
 
-  eq("a starred lapse is a failure, because you said it mattered",
-    bandWords(mine).label, "Overdue");
+  // ORB-126 KEPT THE DIFFERENCE AND DROPPED THE ACCUSATION.
+  //
+  // ORB-54 reserved "Overdue" for the starred, on the argument that failure
+  // language is earned where you said the person mattered. Interview 2 retired
+  // that argument: Jack Witt reaches out to the people he values most about
+  // once a year, deliberately — "I want to respect their time." The starring is
+  // a statement about the person, not a promise about a frequency.
+  //
+  // So the two still read differently, which was ORB-54's real substance, and
+  // neither reads as a debt.
+  eq("a starred lapse is stated as elapsed time",
+    bandWords(mine).label, "Long silence");
   eq("an unstarred one is an opportunity", bandWords(theirs).label, "Worth reviving");
+  ok("and neither of them accuses you of anything",
+    !/overdue|late|behind|failed/i.test(bandWords(mine).label + " " + bandWords(theirs).label));
   ok("and the wording points forward rather than just softening",
     !/quiet|late|behind|overdue/i.test(DORMANT_META.label));
 }
@@ -106,8 +118,13 @@ group("The detail line stops counting how late you are");
     /quiet 170 days/.test(healthBarHtml(getHealth(lapsed()))));
   ok("and never that it is 'over' anything",
     !/170 days over/.test(healthBarHtml(getHealth(lapsed()))));
-  ok("a starred lapse still is over something",
-    /170 days over/.test(healthBarHtml(getHealth(lapsed({ starred: true })))));
+  // ORB-126. "N days over" is the accusation restated as arithmetic, so it is
+  // gone from the starred case too. Both now say how long it has been, and the
+  // difference between them lives in the label rather than in the number.
+  ok("and neither does a starred one",
+    !/170 days over/.test(healthBarHtml(getHealth(lapsed({ starred: true })))));
+  ok("a starred lapse states elapsed time too",
+    /quiet 170 days/.test(healthBarHtml(getHealth(lapsed({ starred: true })))));
 }
 {
   // Singular, because "quiet 1 days" is the kind of thing that ships.
@@ -168,7 +185,7 @@ group("It reads the same wherever the row is drawn");
 {
   const mine = lapsed({ starred: true });
   const row = personRowHtml(mine, getHealth(mine), { showReconnect: true });
-  ok("a starred lapse still reads as one", /Overdue/.test(row));
+  ok("a starred lapse still reads as one", /Long silence/.test(row));
   ok("and carries the star", /star-inline/.test(row));
 }
 

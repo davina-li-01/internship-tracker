@@ -36,7 +36,14 @@ const {
   FOLLOWUP_GROUPS, TOUCHPOINT_TYPE
 } = main;
 
-const at = (day) => day + "T09:00:00.000Z";
+// A timestamp meaning midday LOCAL on that day, not 09:00 UTC.
+//
+// This machine is Pacific/Honolulu, UTC-10, and that is what caught the bug:
+// "2026-08-20T09:00:00Z" is 23:00 on the 19th here, so a fixture that meant
+// "raised on the 20th" was being read as the 19th and landing in the wrong
+// group. `new Date("...T12:00:00")` with no Z is parsed as local time, so the
+// instant means what the test says it means in any zone.
+const at = (day) => new Date(day + "T12:00:00").toISOString();
 const point = (over = {}) => normalizeFollowUpItem({ text: "Ask about the move", ...over });
 const convo = (over = {}) => ({
   id: "i1", date: daysAgo(10), type: "coffee chat", notes: "We talked", ...over
@@ -251,7 +258,11 @@ group("A tick records when, not only whether");
 
   const ticked = state.store.get("c1").followUps[0];
   ok("ticking on the profile stamps the date", Boolean(ticked.completedAt));
-  eq("and it is today", ticked.completedAt.slice(0, 10), today());
+  // localDayOf, not slice(0,10). completedAt is a UTC timestamp and today() is a
+  // local date, and after about 8pm in New York those are different days —
+  // which is how this assertion caught the skew in ORB-121's grouping too.
+  eq("and it is today, in the reader's own zone",
+    main.localDayOf(ticked.completedAt), today());
 
   const box2 = root.querySelector(".fu-checkbox");
   box2.checked = false;

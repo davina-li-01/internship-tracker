@@ -144,12 +144,26 @@ export type Deps = {
 export const daysBetween = (a: Date, b: Date) =>
   Math.floor((a.getTime() - b.getTime()) / 86_400_000);
 
-export function overdueLabel(days: number): string {
-  if (days <= 0) return "due today";
-  if (days === 1) return "1 day overdue";
-  if (days < 14) return `${days} days overdue`;
-  if (days < 60) return `${Math.floor(days / 7)} weeks overdue`;
-  return `${Math.floor(days / 30)} months overdue`;
+/**
+ * How long it has been, not how late you are (ORB-126).
+ *
+ * This is the one surface that reaches somebody who has not opened the app, so
+ * it is the surface where "3 months overdue" lands hardest — and interview 2
+ * is direct evidence against it. Jack Witt contacts the people he values most
+ * about once a year, on purpose: "I don't randomly reach out, I want to respect
+ * their time." An email telling him he is three months late is telling him his
+ * own considered position is a failure.
+ *
+ * Renamed rather than left as `overdueLabel` returning the word "quiet". A name
+ * that disagrees with what a function does is how the vocabulary drifted apart
+ * in the first place — the whole reason labels.test.mjs exists.
+ */
+export function silenceLabel(days: number): string {
+  if (days <= 0) return "from today";
+  if (days === 1) return "quiet 1 day";
+  if (days < 14) return `quiet ${days} days`;
+  if (days < 60) return `quiet ${Math.floor(days / 7)} weeks`;
+  return `quiet ${Math.floor(days / 30)} months`;
 }
 
 export function escapeHtml(s: string): string {
@@ -235,12 +249,12 @@ export function buildEmail(
     "",
     ...rows.map(({ contact, days }) => {
       const detail = describe(contact);
-      return `• ${contact.name || "Unnamed"}${detail ? ` — ${detail}` : ""} (${overdueLabel(days)})`;
+      return `• ${contact.name || "Unnamed"}${detail ? ` — ${detail}` : ""} (${silenceLabel(days)})`;
     }),
     ...(hiddenCount > 0 ? ["", `…and ${hiddenCount} more waiting.`] : []),
     ...(chronicCount > 0 ? ["",
-      `${chronicCount} ${chronicCount === 1 ? "person has" : "people have"} been overdue `
-      + "for a while now — the cadence you set for them may be wrong."] : []),
+      `${chronicCount} ${chronicCount === 1 ? "person has" : "people have"} been quiet `
+      + "a long time now — the cadence you set for them may be wrong."] : []),
     "",
     `Open Orbit: ${appUrl}`,
     "",
@@ -255,7 +269,7 @@ export function buildEmail(
         ${detail ? `<div style="color:#78716C;font-size:13px;margin-top:2px;">${escapeHtml(detail)}</div>` : ""}
       </td>
       <td style="padding:10px 0;border-bottom:1px solid #EEE8E0;text-align:right;white-space:nowrap;color:#B45309;font-size:13px;font-weight:600;">
-        ${escapeHtml(overdueLabel(days))}
+        ${escapeHtml(silenceLabel(days))}
       </td>
     </tr>`;
   }).join("");
@@ -275,7 +289,7 @@ export function buildEmail(
     ${chronicCount > 0
       ? `<p style="color:#78716C;font-size:13px;line-height:1.5;margin:14px 0 0;padding:10px 12px;`
         + `background:#F5EDE3;border-radius:8px;">`
-        + `<strong>${chronicCount} ${chronicCount === 1 ? "person has" : "people have"} been overdue for a while.</strong> `
+        + `<strong>${chronicCount} ${chronicCount === 1 ? "person has" : "people have"} been quiet a long time.</strong> `
         + `The cadence you set for them may be wrong — worth changing it rather than `
         + `seeing them here again.</p>`
       : ""}

@@ -79,6 +79,31 @@ function todayDateString() {
   return toDateString(new Date());
 }
 
+/**
+ * The calendar day a stored timestamp falls on, in the reader's own zone.
+ *
+ * Every DATE in this app is local — `todayDateString` builds one from
+ * `getFullYear/getMonth/getDate`, and an interaction's `date` comes from a date
+ * input. Every TIMESTAMP is UTC, because they are written with `toISOString`.
+ * Slicing ten characters off a timestamp therefore gives a UTC day, and
+ * comparing that to a local one is wrong for everybody west of Greenwich for
+ * part of every evening.
+ *
+ * It surfaced as a talking point ticked at 8pm on the 23rd being dated the
+ * 24th, which is the harmless version. The same slice decides whether a point
+ * is "raised since your last conversation" (ORB-121), where an off-by-one day
+ * moves it into the wrong group.
+ */
+function localDayOf(timestamp) {
+  if (!timestamp) return "";
+  const when = new Date(timestamp);
+  return Number.isNaN(when.getTime())
+    // Not parseable as a date — fall back to whatever the leading characters
+    // are, which is what every caller did before this existed.
+    ? String(timestamp).slice(0, 10)
+    : toDateString(when);
+}
+
 function escapeHtml(value = "") {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -1191,12 +1216,25 @@ function firstDeadlineFor(lastContacted, frequency) {
  * Status vocabulary. Every status is shown as icon + label + number so meaning
  * never rides on color alone — required because the amber sits below 3:1 on
  * this app's light surface.
+ *
+ * ORB-126. THESE USED TO GIVE ORDERS. "Overdue" and "Reach out soon" are not
+ * descriptions of a relationship; they are instructions with a deadline
+ * attached, and interview 2 is the clearest possible evidence against them.
+ * Asked whether he ever contacts people without a reason, Jack Witt said "I
+ * don't randomly reach out — I want to respect their time," and reaches out to
+ * the people he values most about once a year. **That is a considered position,
+ * and the app was calling it failure.** Interview 1 never cited frequency
+ * either, in any direction.
+ *
+ * So the clock keeps its three steps — they still drive ordering, counts and
+ * the rings, and none of that is wrong. What changes is that they now report a
+ * fact about silence and leave the decision where it belongs.
  */
 const BAND_META = {
-  good:     { label: "In touch",       icon: "●", short: "In touch" },
-  warning:  { label: "Reach out soon", icon: "◐", short: "Soon" },
-  critical: { label: "Overdue",        icon: "▲", short: "Overdue" },
-  none:     { label: "No schedule",    icon: "○", short: "No schedule" }
+  good:     { label: "In touch",     icon: "●", short: "In touch" },
+  warning:  { label: "Going quiet",  icon: "◐", short: "Quiet" },
+  critical: { label: "Long silence", icon: "▲", short: "Long silence" },
+  none:     { label: "No schedule",  icon: "○", short: "No schedule" }
 };
 
 /**
@@ -1503,8 +1541,10 @@ function healthBarHtml(health) {
     // states elapsed time and nothing else (ORB-54).
     : health.tone === "dormant" && health.daysLeft < 0
       ? `quiet ${days} day${plural(days)}`
+    // ORB-126. Was "N days over" — the accusation restated as arithmetic, on the
+    // one band where it lands hardest. Elapsed time, and nothing more.
     : health.daysLeft < 0
-      ? `${days} day${plural(days)} over`
+      ? `quiet ${days} day${plural(days)}`
       // Not contacted yet and not yet due (ORB-124). The cadence has this one,
       // and saying so is the difference between a plan and a debt.
       : health.firstContact
@@ -1825,7 +1865,7 @@ function groupFollowUps(contact) {
   for (const item of contact?.followUps || []) {
     if (item.completed) { out.ticked.push(item); continue; }
     // No conversation has ever happened, so nothing has had its chance yet.
-    const raised = String(item.createdAt || "").slice(0, 10);
+    const raised = localDayOf(item.createdAt);
     (!pivot || raised >= pivot ? out.since : out.carried).push(item);
   }
   for (const key of Object.keys(out)) {
@@ -2095,8 +2135,8 @@ const CADENCE_FILTER = { key: "cadence", label: "Cadence", options: [
 const STATUS_FILTER = { key: "status", label: "Connection health", options: [
   { value: "", label: "Any health" },
   { value: "good", label: "In touch" },
-  { value: "warning", label: "Reach out soon" },
-  { value: "critical", label: "Overdue" },
+  { value: "warning", label: "Going quiet" },
+  { value: "critical", label: "Long silence" },
   { value: "none", label: "Not measured" }
 ] };
 
@@ -4531,7 +4571,15 @@ async function markReachedOut(contact, onChanged) {
   // direction. Only captures are closed — a manual talking point may well
   // survive the conversation it was written for.
   const followUps = (contact.followUps || []).map((f) =>
-    f.source === "capture" && !f.completed ? { ...f, completed: true } : f);
+    f.source === "capture" && !f.completed
+      // completedAt as well as completed (ORB-122): closing a capture from here
+      // is still a tick, and leaving it undated would quietly undercount the
+      // one KPI that field exists for.
+      ? { ...f, completed: true, completedAt: new Date().toISOString() }
+      : f);
+  // ORB-126. Whatever you waved away, you have now done. Starting the month
+  // again from here would be the snooze outliving its own reason.
+  clearNudgeSnooze(contact.id);
   const saved = await db.saveContact(normalizeContact({
     ...contact,
     followUps,
@@ -4735,7 +4783,7 @@ async function initDashboard() {
     const kpiHtml = scheduled
       ? '<div class="kpi-row">'
         + kpiTile("good", "In touch", counts.good, scheduled, "on cadence and current")
-        + kpiTile("warning", "Reach out soon", counts.warning, scheduled, "window closing")
+        + kpiTile("warning", "Going quiet", counts.warning, scheduled, "window closing")
         // "Overdue" overstated what this counts once ORB-54 reserved failure
         // language for the starred. The tile counts people past their date;
         // the sub-line says how many of them you actually said mattered.
@@ -4791,7 +4839,11 @@ async function initDashboard() {
       // Was "People on a schedule who are drifting — most overdue first", which
       // described the query rather than the people (ORB-78). Two reasons land
       // people here now, and the note is the one worth naming (ORB-81).
-      + '<p class="muted">Anything you noted first, then longest since you spoke.</p>'
+      // ORB-126. "Then longest since you spoke" is now stated as what it is —
+      // an observation you are free to ignore — rather than left to read as
+      // the tail of a to-do list.
+      + '<p class="muted">Anything you noted first, then the ones it has simply '
+      + 'been a while with. Nothing here is owed.</p>'
       + '</div>'
       + (attention.length
         ? '<ul class="person-list">'
@@ -5972,6 +6024,71 @@ function nudgeAllowed() {
 
 function markNudgeShown() {
   localStorage.setItem(NUDGE_SEEN_KEY, todayDateString());
+}
+
+/**
+ * Dismissing has to dismiss the person, not the box (ORB-126).
+ *
+ * THE REPORTED BUG. "It keeps saying say thank you to Hunter. I already sent
+ * the thank you message. I want to keep dismissing it, but it keeps popping
+ * up." Both halves were true and they had different causes.
+ *
+ * The thank-you note was a capture, and a capture stays open until something
+ * closes it. `markReachedOut` does close it — but she sent the message from her
+ * own email, so the app never heard. Nothing is wrong with that; **the app
+ * cannot see outside itself, and the answer is not to nag until it can.**
+ *
+ * The second half was a plain defect. The ✕ called `close()`, which removed a
+ * DOM node and recorded nothing, so the same person returned the next morning
+ * with the same sentence, for ever. Dismissal cost nothing and bought nothing.
+ *
+ * THIRTY DAYS, AND WHY NOT SEVEN. Jack Witt contacts the people he values most
+ * about once a year. A week's silence from a nudge is not a dismissal, it is a
+ * pause for breath. The person stays on the dashboard the whole time — they are
+ * quieter, not hidden, which is the ORB-64 rule again.
+ *
+ * localStorage rather than the database, deliberately: the whole nudge feature
+ * already lives there (mode, last-shown), the server-side digest has its own
+ * opt-out, and a snooze that needed a migration would not have shipped today.
+ */
+const NUDGE_SNOOZE_KEY = "orbit_nudge_snoozed";
+const NUDGE_SNOOZE_DAYS = 30;
+
+function readNudgeSnoozes() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(NUDGE_SNOOZE_KEY) || "{}");
+    return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  } catch {
+    // A corrupted value must not take the nudge down with it.
+    return {};
+  }
+}
+
+/** Expired entries are dropped on every write, so the map cannot grow for ever. */
+function writeNudgeSnoozes(map) {
+  const today = todayDateString();
+  const live = Object.fromEntries(
+    Object.entries(map).filter(([, until]) => String(until) > today));
+  localStorage.setItem(NUDGE_SNOOZE_KEY, JSON.stringify(live));
+  return live;
+}
+
+function snoozeNudge(contactId, days = NUDGE_SNOOZE_DAYS) {
+  if (!contactId) return "";
+  const until = addDays(todayDateString(), days);
+  writeNudgeSnoozes({ ...readNudgeSnoozes(), [contactId]: until });
+  return until;
+}
+
+/** Reaching out is a fresh start, so it clears the snooze rather than keeping it. */
+function clearNudgeSnooze(contactId) {
+  const map = readNudgeSnoozes();
+  delete map[contactId];
+  writeNudgeSnoozes(map);
+}
+
+function nudgeSnoozed(contactId) {
+  return String(readNudgeSnoozes()[contactId] || "") > todayDateString();
 }
 
 /** Download the whole network as CSV. */
@@ -7180,7 +7297,7 @@ async function openSettingsModal(section = "general") {
         + '<option value="always"' + (nudge === "always" ? " selected" : "") + '>Every time I open Orbit</option>'
         + '<option value="daily"' + (nudge === "daily" ? " selected" : "") + '>Once a day</option>'
         + '<option value="off"' + (nudge === "off" ? " selected" : "") + '>Never</option></select>')
-    + '<p class="field-hint">Overdue people still show on the dashboard either way.</p>'
+    + '<p class="field-hint">Long silences still show on the dashboard either way.</p>'
 
     + '<hr class="settings-rule" />'
     + '<h4 class="settings-h4">Email reminders</h4>'
@@ -7520,7 +7637,15 @@ function showReachOutNudge(contact, health = getHealth(contact), onChanged) {
     close();
     await showReminderModal(contact, onChanged);
   });
-  host.querySelector("[data-nudge-dismiss]").addEventListener("click", close);
+  host.querySelector("[data-nudge-dismiss]").addEventListener("click", () => {
+    snoozeNudge(contact.id);
+    close();
+    // Said out loud, because a dismissal that silently changes behaviour for a
+    // month is its own surprise — and because the previous ✕ did nothing, so
+    // there is a habit to correct.
+    showToast("Not for a while — " + firstNameOf(contact.name)
+      + " stays on your dashboard, just quietly.");
+  });
   return host;
 }
 
@@ -7532,7 +7657,11 @@ async function checkRemindersOnLoad() {
     // ORB-58. Was `contacts.filter(getReminderStatus === "due")[0]`, which is a
     // different question from the one the dashboard answers and could pick
     // someone the list does not even show first.
-    const next = needsAttention(contacts)[0];
+    // ORB-126. The first person you have not waved away this month, rather than
+    // simply the first person. Skipping rather than suppressing the nudge
+    // entirely: dismissing one person is not a request to stop being told
+    // anything.
+    const next = needsAttention(contacts).find((x) => !nudgeSnoozed(x.contact.id));
     if (!next) return;
     markNudgeShown();
     showReachOutNudge(next.contact, next.health);

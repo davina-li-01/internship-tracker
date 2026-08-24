@@ -145,9 +145,16 @@ group("The old vocabulary survives wherever it is still true");
     interactions: [{ id: "i1", date: daysAgo(200), type: "coffee chat", notes: "x" }]
   };
   const overdue = getHealth(normalizeContact({ ...lapsed, starred: true }));
-  ok("a starred person with a lapsed rhythm is still overdue", /Overdue/.test(healthBarHtml(overdue)));
-  ok("and still counted in days over", /9 days over/.test(healthBarHtml(overdue)));
-  ok("their chip says so too", /Overdue/.test(statusChip(overdue)));
+  // ORB-126 changed the words and kept the distinction. "Overdue" was reserved
+  // for the starred by ORB-54; interview 2 showed that even there the cadence
+  // is not a promise anybody made. A starred lapse is now a long silence, which
+  // is a fact, and the unstarred one below is still worded differently.
+  ok("a starred person with a lapsed rhythm is a long silence",
+    /Long silence/.test(healthBarHtml(overdue)));
+  ok("stated as elapsed time rather than as being over something",
+    /quiet 9 days/.test(healthBarHtml(overdue)));
+  ok("and never as a debt", !/9 days over/.test(healthBarHtml(overdue)));
+  ok("their chip says so too", /Long silence/.test(statusChip(overdue)));
 
   const dormant = getHealth(normalizeContact(lapsed));
   ok("the same lapse unstarred is an opportunity, not a failure",

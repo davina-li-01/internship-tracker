@@ -117,7 +117,7 @@ const EXPORTS = [
   // health and cadence
   "getHealth", "getIntervalDays", "calculateNextReminder", "firstDeadlineFor",
   "GRACE_DAYS", "addDays", "daysSince", "needsAttention", "countByBand",
-  "getFreqLabel", "relativeDayLabel", "todayDateString",
+  "getFreqLabel", "relativeDayLabel", "todayDateString", "localDayOf",
   // relationship tiers
   "TIERS", "TIER_ORDER", "tierLabel", "frequencyForTier", "tierForFrequency",
   "effectiveTier",
@@ -172,6 +172,9 @@ const EXPORTS = [
   "backfillNameFromSignUp", "buildReminderEmailText", "mailtoUrl",
   "reachOutNudgeHtml", "showReachOutNudge", "checkRemindersOnLoad",
   "nudgeAllowed", "markNudgeShown", "getNudgeMode",
+  // dismissing has to dismiss the person, not the box (ORB-126)
+  "snoozeNudge", "clearNudgeSnooze", "nudgeSnoozed", "readNudgeSnoozes",
+  "NUDGE_SNOOZE_DAYS", "NUDGE_SNOOZE_KEY",
   // behaviour
   "markReachedOut", "showToast",
   "conversationWidgetHtml", "wireConversationWidget",

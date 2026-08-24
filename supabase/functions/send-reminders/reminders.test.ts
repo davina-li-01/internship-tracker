@@ -11,7 +11,7 @@
 
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import {
-  buildDigest, buildEmail, describe, isOptedIn, overdueLabel, rankOverdue,
+  buildDigest, buildEmail, describe, isOptedIn, silenceLabel, rankOverdue,
   runReminders, CHRONIC_AFTER, MAX_PER_DIGEST, PERIOD_DAYS,
   type Contact, type Deps, type Prefs
 } from "./reminders.ts";
@@ -55,13 +55,18 @@ function harness(users: Prefs[], contactsByUser: Record<string, Contact[]>) {
 
 // ── Labels ────────────────────────────────────────────────────────────────────
 
-Deno.test("overdue labels stay readable as the gap grows", () => {
-  assertEquals(overdueLabel(0), "due today");
-  assertEquals(overdueLabel(-2), "due today");   // clock skew must not say "-2 days overdue"
-  assertEquals(overdueLabel(1), "1 day overdue");
-  assertEquals(overdueLabel(5), "5 days overdue");
-  assertEquals(overdueLabel(21), "3 weeks overdue");
-  assertEquals(overdueLabel(90), "3 months overdue");
+Deno.test("silence labels stay readable as the gap grows", () => {
+  // ORB-126. These said "overdue" until 23 Aug. The digest is the only thing
+  // that reaches somebody with the app closed, so it is where a verdict costs
+  // the most — see the comment on silenceLabel.
+  assertEquals(silenceLabel(0), "from today");
+  assertEquals(silenceLabel(-2), "from today");  // clock skew must not say "quiet -2 days"
+  assertEquals(silenceLabel(1), "quiet 1 day");
+  assertEquals(silenceLabel(5), "quiet 5 days");
+  assertEquals(silenceLabel(21), "quiet 3 weeks");
+  assertEquals(silenceLabel(90), "quiet 3 months");
+  assertEquals(/overdue|late|behind/i.test(
+    [0, 1, 5, 21, 90].map(silenceLabel).join(" ")), false);
 });
 
 Deno.test("a person is described by whatever is known", () => {

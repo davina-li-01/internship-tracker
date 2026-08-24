@@ -35,7 +35,8 @@ const {
   reachOutPromptHtml, reachOutReason, getHealth, ledgerLine, FOLLOWUP_TAGS
 } = main;
 
-const at = (day) => day + "T09:00:00.000Z";
+// Midday local, not 09:00 UTC — see talking-points.test.mjs.
+const at = (day) => new Date(day + "T12:00:00").toISOString();
 const person = (followUps) => normalizeContact({
   id: "c1", name: "Marcus Chen", followUpFrequency: "monthly", reminderEnabled: true,
   interactions: [{ id: "i1", date: daysAgo(10), type: "coffee chat", notes: "We talked about the move" }],
