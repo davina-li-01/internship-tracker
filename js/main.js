@@ -5343,11 +5343,19 @@ async function initContactPage() {
   function wireProfile(c) {
     const $ = (sel) => root.querySelector(sel);
 
-    $("#cpNameInput")?.addEventListener("blur", async (e) => {
-      const newName = e.target.value.trim();
-      if (!newName) { e.target.value = (await freshContact())?.name || ""; return; }
-      await save((cur) => ({ ...cur, name: newName }));
-    });
+    // ORB-127. The name used to save itself on blur, independently of the form
+    // it sits in, and that is what lost it.
+    //
+    // Pressing Save blurs the input first, so two writes started in a row: the
+    // blur handler read the contact and wrote the new name; the Save handler
+    // read the contact — usually before that write had landed — and wrote the
+    // whole form back over it, name included, from stale state. Last write
+    // wins, the last write was the old name, and nothing errored.
+    //
+    // The fix is the one already written a few lines below for the primary
+    // email: **this form owns the whole record, so it owns the name too.** One
+    // writer, one read, no race. It also makes Cancel discard a name edit,
+    // which is what Cancel does to every other field on the same card.
 
     // ORB-93. Uses the same toggleStar as the row so the toast, the failure
     // path and the stored value cannot differ between the two places you can
@@ -5373,6 +5381,7 @@ async function initContactPage() {
     /** Everything currently typed into the details form. */
     function readDetails() {
       return {
+        name: $("#cpNameInput")?.value.trim() ?? "",
         role: $("#cpRole").value.trim(),
         company: $("#cpCompany").value.trim(),
         industry: $("#cpIndustry").value.trim(),
@@ -5391,6 +5400,10 @@ async function initContactPage() {
       if (extraPast && !history.includes(extraPast)) history.push(extraPast);
       return {
         ...cur,
+        // Falls back rather than blanking. commitDetails also runs on field
+        // changes elsewhere on the card, where the name input may not be on
+        // screen at all — those must not wipe a name they never showed.
+        name: form.name || cur.name,
         role: form.role,
         company: form.company,
         industry: form.industry,
@@ -5421,6 +5434,8 @@ async function initContactPage() {
       await save((cur) => applyDetails(cur, extraPast));
       const msg = $("#cpSaveDetailsMsg");
       if (!msg) return;
+      // Shared with the empty-name error above, which swaps the class.
+      msg.className = "success";
       // Quiet, and it says what happened. A toast for every field you tab out
       // of would be the app applauding itself.
       msg.textContent = "Saved";
@@ -5429,6 +5444,18 @@ async function initContactPage() {
     }
 
     $("#cpSaveDetailsBtn")?.addEventListener("click", async () => {
+      // A name is the one thing required, here as in the add form. Silently
+      // restoring the old one would look exactly like the bug this replaces.
+      const nameEl = $("#cpNameInput");
+      if (nameEl && !nameEl.value.trim()) {
+        const msg = $("#cpSaveDetailsMsg");
+        if (msg) {
+          msg.textContent = "A name is the one thing required.";
+          msg.className = "error";
+        }
+        nameEl.focus();
+        return;
+      }
       // Whatever is sitting in "Add a past company" counts as typed, the same
       // as every other field. Passing applyDetails bare left extraPast at its
       // default of "" — so a company you typed and then clicked Save on was

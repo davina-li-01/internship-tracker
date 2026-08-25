@@ -1494,6 +1494,46 @@ sits on `send.` while inbound uses the root.
 
 ---
 
+## ORB-127 — editing a name saves the name
+
+Reported and fixed 25 Aug. **Two writers, one record, and the wrong one won.**
+
+The name input saved itself on `blur`, independently of the details form it sits
+inside. Pressing Save blurs the input first, so two writes started in a row:
+
+1. **blur** — read the contact, write it back with the new name
+2. **click Save** — read the contact, *usually before step 1's write had landed*,
+   and write the whole form over it from stale state, name included
+
+Last write wins, the last write held the old name, and Save still said
+**"Details saved."** Everything else on the card saved correctly, which is
+exactly what the report described.
+
+**The fix was already written in this file, ten lines below, for the primary
+email:** *"This form owns the whole list, so it owns the primary too."* The same
+rule applies to the name. `readDetails` reads it, `applyDetails` writes it, the
+blur handler is gone. One writer, one read, no race.
+
+Two things fall out of that, both improvements:
+
+- **Cancel now discards a name edit**, like it discards every other field on the
+  same card. Previously a name was already committed before Cancel could refuse it.
+- **An empty name is refused with a message** instead of silently restoring the
+  old one. A silent restore is indistinguishable from the bug being fixed.
+
+`applyDetails` falls back to `cur.name` rather than blanking, because
+`commitDetails` also runs on email changes elsewhere on the card, where the name
+input may not be on screen at all.
+
+**The test was checked against the old code before it was trusted.** `main.js`
+was stashed and `rename.test.mjs` run against the committed version: four
+assertions fail there, including the browser's real blur-then-click order, which
+reproduced the race in jsdom rather than only in theory. A regression test nobody
+has watched fail is a test of the fix, not of the bug. 1803 assertions, 49
+suites, green.
+
+---
+
 ## ORB-126 — the clock observes, it does not oblige
 
 Shipped 23 Aug, out of interview 2. **Reverses part of ORB-54 and retires the
