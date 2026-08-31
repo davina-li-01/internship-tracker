@@ -3347,10 +3347,10 @@ function addConnectionFormHtml() {
     // not answer it either, and the two who could are now served by a star
     // (ORB-93) that costs one click and no taxonomy.
     //
-    // The tier's interval survives as the default: `defaultTier` still decides
-    // what the cadence line says, it is simply no longer asked about. TIERS and
-    // frequencyForTier are kept for that, and for ORB-86 if it ever revives
-    // tiers as a suggestion.
+    // The tier's interval no longer survives as the default either (ORB-128):
+    // the cadence line starts at "no schedule", because a rhythm chosen for you
+    // is the thing two interviews said nobody wants. TIERS and frequencyForTier
+    // are kept for ORB-86, if it ever revives tiers as a suggestion.
     + '<p class="cadence-result tiny ac-cadence-line">'
     + '<span class="ac-cadence-text">' + escapeHtml(cadenceSentence("none")) + '</span> '
     + '<button type="button" class="link-btn ac-adjust">Adjust</button></p>'
@@ -3369,6 +3369,21 @@ function addConnectionFormHtml() {
     // someone. Empty is a valid, permanent value; it is never filled in with
     // today's date, because a guessed date is indistinguishable from a known
     // one once stored.
+
+
+    // Optional, and said so twice — in the label and under it. "I do not
+    // remember when we met" is the normal answer and must never block adding
+    // someone. Empty is a valid, permanent value; it is never filled in with
+    // today's date, because a guessed date is indistinguishable from a known
+    // one once stored.
+    //
+    // It sits BELOW the cadence line on purpose (ORB-128). Knowing when you met
+    // somebody starts nothing — no countdown, no health bar — so it reads as
+    // the last optional detail rather than as the beginning of a schedule.
+    + '<div class="field-group"><label for="acDateMet">When you met '
+    + '<span class="opt-label">(optional)</span></label>'
+    + '<input type="date" id="acDateMet" class="ac-datemet" />'
+    + '<p class="tiny muted">Leave this blank if you do not remember — it is never guessed for you.</p></div>'
 
     + '<p class="error ac-error" aria-live="polite"></p>'
     + '<button type="submit" class="btn ac-submit">Add to my network</button>'
@@ -3533,11 +3548,16 @@ function wireAddConnectionForm(root, getContacts, onSaved) {
       role: $(".ac-role").value,
       company: $(".ac-company").value,
       email: $(".ac-email").value,
-      // ORB-128. The form no longer asks when you met. It was optional, rarely
-      // known, and it bought one thing — the anniversary trigger — at the cost
-      // of a date field on the first screen of the product. Contacts that
-      // already carry one keep it; nothing new is invented.
-      dateMet: "",
+      // Kept, and it starts nothing. ORB-128 briefly removed this and that was
+      // the wrong half of the problem: the objection was never to being asked
+      // when you met somebody, it was to a date quietly becoming a countdown.
+      //
+      // It cannot. `lastContacted` is cleared below whatever this holds, so a
+      // meeting is never filed as a conversation (ORB-75); with no cadence
+      // there is no health bar to start; and when a cadence IS chosen,
+      // firstDeadlineFor is handed "" rather than this, so an old meeting date
+      // cannot make a brand-new contact arrive overdue (ORB-124).
+      dateMet: $(".ac-datemet").value || "",
       // No tier. ORB-94 removed the question, and recording the default as
       // though it were an answer is exactly what would rot ORB-86's evidence.
       followUpFrequency: frequency,

@@ -85,29 +85,72 @@ group("There is nowhere to type a conversation");
     !/spoke|conversation|talk about/i.test($(".ac-form").textContent.replace(/No conversation is recorded/i, "")));
 }
 
-// ── The meeting date, which is no longer asked for ───────────────────────────
+// ── The meeting date ─────────────────────────────────────────────────────────
 
-// ORB-128 REMOVED THIS FIELD. It was optional, rarely known, and bought exactly
-// one thing — ORB-91's anniversary trigger — at the price of a date input on
-// the first screen of the product. Contacts saved before today keep whatever
-// they have; nothing new is invented for anybody.
-group("The form does not ask when you met");
+// ORB-128 briefly removed this field and that was the wrong half of the
+// problem. The objection was never to being asked when you met somebody — it
+// was to a date quietly becoming a countdown. So the field stays and the three
+// ways it could have started a clock are each asserted below.
+group("When you met is optional, and never guessed");
 {
   const { $ } = mountForm();
-  eq("there is no date field", $(".ac-datemet"), null);
-  eq("nor a label left behind for it", $("label[for=acDateMet]"), null);
-  ok("and nothing on the form asks about meeting them",
-    !/when you met/i.test($(".ac-form").textContent));
+  const field = $(".ac-datemet");
+  ok("the field exists", Boolean(field));
+  ok("it is not required", !field.required);
+  ok("it starts empty rather than defaulting to today", field.value === "");
+  ok("the label says optional",
+    /optional/i.test($("label[for=acDateMet]").textContent));
+  ok("and the hint says blank is allowed",
+    /do not remember/i.test($(".ac-form").textContent));
 }
 {
   resetState();
   const { host, $ } = mountForm();
   $(".ac-name").value = "No Idea";
   await submit($, host);
-  eq("what is saved carries no meeting date", state.saves[0].dateMet, "");
-  // ORB-75's rule, and the reason removing the field is safe: a meeting was
-  // never a conversation, so there was never a contact date to lose.
-  eq("and no contact date either", state.saves[0].lastContacted, "");
+  eq("left blank, it stays blank", state.saves[0].dateMet, "");
+}
+{
+  resetState();
+  const { host, $ } = mountForm();
+  $(".ac-name").value = "Met At A Talk";
+  $(".ac-datemet").value = daysAgo(40);
+  await submit($, host);
+  eq("supplied, it is kept exactly", state.saves[0].dateMet, daysAgo(40));
+  // normalizeContact would otherwise derive lastContacted from it, filing a
+  // meeting as a conversation and putting a contact date on a relationship
+  // where nothing has been said (ORB-75).
+  eq("and it does NOT become a contact date", state.saves[0].lastContacted, "");
+}
+{
+  // The reported worry, stated as a test: a meeting date must not start a
+  // health bar. With no cadence there is nothing for it to count against, and
+  // that is now the default.
+  resetState();
+  const { host, $ } = mountForm();
+  $(".ac-name").value = "Met Ages Ago";
+  $(".ac-datemet").value = daysAgo(400);
+  await submit($, host);
+  const c = { ...normalizeContact(state.saves[0]),
+              lastContacted: state.saves[0].lastContacted };
+  const h = getHealth(c);
+  eq("a meeting date alone starts no health bar", h.scheduled, false);
+  eq("and nothing is counting", h.pct, 0);
+  eq("they are on nobody's list", needsAttention([c]).length, 0);
+}
+{
+  // And if a cadence IS chosen, the date they met still cannot shorten it —
+  // firstDeadlineFor is handed "" rather than dateMet (ORB-124).
+  resetState();
+  const { host, $ } = mountForm();
+  $(".ac-name").value = "Met Ages Ago, Scheduled";
+  $(".ac-datemet").value = daysAgo(400);
+  click($(".ac-adjust"));
+  $(".ac-freq").value = "monthly";
+  $(".ac-freq").dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await submit($, host);
+  eq("the cadence starts today, not 400 days ago",
+    state.saves[0].nextReminder, daysAhead(30));
 }
 
 // ── Cadence ──────────────────────────────────────────────────────────────────

@@ -10,8 +10,12 @@
  *   3. A contact was saved and they could not see that it had been.
  *   4. A health bar appeared for a schedule nobody set.
  *
- * The date-met field and the no-cadence default are asserted in
- * add-connection.test.mjs, next to the rest of that form.
+ * The no-cadence default is asserted in add-connection.test.mjs, next to the
+ * rest of that form — as is "when you met", which stays. That field was removed
+ * here for about twenty minutes on a misreading: the objection was never to
+ * being asked when you met somebody, it was to a date quietly becoming a
+ * countdown. It cannot, and that suite now asserts each of the three ways it
+ * might have.
  */
 import { loadMain, state, resetState } from "./helpers/load-main.mjs";
 import { eq, ok, group, done } from "./helpers/assert.mjs";
