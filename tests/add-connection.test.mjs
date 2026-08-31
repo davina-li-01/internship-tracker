@@ -25,7 +25,7 @@ const dom = globalThis.__dom;
 const {
   addConnectionFormHtml, wireAddConnectionForm, openAddConnectionModal,
   openQuickAddChooser, initQuickAddButton,
-  normalizeContact, getHealth, needsAttention
+  normalizeContact, getHealth, needsAttention, bandWords
 } = main;
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -85,140 +85,105 @@ group("There is nowhere to type a conversation");
     !/spoke|conversation|talk about/i.test($(".ac-form").textContent.replace(/No conversation is recorded/i, "")));
 }
 
-// ── The meeting date ─────────────────────────────────────────────────────────
+// ── The meeting date, which is no longer asked for ───────────────────────────
 
-group("When you met is optional, and never guessed");
+// ORB-128 REMOVED THIS FIELD. It was optional, rarely known, and bought exactly
+// one thing — ORB-91's anniversary trigger — at the price of a date input on
+// the first screen of the product. Contacts saved before today keep whatever
+// they have; nothing new is invented for anybody.
+group("The form does not ask when you met");
 {
   const { $ } = mountForm();
-  const field = $(".ac-datemet");
-  ok("the field exists", Boolean(field));
-  ok("it is not required", !field.required);
-  ok("it starts empty rather than defaulting to today", field.value === "");
-  ok("the label says optional",
-    /optional/i.test($("label[for=acDateMet]").textContent));
-  ok("and the hint says blank is allowed",
-    /do not remember/i.test($(".ac-form").textContent));
+  eq("there is no date field", $(".ac-datemet"), null);
+  eq("nor a label left behind for it", $("label[for=acDateMet]"), null);
+  ok("and nothing on the form asks about meeting them",
+    !/when you met/i.test($(".ac-form").textContent));
 }
 {
   resetState();
   const { host, $ } = mountForm();
   $(".ac-name").value = "No Idea";
   await submit($, host);
-  eq("left blank, it stays blank", state.saves[0].dateMet, "");
-}
-{
-  resetState();
-  const { host, $ } = mountForm();
-  $(".ac-name").value = "Met At A Talk";
-  $(".ac-datemet").value = daysAgo(40);
-  await submit($, host);
-  eq("supplied, it is kept exactly", state.saves[0].dateMet, daysAgo(40));
-  // normalizeContact would otherwise derive lastContacted from it, filing a
-  // meeting as a conversation and putting a contact date on a relationship
-  // where nothing has been said (ORB-75).
-  eq("and it does NOT become a contact date", state.saves[0].lastContacted, "");
+  eq("what is saved carries no meeting date", state.saves[0].dateMet, "");
+  // ORB-75's rule, and the reason removing the field is safe: a meeting was
+  // never a conversation, so there was never a contact date to lose.
+  eq("and no contact date either", state.saves[0].lastContacted, "");
 }
 
-// ── Cadence: they must surface, and must not read as healthy ─────────────────
+// ── Cadence ──────────────────────────────────────────────────────────────────
 
-// ORB-124 REVERSED THIS GROUP, ON PURPOSE.
-//
-// Adding someone used to hand them a seven-day deadline: the grace window was
-// applied to a person with no anchor date, so they landed in "warning" and on
-// Reach out next the instant they were saved. Every add ended in an obligation
-// to message a stranger within the week, which is friction placed exactly where
-// the app most wants the habit to feel cheap.
-//
-// The cadence is the answer now. They are scheduled, counted, and visible on
-// their profile from day one — they simply are not shouted about until the
-// rhythm they were given comes round. `first-contact.test.mjs` holds the other
-// half: once the deadline does pass, they are still on the list.
-group("Someone you have not spoken to is on a cadence, not on the clock");
+// ORB-128. A cadence is something you choose. Monthly used to be selected for
+// you, so every contact arrived on a schedule nobody asked for and a health bar
+// started counting down against it. Two interviews say the schedule is the part
+// people do not want — ORB-126 stopped it nagging, this stops it being assumed.
+group("Nobody gets a schedule they did not ask for");
 
 // The shape the form actually saves, not a re-normalised one. `normalizeContact`
 // falls back to `dateMet` for `lastContacted`, and the add path clears it again
 // afterwards (asserted above) precisely so a meeting is not filed as a
 // conversation. Re-normalising here would put the date back and quietly turn a
-// never-contacted person into a contacted one — the tests would then be checking
-// a state the app never reaches.
+// never-contacted person into a contacted one — the tests would then be
+// checking a state the app never reaches.
 const saved = () => ({
   ...normalizeContact(state.saves[0]),
   lastContacted: state.saves[0].lastContacted
 });
+
+{
+  const { $ } = mountForm();
+  eq("no schedule is what the control starts on", $(".ac-freq").value, "none");
+  ok("and the sentence says so in plain words",
+    /no reminders|kept on file/i.test($(".ac-cadence-text").textContent));
+}
+{
+  resetState();
+  const { host, $ } = mountForm();
+  $(".ac-name").value = "Just A Person";
+  await submit($, host);
+  const c = saved();
+
+  eq("so nothing is saved to count against", c.followUpFrequency, "none");
+  eq("reminders are off", c.reminderEnabled, false);
+  eq("and there is no deadline", c.nextReminder, "");
+  const h = getHealth(c);
+  eq("no health bar at all", h.scheduled, false);
+  eq("which is a real state, not a gap", bandWords(h).label, "Not contacted yet");
+  eq("and they are not on anybody's list", needsAttention([c]).length, 0);
+}
+
+// ORB-124 STILL HOLDS FOR THE PEOPLE WHO DO CHOOSE ONE.
+//
+// Choosing a cadence used to hand over a seven-day deadline rather than the
+// cadence itself: the grace window was applied to a person with no anchor date,
+// so they landed in "warning" and on Reach out next the instant they were
+// saved. The rhythm you picked is the answer, and it starts today.
+group("A cadence you do choose starts today, and is not a seven-day clock");
 {
   resetState();
   const { host, $ } = mountForm();
   $(".ac-name").value = "Grace Case";
+  click($(".ac-adjust"));
+  $(".ac-freq").value = "monthly";
+  $(".ac-freq").dispatchEvent(new dom.window.Event("change", { bubbles: true }));
   await submit($, host);
   const c = saved();
 
-  eq("the deadline is the default cadence, counted from today",
+  eq("the deadline is the cadence, counted from today",
     c.nextReminder, daysAhead(30));
   const h = getHealth(c);
   ok("they are scheduled", h.scheduled);
-  eq("and they read as on schedule — adding someone is not a debt",
+  eq("and they read as on schedule — choosing a rhythm is not a debt",
     h.band, "good");
   eq("so they do not appear in Reach out next", needsAttention([c]).length, 0);
 }
-{
-  // `dateMet` must not shorten the cadence in either direction. Met yesterday
-  // still gets the full interval, because the interval is a promise about how
-  // often you intend to talk, not a countdown from the handshake.
-  resetState();
-  const { host, $ } = mountForm();
-  $(".ac-name").value = "Met Yesterday";
-  $(".ac-datemet").value = daysAgo(1);
-  await submit($, host);
-  const c = saved();
 
-  eq("a recent meeting does not shorten the cadence",
-    c.nextReminder, daysAhead(30));
-  eq("on schedule", getHealth(c).band, "good");
-  eq("not listed for a reach-out", needsAttention([c]).length, 0);
-}
-{
-  // The mirror case, and the one ORB-124 most has to protect. Someone met three
-  // months ago has a natural deadline two months in the past, so deriving the
-  // deadline from `dateMet` would greet a brand-new contact as overdue — the
-  // same friction the seven-day window caused, arriving from the other side.
-  resetState();
-  const { host, $ } = mountForm();
-  $(".ac-name").value = "Met In May";
-  $(".ac-datemet").value = daysAgo(90);
-  await submit($, host);
-  const c = saved();
-
-  eq("an old meeting date does not arrive overdue",
-    c.nextReminder, daysAhead(30));
-  eq("on schedule, same as everyone else", getHealth(c).band, "good");
-  eq("and not on the list", needsAttention([c]).length, 0);
-}
-{
-  resetState();
-  const { host, $ } = mountForm();
-  $(".ac-name").value = "On File";
-  click($(".ac-adjust"));
-  $(".ac-freq").value = "none";
-  $(".ac-freq").dispatchEvent(new dom.window.Event("change", { bubbles: true }));
-  await submit($, host);
-  const c = normalizeContact(state.saves[0]);
-  eq("choosing no schedule means no deadline", c.nextReminder, "");
-  eq("and no reminder", c.reminderEnabled, false);
-  eq("they are not chased", needsAttention([c]).length, 0);
-}
-
-// ── ORB-94 ───────────────────────────────────────────────────────────────────
-// This form used to open with "What kind of relationship is this?". Survey 1
-// found 3 of 5 could not answer it at that moment, and the 2 who could are now
-// served by a star (ORB-93). The tier's INTERVAL survives as the default — the
-// form still opens on monthly — it is simply no longer asked about.
 group("The tier question is gone, the cadence it implied is not");
 {
   const { $ } = mountForm();
   ok("no tier select", !$(".ac-tier"));
   ok("and no tier hint", !$(".ac-tier-hint"));
-  ok("the result line still states the default in plain words",
-    /every month/i.test($(".ac-cadence-text").textContent));
+  ok("the result line states the default in plain words",
+    /no reminders|kept on file/i.test($(".ac-cadence-text").textContent));
   ok("the interval control still starts hidden behind Adjust",
     $(".ac-freq-group").classList.contains("hidden"));
 
@@ -238,8 +203,8 @@ group("The tier question is gone, the cadence it implied is not");
   $(".ac-name").value = "Untiered";
   await submit($, host);
   eq("a new connection carries no tier at all", state.saves[0].tier, "");
-  eq("but does carry the interval the default implied",
-    state.saves[0].followUpFrequency, "monthly");
+  eq("and no interval either, since none was chosen (ORB-128)",
+    state.saves[0].followUpFrequency, "none");
   eq("and no star either — that is a thing you say, not a default",
     state.saves[0].starred, false);
 }

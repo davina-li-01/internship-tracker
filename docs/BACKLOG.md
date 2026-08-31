@@ -1494,6 +1494,44 @@ sits on `send.` while inbound uses the root.
 
 ---
 
+## ORB-128 — stop deciding things for people, and say what was done
+
+Shipped 25 Aug. **The first five reports from users who did not build this**,
+and they share one cause: the app decided things on their behalf and then did
+not say what it had decided.
+
+| Report | What was actually happening |
+|---|---|
+| *"Why did it say just met when they talked to them a while ago?"* | The trigger fires on a conversation in the last few days. It was labelled **Just met** — a claim about the relationship, and for someone known for years a false one. Now **Just spoke**. The trigger was always right; the words were not |
+| They wanted to delete a conversation and could not find how | It exists. ORB-64 put it inside the editor so a slip cannot destroy a note, and that still stands — **the entry point was the problem.** `Edit notes` named one of the five things that dialog does, and not the one they wanted. Now `Edit conversation` |
+| A contact saved and they could not see it | **It had saved, twice.** The page re-reads the database before it can redraw — seconds on a free-tier project that has been idle — and since ORB-124 a new contact is *on schedule* rather than overdue, so nothing on the dashboard listed them at all |
+| The form asked when you met | Removed. Optional, rarely known, and it bought exactly one thing: ORB-91's anniversary trigger. Contacts that already carry a date keep it |
+| A health bar for a schedule nobody set | **Monthly was selected for you.** Every contact arrived on a cadence nobody chose, counting down against it |
+
+**The invisible-save one is worth naming as mine.** ORB-124 was right — adding
+someone should not create a deadline — but it also took new contacts off the one
+list the dashboard shows, and I did not notice that the page then has no way to
+show you what you just did. `render(preloaded)` draws from the record the save
+already returned, so the person is on screen before the round trip. `withSaved`
+replaces by id rather than prepending, so logging a conversation against someone
+already in the network does not show them twice.
+
+**No cadence is now the default, and that completes ORB-126.** The clock stopped
+nagging on the 23rd; now it stops being assumed. You get a health bar when you
+ask for one, and it starts the day you ask. Everything ORB-124 established still
+holds for people who do choose a rhythm — it starts today, and it is not a
+seven-day clock.
+
+**Tests.** New `user-reports-25-aug.test.mjs` (22), plus `add-connection.test.mjs`
+rewritten around the two removals. Unlike ORB-127's, this suite **could not be
+run against the old code as a whole** — `withSaved` did not exist there, so the
+module will not load. The two label assertions are failing-first by construction
+(they assert `Just met` and `Edit notes` are absent); the rest is new behaviour
+with no old counterpart. Worth saying rather than implying the same check was
+done. 1822 assertions, 50 suites, green.
+
+---
+
 ## ORB-127 — editing a name saves the name
 
 Reported and fixed 25 Aug. **Two writers, one record, and the wrong one won.**

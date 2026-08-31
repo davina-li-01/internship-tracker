@@ -81,7 +81,13 @@ group("An empty conversation still says so");
     normalizeInteraction({ id: "i1", date: "2026-08-05", type: "email", notes: "" })
   ]);
   ok("no notes is stated", html.includes("no notes"));
-  ok("and it offers to add them", html.includes("Add notes"));
+  // ORB-128. The button says "Edit conversation" now, not "Add notes": Delete
+  // lives inside that dialog (ORB-64), so naming one field of five left anyone
+  // looking to remove a conversation with no reason to open the only thing that
+  // offers it. The prompt to write something is the body text above.
+  ok("and it offers a way in", html.includes("Edit conversation"));
+  ok("with the invitation to write something still on the row",
+    /what did you talk about/i.test(html));
 }
 
 done();

@@ -1977,8 +1977,12 @@ function reachOutReason(contact, health = getHealth(contact)) {
   const caught = openCaptures(contact)[0];
   if (caught) return { kind: "capture", text: caught.text, label: "You noted" };
 
+  // ORB-128. The label said "Just met" and the trigger means "you just spoke" —
+  // reported by a user who saw it on somebody they had known for years. The
+  // trigger is right and was never about meeting anyone: it fires on a
+  // conversation logged in the last few days, whoever they are.
   const met = justMetTrigger(contact);
-  if (met) return { ...met, label: "Just met" };
+  if (met) return { ...met, label: "Just spoke" };
 
   const anniversary = anniversaryTrigger(contact);
   if (anniversary) return { ...anniversary, label: "A year on" };
@@ -2752,7 +2756,12 @@ function renderInteractionTimeline(interactions, files = [], { name = "", dateMe
       // and the button is the furthest thing from Save.
       + '<div class="convo-actions">'
       + '<button class="convo-edit" type="button" data-edit-convo="' + escapeHtml(item.id) + '">'
-      + (item.notes ? 'Edit notes' : 'Add notes') + '</button>'
+      // ORB-128. Was "Edit notes", and Delete lives inside this dialog (ORB-64)
+      // — so somebody looking for a way to remove a conversation had no reason
+      // to open the only thing that offers it. The dialog edits the date, the
+      // type, the notes, the attachment and can delete the whole record, so the
+      // label says that rather than naming one field of five.
+      + 'Edit conversation' + '</button>'
       + '</div>'
       + '</div>';
 
@@ -3302,8 +3311,15 @@ function openQuickAddModal(contacts, onSaved) {
  * and their absence is the feature.
  */
 function addConnectionFormHtml() {
+  // ORB-128. Monthly used to be selected for you, so every contact arrived on a
+  // schedule nobody had asked for and a health bar started counting down
+  // immediately. Two interviews say the schedule is the part people do not
+  // want; ORB-126 stopped it nagging, and this stops it being assumed.
+  //
+  // No cadence is now the default and the honest one. You get a health bar when
+  // you decide you want one, and it starts from the day you decide.
   const freqOptions = Object.entries(FREQUENCY_LABELS)
-    .map(([v, l]) => '<option value="' + v + '"' + (v === "monthly" ? " selected" : "") + '>' + l + '</option>')
+    .map(([v, l]) => '<option value="' + v + '"' + (v === "none" ? " selected" : "") + '>' + l + '</option>')
     .join("");
   const defaultTier = tierForFrequency("monthly");
 
@@ -3336,7 +3352,7 @@ function addConnectionFormHtml() {
     // frequencyForTier are kept for that, and for ORB-86 if it ever revives
     // tiers as a suggestion.
     + '<p class="cadence-result tiny ac-cadence-line">'
-    + '<span class="ac-cadence-text">' + escapeHtml(cadenceSentence(frequencyForTier(defaultTier))) + '</span> '
+    + '<span class="ac-cadence-text">' + escapeHtml(cadenceSentence("none")) + '</span> '
     + '<button type="button" class="link-btn ac-adjust">Adjust</button></p>'
     + '<div class="field-group hidden ac-freq-group">'
     + '<label for="acFrequency">Reach out again?</label>'
@@ -3353,10 +3369,6 @@ function addConnectionFormHtml() {
     // someone. Empty is a valid, permanent value; it is never filled in with
     // today's date, because a guessed date is indistinguishable from a known
     // one once stored.
-    + '<div class="field-group"><label for="acDateMet">When you met '
-    + '<span class="opt-label">(optional)</span></label>'
-    + '<input type="date" id="acDateMet" class="ac-datemet" />'
-    + '<p class="tiny muted">Leave this blank if you do not remember — it is never guessed for you.</p></div>'
 
     + '<p class="error ac-error" aria-live="polite"></p>'
     + '<button type="submit" class="btn ac-submit">Add to my network</button>'
@@ -3521,7 +3533,11 @@ function wireAddConnectionForm(root, getContacts, onSaved) {
       role: $(".ac-role").value,
       company: $(".ac-company").value,
       email: $(".ac-email").value,
-      dateMet: $(".ac-datemet").value || "",
+      // ORB-128. The form no longer asks when you met. It was optional, rarely
+      // known, and it bought one thing — the anniversary trigger — at the cost
+      // of a date field on the first screen of the product. Contacts that
+      // already carry one keep it; nothing new is invented.
+      dateMet: "",
       // No tier. ORB-94 removed the question, and recording the default as
       // though it were an answer is exactly what would rot ORB-86's evidence.
       followUpFrequency: frequency,
@@ -4328,6 +4344,17 @@ function openQuickAddChooser(contacts, onSaved) {
   modal.querySelector("#chooseAddConnection").focus();
 }
 
+/**
+ * A list with the just-saved contact in it, ready to draw (ORB-128).
+ *
+ * Replaces rather than prepends when the id is already known, so logging a
+ * conversation against an existing person does not put them on screen twice.
+ */
+function withSaved(contacts, saved) {
+  if (!saved || !saved.id) return contacts;
+  return [saved, ...(contacts || []).filter((c) => c.id !== saved.id)];
+}
+
 function initQuickAddButton(getContacts, onSaved) {
   const btn = document.getElementById("quickAddBtn");
   if (!btn) return;
@@ -4755,8 +4782,22 @@ async function initDashboard() {
 
   let cached = [];
 
-  async function render() {
-    const contacts = (await db.getContacts()) || [];
+  /**
+   * ORB-128. `preloaded` is what makes a save feel like it happened.
+   *
+   * Reported twice, from two angles: "someone tried to save a contact but it
+   * didn't", and "the user was not able to immediately see that their contact
+   * was saved." It had saved both times. Two things were hiding it — this
+   * function goes back to the database before it can redraw, and on a free-tier
+   * project that has been idle that is seconds, not milliseconds; and since
+   * ORB-124 a newly added contact is on schedule rather than overdue, so
+   * nothing on this page listed them at all.
+   *
+   * The saved contact is already in hand when `onSaved` fires, so it is drawn
+   * from that immediately. The next real load reconciles it.
+   */
+  async function render(preloaded) {
+    const contacts = preloaded || (await db.getContacts()) || [];
     cached = contacts;
 
     if (!contacts.length) {
@@ -4876,7 +4917,8 @@ async function initDashboard() {
   // Lets the calendar review modal refresh whatever page it was opened from,
   // so newly logged meetings appear without a reload (ORB-15).
   window.__orbitRefresh = render;
-  initQuickAddButton(() => cached, render);
+  // Draw the person the moment they exist, then let the next load confirm it.
+  initQuickAddButton(() => cached, (saved) => render(withSaved(cached, saved)));
 }
 
 // ── My Network ────────────────────────────────────────────────────────────────
@@ -4959,11 +5001,17 @@ async function initMyNetwork() {
   // floating button, deliberately: a fifth entry point with its own behaviour is
   // how four ways to add a contact became impossible to reason about.
   document.getElementById("networkAddBtn")
-    ?.addEventListener("click", () => openQuickAddChooser(cached, load));
+    ?.addEventListener("click", () => openQuickAddChooser(cached, (saved) => {
+      if (saved) { cached = withSaved(cached, saved); render(); }
+      return load();
+    }));
 
   await load();
   window.__orbitRefresh = load;
-  initQuickAddButton(() => cached, load);
+  initQuickAddButton(() => cached, (saved) => {
+    if (saved) { cached = withSaved(cached, saved); render(); }
+    return load();
+  });
 }
 
 // ── Networking Log ────────────────────────────────────────────────────────────

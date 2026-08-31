@@ -180,7 +180,7 @@ const EXPORTS = [
   "conversationWidgetHtml", "wireConversationWidget",
   // adding a person with no conversation (ORB-73)
   "addConnectionFormHtml", "wireAddConnectionForm", "openAddConnectionModal",
-  "openQuickAddChooser", "openQuickAddModal", "initQuickAddButton",
+  "openQuickAddChooser", "openQuickAddModal", "initQuickAddButton", "withSaved",
   // attachments
   "isAllowedAttachment", "isImageFile", "ATTACH_ACCEPT",
   // integrations
