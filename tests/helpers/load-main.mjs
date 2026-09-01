@@ -144,7 +144,10 @@ const EXPORTS = [
   // the star (ORB-93)
   "starButtonHtml", "toggleStar", "STARRED_FILTER",
   // failure language reserved for the starred (ORB-54)
-  "DORMANT_META", "FIRST_CONTACT_META", "bandWords",
+  "DORMANT_META", "FIRST_CONTACT_META", "WORKING_META", "bandWords",
+  // relationships that run on a circumstance, not a clock (ORB-130, ORB-131)
+  "currentTrip", "setCurrentTrip", "inTownTrigger", "tripBarHtml",
+  "wireTripBar", "placeDatalist",
   // catching a thought in one gesture (ORB-81)
   "captureFormHtml", "wireCaptureForm", "openCaptureModal", "openCaptures",
   "normalizeFollowUpItem", "FOLLOWUP_SOURCES",

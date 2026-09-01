@@ -1124,8 +1124,23 @@ function getHealth(contact) {
   // and the band can never be computed from different inputs.
   const starred = contact.starred === true;
 
+  // ORB-130. Checked BEFORE the cadence, because it is not a cadence that has
+  // been satisfied — it is a relationship the question does not apply to. You
+  // are in the same standup. A countdown here does not merely say nothing
+  // useful, it reports drift between two people who spoke an hour ago.
+  //
+  // Reported as `scheduled` with a full bar on purpose: this is a deliberate
+  // state, and dropping it into "No schedule" would file the healthiest
+  // relationships you have under "not set up". No new band, though — ORB-75's
+  // rule holds, and the words come from bandWords like the other two overrides.
+  if (contact.workingTogether === true) {
+    return { scheduled: true, pct: 100, band: "good", tone: "good", elapsed,
+             interval: 0, daysLeft: null, grace: false, firstContact, starred,
+             working: true };
+  }
+
   if (!interval || !contact.reminderEnabled) {
-    return { scheduled: false, pct: 0, band: "none", tone: "none", elapsed, interval: 0, daysLeft: null, grace: false, firstContact, starred };
+    return { scheduled: false, pct: 0, band: "none", tone: "none", elapsed, interval: 0, daysLeft: null, grace: false, firstContact, starred, working: false };
   }
 
   // `elapsed === null` means there is no date to count from — someone was put on
@@ -1182,7 +1197,7 @@ function getHealth(contact) {
   // hiding the person.
   const tone = band === "critical" && !starred ? "dormant" : band;
 
-  return { scheduled: true, pct, band, tone, elapsed, interval, daysLeft, grace, firstContact, starred };
+  return { scheduled: true, pct, band, tone, elapsed, interval, daysLeft, grace, firstContact, starred, working: false };
 }
 
 /**
@@ -1277,7 +1292,25 @@ const DORMANT_META = {
   icon: "◇"
 };
 
+/**
+ * Already in touch, so there is nothing to count (ORB-130).
+ *
+ * Third override on the band vocabulary, after ORB-75's and ORB-54's, and for
+ * the same reason all three exist: the band is right and the word is wrong.
+ * "In touch" would be true but says the cadence is being met; this says there
+ * is no cadence and none is wanted.
+ */
+const WORKING_META = {
+  label: "Working together",
+  short: "Working together",
+  icon: "◈"
+};
+
 function bandWords(health) {
+  // Ahead of firstContact: you can be working with somebody you have never
+  // logged a conversation with, and "Not contacted yet" would be absurd about
+  // a person you are in a standup with.
+  if (health?.working) return WORKING_META;
   if (health?.firstContact) return FIRST_CONTACT_META;
   if (health?.tone === "dormant") return DORMANT_META;
   return BAND_META[health.band];
@@ -1529,6 +1562,16 @@ function healthBarHtml(health) {
     return '<div class="health health-none">'
       + '<span class="health-label muted"><span class="health-icon" aria-hidden="true">'
       + meta.icon + '</span> ' + meta.label + '</span>'
+      + '</div>';
+  }
+  // ORB-130. No countdown exists, so there is nothing to phrase as one. Said
+  // as a fact about how you are in touch rather than left blank, which would
+  // read as a value that failed to load.
+  if (health.working) {
+    return '<div class="health health-good health-working">'
+      + '<span class="health-label"><span class="health-icon" aria-hidden="true">'
+      + meta.icon + '</span> ' + meta.label + '</span>'
+      + '<span class="health-detail muted">no schedule needed</span>'
       + '</div>';
   }
   const days = Math.abs(health.daysLeft);
@@ -1971,9 +2014,127 @@ function anniversaryTrigger(contact, today = todayDateString()) {
  * The order of the checks is the ranking ORB-92 sorts by, so there is one list
  * rather than two that can disagree.
  */
-const REACH_OUT_REASONS = ["capture", "just-met", "anniversary", "first-contact", "elapsed"];
+/**
+ * Being somewhere is a reason, and it expires (ORB-131).
+ *
+ * Interview 1: three of the five people named live in Hawaii, and contact with
+ * them clusters entirely around being physically home — "I love just meeting up
+ * with them in person." A cadence is exactly wrong for that shape. It never
+ * fires on the one week that matters and fires constantly on the fifty that do
+ * not, so the person learns to ignore it in both.
+ *
+ * WHERE YOU ARE IS TOLD, NOT DETECTED. No geolocation, no IP guessing. The
+ * match is one string you typed about a contact against one string you typed
+ * about yourself, which is crude and is the point: both came from the same
+ * person, so they mean the same thing.
+ *
+ * AND IT ENDS. `until` is asked for because a trip with no end is a toggle, and
+ * a toggle nobody remembers to switch off fires for ever — which is the nagging
+ * ORB-126 spent a day taking out. A blank end date is still allowed, for "I
+ * live here", and that is a thing you say deliberately.
+ */
+function currentTrip(prefs) {
+  const place = String(prefs?.current_location || "").trim();
+  if (!place) return null;
+  const until = String(prefs?.location_until || "").slice(0, 10);
+  if (until && until < todayDateString()) return null;
+  return { place, until };
+}
 
-function reachOutReason(contact, health = getHealth(contact)) {
+function sameePlace(a, b) {
+  return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+}
+
+/**
+ * Where you are, held for the page (ORB-131).
+ *
+ * Module state, which needs justifying. The alternative is threading a trip
+ * through `reachOutReason` → `reachOutPromptHtml` → `personRowHtml` →
+ * `needsAttention` and four call sites, to carry one fact that is the same for
+ * every contact on the page and changes only when you tell it so. That is a lot
+ * of plumbing for a value with no per-contact meaning.
+ *
+ * It is set once per page load from preferences, and every reader takes it as a
+ * default parameter — so a test can pass a trip explicitly and never depends on
+ * whatever a previous test left behind.
+ */
+let currentTripState = null;
+
+/**
+ * "Where are you?" — one line on the dashboard (ORB-131).
+ *
+ * Two states rather than a form that is always open. Once you have said where
+ * you are it collapses to a sentence and a way out, because a text input asking
+ * your location on every page load is a question nobody wants asked twice.
+ */
+function tripBarHtml(prefs, contacts) {
+  const trip = currentTrip(prefs);
+  if (trip) {
+    const here = (contacts || []).filter((c) => sameePlace(c.location, trip.place));
+    return '<div class="trip-bar trip-on">'
+      + '<p class="trip-line"><span class="trip-pin" aria-hidden="true">◎</span> '
+      + 'You are in <strong>' + escapeHtml(trip.place) + '</strong>'
+      + (trip.until ? ' until ' + escapeHtml(formatDate(trip.until)) : '')
+      + ' · ' + here.length + (here.length === 1 ? ' person' : ' people') + ' here'
+      + '</p>'
+      + '<button type="button" class="link-btn" id="tripClear">Not any more</button>'
+      + '</div>';
+  }
+  return '<div class="trip-bar">'
+    + placeDatalist(contacts, "tripPlaces")
+    + '<form class="trip-form">'
+    + '<label for="tripPlace" class="trip-label">Somewhere different this week?</label>'
+    + '<div class="trip-row">'
+    + '<input type="text" id="tripPlace" list="tripPlaces" placeholder="Hawaii"'
+    + ' aria-label="Where you are" />'
+    + '<input type="date" id="tripUntil" aria-label="Until when" />'
+    + '<button type="submit" class="btn btn-sm">I am here</button>'
+    + '</div>'
+    + '<p class="tiny muted">People you have put in that place come to the top of '
+    + 'Reach out next while you are there.</p>'
+    + '</form>'
+    + '</div>';
+}
+
+function wireTripBar(root, prefs, onChanged) {
+  root.querySelector("#tripClear")?.addEventListener("click", async () => {
+    await db.savePreferences({ current_location: "", location_until: null });
+    if (onChanged) await onChanged();
+  });
+  root.querySelector(".trip-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const place = root.querySelector("#tripPlace").value.trim();
+    if (!place) return;
+    // An end date is asked for, not required. A trip with no end is a toggle,
+    // and one nobody remembers to switch off nags for ever (ORB-126) — but
+    // "I live here" is a real answer and refusing it would be worse.
+    const until = root.querySelector("#tripUntil").value || null;
+    await db.savePreferences({ current_location: place, location_until: until });
+    if (onChanged) await onChanged();
+    showToast("You are in " + place + ". People there come up first.");
+  });
+}
+
+function setCurrentTrip(prefs) {
+  currentTripState = currentTrip(prefs);
+  return currentTripState;
+}
+
+function inTownTrigger(contact, trip = currentTripState) {
+  if (!trip || !sameePlace(contact?.location, trip.place)) return null;
+  return {
+    kind: "in-town",
+    text: "You are in " + trip.place + " and so is "
+      + firstNameOf(contact.name) + "."
+  };
+}
+
+// "in-town" ranks second: a caught thought is something you decided, which
+// outranks everything, but a trip closes — the others will still be true next
+// month and this will not.
+const REACH_OUT_REASONS = ["capture", "in-town", "just-met", "anniversary", "first-contact", "elapsed"];
+
+function reachOutReason(contact, health = getHealth(contact), trip = currentTripState) {
   const caught = openCaptures(contact)[0];
   if (caught) return { kind: "capture", text: caught.text, label: "You noted" };
 
@@ -1981,6 +2142,9 @@ function reachOutReason(contact, health = getHealth(contact)) {
   // reported by a user who saw it on somebody they had known for years. The
   // trigger is right and was never about meeting anyone: it fires on a
   // conversation logged in the last few days, whoever they are.
+  const inTown = inTownTrigger(contact, trip);
+  if (inTown) return { ...inTown, label: "You are both here" };
+
   const met = justMetTrigger(contact);
   if (met) return { ...met, label: "Just spoke" };
 
@@ -2021,7 +2185,16 @@ function normalizeContact(contact = {}) {
   const latestDate = sortedInteractions[0]?.date || "";
   const lastContacted = contact.lastContacted || latestDate || contact.dateMet || "";
   let nextReminder = contact.nextReminder || "";
-  if (!nextReminder && frequency !== "none") {
+  // ORB-130. Somebody you work with has no deadline, and this is the line that
+  // enforces it. Clearing `nextReminder` in the toggle's handler was not enough:
+  // `followUpFrequency` is deliberately kept so unticking restores the rhythm,
+  // and this block would helpfully invent a new deadline from it on the very
+  // same save. The digest reads `next_reminder` in SQL and never calls
+  // getHealth, so that left a profile reading "Working together" and an email
+  // saying they had gone quiet — ORB-69's split, reintroduced by a default.
+  if (contact.workingTogether === true) {
+    nextReminder = "";
+  } else if (!nextReminder && frequency !== "none") {
     // Covers back-filling someone you met months ago: the cadence alone would
     // put the deadline in the past, so they get the grace window instead.
     nextReminder = firstDeadlineFor(lastContacted, frequency);
@@ -2047,6 +2220,13 @@ function normalizeContact(contact = {}) {
     // moment something derives this, ORB-57's first metric stops measuring
     // anything, because every contact would look deliberately marked.
     starred: contact.starred === true,
+    // ORB-130. A circumstance, not a schedule: you are already in touch, so
+    // there is nothing for a cadence to measure. Stored, never inferred — the
+    // app cannot see your Slack and guessing would be worse than not knowing.
+    workingTogether: contact.workingTogether === true,
+    // ORB-131. Free text. Matched against where YOU say you are, so both
+    // strings coming from the same person is the whole mechanism.
+    location: (contact.location || "").trim(),
     nextReminder,
     reminderEnabled: frequency !== "none" ? (contact.reminderEnabled !== false) : false,
     notes: (contact.notes || "").trim(),
@@ -2778,6 +2958,22 @@ function renderInteractionTimeline(interactions, files = [], { name = "", dateMe
     // opening the newest by default just pushed everything else down the page.
     return '<details class="convo">' + summary + body + attachments + '</details>';
   }).join("\n");
+}
+
+/**
+ * Every place already used in the network (ORB-131).
+ *
+ * Same shape as companyDatalist and here for a sharper reason: the in-town
+ * trigger is a string comparison, so two spellings of one place are two places
+ * and the prompt silently never fires. Suggesting what exists is cheaper than
+ * normalising names nobody agrees on.
+ */
+function placeDatalist(contacts, id) {
+  const places = [...new Set((contacts || [])
+    .map((c) => (c.location || "").trim()).filter(Boolean))].sort();
+  return '<datalist id="' + id + '">'
+    + places.map((p) => '<option value="' + escapeHtml(p) + '"></option>').join("")
+    + '</datalist>';
 }
 
 /** <datalist> of every company already in the network, for autocomplete. */
@@ -5009,9 +5205,15 @@ async function initDashboard() {
    * The saved contact is already in hand when `onSaved` fires, so it is drawn
    * from that immediately. The next real load reconciles it.
    */
+  let prefs = {};
+
   async function render(preloaded) {
     const contacts = preloaded || (await db.getContacts()) || [];
     cached = contacts;
+    // ORB-131. Read before anything computes a reason, because where you are
+    // decides who is at the top of the list.
+    prefs = (await db.getPreferences()) || {};
+    setCurrentTrip(prefs);
 
     if (!contacts.length) {
       root.innerHTML = '<div class="card dash-empty">'
@@ -5107,7 +5309,9 @@ async function initDashboard() {
         : '<p class="empty">You are current with everyone on a schedule. Nice work.</p>')
       + '</section>';
 
-    root.innerHTML = kpiHtml + captureHtml + chartsHtml + attentionHtml;
+    root.innerHTML = kpiHtml + tripBarHtml(prefs, contacts)
+      + captureHtml + chartsHtml + attentionHtml;
+    wireTripBar(root, prefs, () => render());
     wirePersonRows(root, contacts, render);
     wireCaptureForm(root, () => cached, render);
     // Renders from cache immediately; the background sync refreshes it.
@@ -5157,6 +5361,9 @@ async function initMyNetwork() {
 
   async function load() {
     cached = (await db.getContacts()) || [];
+    // ORB-131. My Network shows the same reasons the dashboard does, so it has
+    // to know the same thing about where you are.
+    setCurrentTrip((await db.getPreferences()) || {});
     bar.setOptions("industry", [...new Set(cached.map((c) => c.industry).filter(Boolean))].sort());
     render();
   }
@@ -5399,6 +5606,27 @@ async function initContactPage() {
     const isOverridden = (c.followUpFrequency || "none") !== frequencyForTier(shownTier);
     const pastCompanies = (c.companyHistory || []).filter((co) => co !== c.company);
 
+    // The interval picker, or nothing at all (ORB-130). Assembled here rather
+    // than wrapping fifteen lines of template in a ternary, which is how a
+    // stray '' ends up concatenated into a page.
+    //
+    // The result line shows the cadence's consequence without a second control
+    // competing with it. An interval the tier would not have produced was
+    // chosen on purpose, so it opens expanded rather than hiding a deliberate
+    // override behind a link.
+    const cadenceControls = c.workingTogether ? '' : (
+      '<p class="cadence-result tiny" id="cpCadenceLine">'
+      + '<span id="cpCadenceText">' + escapeHtml(cadenceSentence(c.followUpFrequency)) + '</span> '
+      + '<button type="button" class="link-btn" id="cpAdjust">Adjust</button></p>'
+      + '<div class="field-group' + (isOverridden ? '' : ' hidden') + '" id="cpFreqGroup">'
+      + '<label for="cpFrequency">Reach out again?</label>'
+      + '<select id="cpFrequency">' + freqOptions + '</select></div>'
+      + '<div class="field-group' + (isCustomFreq && isOverridden ? '' : ' hidden') + '" id="cpCustomDaysGroup">'
+      + '<label for="cpCustomDays">Every how many days?</label>'
+      + '<input type="number" id="cpCustomDays" min="1" max="365" placeholder="30" value="'
+      + escapeHtml(isCustomFreq ? c.followUpFrequency.slice(7) : "") + '" /></div>'
+    );
+
     root.innerHTML =
       '<a href="contacts.html" class="btn btn-secondary back-btn">← Back to My Network</a>'
 
@@ -5448,6 +5676,18 @@ async function initContactPage() {
           + '<span class="opt-label">(optional)</span></label>'
           + '<input type="text" id="cpIndustry" list="cpIndustries" value="' + escapeHtml(c.industry) + '" placeholder="Technology" /></div>'
 
+          // ORB-131. The datalist matters more than it looks: the trigger is a
+          // string match against where YOU say you are, so "Hawaii" and
+          // "Hawai'i" are different places. Offering what is already in the
+          // network is what keeps one spelling.
+          + placeDatalist(allContacts, "cpPlaces")
+          + '<div class="field-group"><label for="cpLocation">Where they are '
+          + '<span class="opt-label">(optional)</span></label>'
+          + '<input type="text" id="cpLocation" list="cpPlaces" value="'
+          + escapeHtml(c.location) + '" placeholder="Hawaii" />'
+          + '<p class="tiny muted">Orbit will bring them up when you say you are '
+          + 'there. Nothing else uses it.</p></div>'
+
           + '<div class="field-group field-multi field-email">'
           + '<div class="field-head"><label>Email</label>'
           + '<button class="field-add" id="cpAddEmail" type="button"'
@@ -5487,7 +5727,8 @@ async function initContactPage() {
           pct: health.scheduled ? health.pct : 0,
           band: health.scheduled ? (health.tone || health.band) : "none",
           caption: bandWords(health).label,
-          sub: !health.scheduled ? "Reach out again?"
+          sub: health.working ? "no schedule needed"
+            : !health.scheduled ? "Reach out again?"
             : health.daysLeft < 0 ? Math.abs(health.daysLeft) + " days over"
             : health.grace ? health.daysLeft + " days to first reach-out"
             : health.daysLeft + " days left"
@@ -5506,25 +5747,24 @@ async function initContactPage() {
       + '</dl>'
       + '</div>'
       + '<div class="reachout-controls">'
-      // The result line, so the tier's consequence is visible without a second
-      // control competing with it. An interval that does not match the tier's
-      // default is an override the user set deliberately, so it opens expanded
-      // rather than hiding a disagreement behind a link.
-      + '<p class="cadence-result tiny" id="cpCadenceLine">'
-      + '<span id="cpCadenceText">' + escapeHtml(cadenceSentence(c.followUpFrequency)) + '</span> '
-      + '<button type="button" class="link-btn" id="cpAdjust">Adjust</button></p>'
-      + '<div class="field-group' + (isOverridden ? '' : ' hidden') + '" id="cpFreqGroup">'
-      + '<label for="cpFrequency">Reach out again?</label>'
-      + '<select id="cpFrequency">' + freqOptions + '</select></div>'
-      + '<div class="field-group' + (isCustomFreq && isOverridden ? '' : ' hidden') + '" id="cpCustomDaysGroup">'
-      + '<label for="cpCustomDays">Every how many days?</label>'
-      + '<input type="number" id="cpCustomDays" min="1" max="365" placeholder="30" value="'
-      + escapeHtml(isCustomFreq ? c.followUpFrequency.slice(7) : "") + '" /></div>'
+      // ORB-130. Above the cadence, and it hides it: this is not one option
+      // among the intervals, it is the answer to a different question. Ticking
+      // it while a schedule exists switches the reminders off and clears the
+      // deadline (see the handler) — the digest reads next_reminder in SQL and
+      // never calls getHealth, so a bar saying "working together" while an
+      // email says "long silence" is the ORB-69 split all over again.
+      + '<label class="working-toggle">'
+      + '<input type="checkbox" id="cpWorking"' + (c.workingTogether ? ' checked' : '') + ' /> '
+      + '<span>We work together — no schedule needed</span>'
+      + '</label>'
+      + cadenceControls
       + '<div class="reachout-actions">'
-      + '<button class="btn" id="cpSaveReminderBtn" type="button">Save</button>'
+      + (c.workingTogether ? ''
+        : '<button class="btn" id="cpSaveReminderBtn" type="button">Save</button>')
       // Same one-click gesture as the dashboard rows (ORB-13), so the habit
-      // learned there still works here. Only meaningful on a cadence.
-      + (health.scheduled
+      // learned there still works here. Only meaningful on a cadence — and
+      // "I reached out" says nothing about somebody you are in Slack with.
+      + (health.scheduled && !health.working
         ? '<button class="btn btn-secondary" id="cpMarkDoneBtn" type="button">✓ Reached out</button>'
         : '')
       + '<button class="btn btn-secondary" id="cpOpenReminderBtn" type="button">Draft a message</button>'
@@ -5639,6 +5879,35 @@ async function initContactPage() {
       await renderPage();
       root.querySelector("#cpRole")?.focus();
     };
+    /**
+     * ORB-130. Ticking this clears the schedule rather than sitting beside it.
+     *
+     * `getHealth` is not the only thing that decides who gets contacted. The
+     * digest queries `next_reminder` in SQL, server-side, and never calls it —
+     * so leaving a deadline behind would show "Working together" on the profile
+     * while an email arrived saying it had been a long silence. That is ORB-69's
+     * bug exactly, and the fix is the same: make the stored data agree.
+     *
+     * `followUpFrequency` is KEPT, so unticking restores the rhythm you had
+     * instead of making you remember what it was — counted from today, since
+     * the months in between were not a lapse.
+     */
+    $("#cpWorking")?.addEventListener("change", async (e) => {
+      const on = e.target.checked;
+      await save((cur) => ({
+        ...cur,
+        workingTogether: on,
+        reminderEnabled: on ? false : (cur.followUpFrequency || "none") !== "none",
+        nextReminder: on ? ""
+          : (cur.followUpFrequency || "none") === "none" ? ""
+          : calculateNextReminder(todayDateString(), cur.followUpFrequency)
+      }));
+      await renderPage();
+      showToast(on
+        ? "No schedule for " + firstNameOf(c.name) + " — you are already in touch."
+        : "Schedule back on for " + firstNameOf(c.name) + ".");
+    });
+
     $("#cpEditBtn")?.addEventListener("click", startEditing);
     // ORB-129. Same gesture as Edit, so there is one way in and not two that
     // could drift apart.
@@ -5658,6 +5927,7 @@ async function initContactPage() {
         role: $("#cpRole").value.trim(),
         company: $("#cpCompany").value.trim(),
         industry: $("#cpIndustry").value.trim(),
+        location: $("#cpLocation")?.value.trim() ?? "",
         emails: readEmailRows()
       };
     }
@@ -5680,6 +5950,7 @@ async function initContactPage() {
         role: form.role,
         company: form.company,
         industry: form.industry,
+        location: form.location,
         emails: form.emails,
         // Set explicitly, because leaving the old value in place made the
         // primary address undeletable: normalizeEmails treats an `email` the
@@ -5829,21 +6100,28 @@ async function initContactPage() {
     }
     wirePastRemovals();
 
+    // ORB-130. None of these exist when the contact is marked as somebody you
+    // work with — the whole cadence block is absent, not hidden. Every listener
+    // below is therefore optional, and the guards are the ticket rather than
+    // defensive noise: the first version of this crashed on the re-render
+    // immediately after ticking the box.
     const freqSelect = $("#cpFrequency");
     const customGroup = $("#cpCustomDaysGroup");
     const freqGroup = $("#cpFreqGroup");
 
     /** The interval the controls currently describe, in stored form. */
     const chosenFrequency = () => {
+      if (!freqSelect) return "none";
       if (freqSelect.value !== "custom") return freqSelect.value;
       const days = parseInt($("#cpCustomDays")?.value, 10);
       return (!Number.isNaN(days) && days > 0) ? "custom:" + days : "none";
     };
     const refreshCadenceLine = () => {
-      $("#cpCadenceText").textContent = cadenceSentence(chosenFrequency());
+      const line = $("#cpCadenceText");
+      if (line) line.textContent = cadenceSentence(chosenFrequency());
     };
 
-    freqSelect.addEventListener("change", () => {
+    freqSelect?.addEventListener("change", () => {
       customGroup.classList.toggle("hidden", freqSelect.value !== "custom");
       refreshCadenceLine();
     });
@@ -5852,13 +6130,13 @@ async function initContactPage() {
     // The override is one click away rather than a second question competing
     // with the first. Once open it stays open — hiding a control someone just
     // asked for would be worse than the clutter it was meant to avoid.
-    $("#cpAdjust").addEventListener("click", () => {
+    $("#cpAdjust")?.addEventListener("click", () => {
       freqGroup.classList.remove("hidden");
       customGroup.classList.toggle("hidden", freqSelect.value !== "custom");
       freqSelect.focus();
     });
 
-    $("#cpSaveReminderBtn").addEventListener("click", async () => {
+    $("#cpSaveReminderBtn")?.addEventListener("click", async () => {
       let newFreq = freqSelect.value;
       if (newFreq === "custom") {
         const days = parseInt($("#cpCustomDays")?.value, 10);
@@ -5913,7 +6191,7 @@ async function initContactPage() {
       await markReachedOut(fresh, renderPage);
     });
 
-    $("#cpOpenReminderBtn").addEventListener("click", async () => {
+    $("#cpOpenReminderBtn")?.addEventListener("click", async () => {
       const fresh = await freshContact();
       if (fresh) await showReminderModal(fresh, renderPage);
     });

@@ -2793,6 +2793,34 @@ body.dark .file-card-link { color: var(--accent); }
 .cw-form > .field-group { margin-top: 0.7rem; }
 .cw-form .cw-submit { margin-top: 0.8rem; }
 
+/* ── Working together (ORB-130) ──────────────────────────────── */
+/* Above the interval picker and visually separated from it: it is not one
+   option among the cadences, it is the answer to a different question. */
+.working-toggle {
+  display: flex; align-items: center; gap: 0.5rem; cursor: pointer;
+  font-size: 0.85rem; margin-bottom: 0.6rem; padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--input-border);
+}
+.working-toggle input { accent-color: var(--primary); width: 15px; height: 15px; flex-shrink: 0; }
+.health-working .health-detail { font-size: 0.75rem; }
+
+/* ── Where you are (ORB-131) ─────────────────────────────────── */
+.trip-bar {
+  margin-bottom: var(--space-md); padding: 0.7rem 0.9rem;
+  border: 1px dashed var(--input-border); border-radius: var(--radius-input);
+  background: var(--input-bg);
+}
+/* Once answered it stops being a form. A text box asking your location on every
+   page load is a question nobody wants asked twice. */
+.trip-on { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; border-style: solid; }
+.trip-line { margin: 0; font-size: 0.875rem; }
+.trip-pin { color: var(--primary-deep); }
+.trip-label { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 0.4rem; }
+.trip-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.trip-row input[type="text"] { flex: 1 1 10rem; min-width: 0; }
+.trip-row input[type="date"] { flex: 0 1 10rem; }
+.trip-bar .tiny { margin: 0.4rem 0 0; }
+
 /* ── Which one did you mean (ORB-129) ────────────────────────── */
 /* Options, not a list: each one is a button because each one is a decision. */
 .capture-disambig { margin-top: 0.6rem; }

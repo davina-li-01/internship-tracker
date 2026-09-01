@@ -210,8 +210,14 @@ group("The fallback does not shout");
 // ── ORB-92 ────────────────────────────────────────────────────────────────────
 group("Trigger before timer");
 {
+  // ORB-131 inserted "in-town" second. A caught thought is something you
+  // decided, so it still outranks everything; a trip is next because it closes
+  // — the others will still be true next month and being in Hawaii will not.
   eq("the reason list and the sort order are one array",
-    REACH_OUT_REASONS.join(","), "capture,just-met,anniversary,first-contact,elapsed");
+    REACH_OUT_REASONS.join(","),
+    "capture,in-town,just-met,anniversary,first-contact,elapsed");
+  ok("a trip outranks a fresh conversation, because it expires",
+    reasonRank({ kind: "in-town" }) < reasonRank({ kind: "just-met" }));
   ok("a caught thought outranks a fresh conversation",
     reasonRank({ kind: "capture" }) < reasonRank({ kind: "just-met" }));
   ok("and the clock is last", reasonRank({ kind: "elapsed" }) === REACH_OUT_REASONS.length - 1);

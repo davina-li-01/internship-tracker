@@ -1494,6 +1494,78 @@ sits on `send.` while inbound uses the root.
 
 ---
 
+## ORB-130 + ORB-131 — two relationships that do not run on a clock
+
+Shipped 1 Sep. **Migration `014_working_and_location.sql` is required and has
+not been run yet** — the app degrades gracefully until it is (same
+`isMissingColumn` fallback as `starred`), which means both features silently do
+nothing and the console says why.
+
+A cadence answers *how often should I contact this person*. By 1 September two
+interviews and the app's owner had all said that is the wrong question for most
+people. These are the two circumstances that replace it — one permanent, one
+temporary.
+
+### ORB-130 — working together
+
+Davina's own report: the health bar was reporting drift between two people who
+Slack each other every day.
+
+`workingTogether` is checked in `getHealth` **before** the cadence, because this
+is not a schedule being met — it is a relationship the question does not apply
+to. It reports as `scheduled` with a full bar rather than falling into *No
+schedule*, which would file the healthiest relationships you have under *not set
+up*. **No fifth band**: ORB-75's rule holds, and the words come from
+`WORKING_META` exactly the way ORB-54's and ORB-75's overrides do.
+
+**The clearing lives in `normalizeContact`, not just in the toggle.** That was a
+real bug caught by a smoke test rather than by the suite: the handler cleared
+`next_reminder`, and then `normalizeContact` invented a new one from the
+`followUpFrequency` that is deliberately kept so unticking restores your rhythm.
+The digest reads `next_reminder` in SQL and never calls `getHealth` — so for one
+save that was a profile reading *Working together* while an email said they had
+gone quiet. **ORB-69's split, reintroduced by a default.**
+
+A caught thought still surfaces them. This suppresses the clock, not everything
+you meant to say.
+
+### ORB-131 — where they are, and where you are
+
+**The first research finding to become a feature.** Interview 1: three of the
+five people Davina named live in Hawaii, and contact with them clusters entirely
+around being physically home — *"I love just meeting up with them in person."* A
+cadence is precisely wrong for that shape. It never fires on the week that
+matters and fires constantly on the fifty that do not, so you learn to ignore it
+in both.
+
+**Where you are is told, not detected.** No geolocation, no IP guessing.
+`contacts.location` matched case-insensitively against
+`preferences.current_location` — two strings typed by the same person, which is
+crude and is the mechanism. A datalist of places already in the network is what
+keeps them the same string; two spellings of one place are two places and the
+prompt silently never fires.
+
+**The trip ends.** `location_until` is asked for because a toggle nobody
+remembers to switch off fires for ever, which is the nagging ORB-126 spent a day
+removing. A blank end date is still allowed — *I live here* is a real answer.
+
+New reason `in-town`, **ranked second**. A caught thought is something you
+decided and outranks everything; a trip is next because it closes, and every
+other trigger will still be true next month. It fires with **no cadence at all**,
+which is the entire point: those three Hawaii contacts have none.
+
+### One thing worth flagging
+
+The profile crashed on the re-render immediately after ticking the box —
+`#cpAdjust` and friends do not exist when the cadence block is absent, and they
+were being wired unguarded. Found by a throwaway smoke script, not by the suite,
+which is a fair reminder that 1939 green assertions are not the same as having
+opened the page.
+
+**Tests.** New `circumstance.test.mjs` (50). 1939 assertions, 52 suites, green.
+
+---
+
 ## ORB-129 — a caught thought about someone new becomes a connection
 
 Shipped 1 Sep. **The capture bar was refusing the case it exists for.**

@@ -82,7 +82,9 @@ export async function getPreferences() {
 // your_email and phone are newer columns. If the database predates them the
 // upsert fails with PGRST204; rather than losing the whole save we drop the
 // offending key and retry, so an unrun migration costs one field, not all of them.
-const OPTIONAL_PREF_COLUMNS = ["your_email", "phone", "avatar_url", "email_reminders", "timezone", "integrations"];
+const OPTIONAL_PREF_COLUMNS = ["your_email", "phone", "avatar_url", "email_reminders", "timezone", "integrations",
+  // ORB-131, migration 014. Where you are right now, and until when.
+  "current_location", "location_until"];
 
 export async function savePreferences(updates) {
   const userId = await uid();
@@ -142,6 +144,13 @@ let tierSupported = true;
 // anyone rather than like a missing migration (ORB-93).
 let starredSupported = true;
 
+// ORB-130 and ORB-131, migration 014. Same fallback again: the app has to work
+// on the day the code ships and before the SQL is run, and a save that silently
+// dropped the whole contact because one column is missing would be the worst
+// version of this pattern.
+let workingSupported = true;
+let locationSupported = true;
+
 /**
  * True when `error` says this specific column is missing.
  * PostgREST names it: "Could not find the 'phone' column of 'preferences'…".
@@ -170,6 +179,8 @@ export async function saveContact(contact) {
   if (!emailsSupported) delete row.emails;
   if (!tierSupported) delete row.tier;
   if (!starredSupported) delete row.starred;
+  if (!workingSupported) delete row.working_together;
+  if (!locationSupported) delete row.location;
 
   let { data, error } = await upsert(row);
 
@@ -191,6 +202,28 @@ export async function saveContact(contact) {
     );
     starredSupported = false;
     delete row.starred;
+    ({ data, error } = await upsert(row));
+  }
+
+  if (error && workingSupported && isMissingColumn(error, "working_together")) {
+    console.warn(
+      "[DB] contacts.working_together is missing — saving without it, so " +
+      "'we work together' will not persist. To enable it run " +
+      "supabase/migrations/014_working_and_location.sql"
+    );
+    workingSupported = false;
+    delete row.working_together;
+    ({ data, error } = await upsert(row));
+  }
+
+  if (error && locationSupported && isMissingColumn(error, "location")) {
+    console.warn(
+      "[DB] contacts.location is missing — saving without it, so the " +
+      "when-you-are-in-town prompt will never fire. To enable it run " +
+      "supabase/migrations/014_working_and_location.sql"
+    );
+    locationSupported = false;
+    delete row.location;
     ({ data, error } = await upsert(row));
   }
 
@@ -274,6 +307,8 @@ function rowToContact(row) {
     followUpFrequency: row.follow_up_frequency || "none",
     tier: row.tier || "",
     starred: row.starred === true,
+    workingTogether: row.working_together === true,
+    location: row.location || "",
     notes: row.notes || "",
     adviceGiven: row.advice_given || "",
     interests: row.interests || "",
@@ -313,6 +348,9 @@ function contactToRow(contact, userId) {
     // ORB-93, migration 013. Written by the user and never by inference — see
     // ORB-86 before anything starts deriving this.
     starred: contact.starred === true,
+    // ORB-130, ORB-131. Both written by the user; neither is ever inferred.
+    working_together: contact.workingTogether === true,
+    location: contact.location || "",
     interactions: contact.interactions || [],
     company_history: contact.companyHistory || [],
     follow_ups: contact.followUps || []
