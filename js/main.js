@@ -3690,6 +3690,13 @@ function captureFormHtml(contacts = []) {
     + '<input type="text" class="capture-thought" maxlength="280"'
     + ' placeholder="What was the thought? (optional)"'
     + ' aria-label="What was the thought? Optional" />'
+    // ORB-129. Says where it goes and what happens to a name nobody recognises,
+    // before you commit rather than after. The old form said neither, and its
+    // answer to an unknown name was to refuse.
+    + '<p class="tiny muted capture-hint">Goes to their talking points. '
+    + 'A name you have not saved yet becomes a new connection.</p>'
+    // Where "is this the Chris you mean?" is asked. Empty until it is needed.
+    + '<div class="capture-disambig" hidden></div>'
     + '<p class="capture-error error" aria-live="polite"></p>'
     + '</form>';
 }
@@ -3701,7 +3708,87 @@ function captureFormHtml(contacts = []) {
  * would need a role, a company and a cadence to be useful, and that is
  * ORB-73's form — this is capturing an INTENTION, not a person.
  */
-function wireCaptureForm(root, getContacts, onSaved) {
+/**
+ * Everyone the typed text could plausibly mean (ORB-129).
+ *
+ * Two ways in, because "Chris" and "chris rule" are both things people type:
+ * the text appears anywhere in the name, OR it matches a first name exactly.
+ * The second is what makes one word find the right person; the first is what
+ * makes half a surname do it.
+ *
+ * An exact full-name match is returned alone. There is nothing to disambiguate
+ * when you have typed somebody's whole name, and asking would be the app
+ * pretending not to understand.
+ */
+function captureCandidates(typed, contacts) {
+  const q = String(typed || "").trim().toLowerCase();
+  if (!q) return [];
+  const all = contacts || [];
+  const exact = all.filter((c) => (c.name || "").trim().toLowerCase() === q);
+  if (exact.length === 1) return exact;
+  return all.filter((c) => {
+    const name = (c.name || "").toLowerCase();
+    return name.includes(q) || firstNameOf(name) === q;
+  });
+}
+
+/**
+ * The one-line "who is this" used wherever two people must be told apart.
+ *
+ * The same shape the profile heading uses, and the same shape the digest builds
+ * server-side. Written once here because ORB-129 needs it in a third place and
+ * a third hand-rolled `[role, company].join(" at ")` is how they drift.
+ */
+/**
+ * Nothing here but a name (ORB-129).
+ *
+ * Deliberately not "has any empty field" — most profiles have some. This is the
+ * specific state a capture creates: somebody you thought of, saved before you
+ * lost the thought, and have not described yet.
+ */
+function profileIsBare(contact) {
+  return !describeContact(contact)
+    && !(contact?.emails || []).length
+    && !(contact?.interactions || []).length
+    && !(contact?.notes || "").trim();
+}
+
+function bareProfileHtml(contact) {
+  const who = firstNameOf(contact?.name);
+  return '<section class="card bare-profile">'
+    + '<h3 class="section-title">All Orbit knows is the name</h3>'
+    + '<p class="muted">You saved ' + escapeHtml(who)
+    + ' from a thought, which was the right thing to do. '
+    + 'Three things are worth adding while you still remember them:</p>'
+    + '<ul class="bare-list">'
+    + '<li><strong>Their role and company</strong> — so a second '
+    + escapeHtml(who) + ' is never a guess, and so a draft has something '
+    + 'to work with.</li>'
+    + '<li><strong>Where you know them from</strong> — put it in the notes. '
+    + 'It is the first thing you will want and the first thing you will '
+    + 'forget.</li>'
+    + '<li><strong>An email</strong> — otherwise reaching out means leaving '
+    + 'Orbit to go and find one.</li>'
+    + '</ul>'
+    + '<p class="tiny muted">A reach-out schedule is optional and there is no '
+    + 'need to set one now. This card goes away on its own.</p>'
+    + '<button class="btn" id="cpFillIn" type="button">Add their details</button>'
+    + '</section>';
+}
+
+function describeContact(contact) {
+  return [contact?.role, contact?.company].map((v) => (v || "").trim())
+    .filter(Boolean).join(" at ");
+}
+
+/** contact.html for one person. Extracted so a test can read it (ORB-108). */
+function contactProfileUrl(id) {
+  return "contact.html?id=" + encodeURIComponent(id);
+}
+
+function wireCaptureForm(root, getContacts, onSaved, {
+  navigate = (url) => { window.location.href = url; }
+} = {}) {
   const form = root.querySelector(".capture-form");
   if (!form) return;
   const $ = (sel) => form.querySelector(sel);
@@ -3767,42 +3854,148 @@ function wireCaptureForm(root, getContacts, onSaved) {
     }
   });
 
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    errEl.textContent = "";
+  const disambigEl = $(".capture-disambig");
 
-    const typed = whoEl.value.trim();
-    const match = chosen
-      || (getContacts() || []).find((c) => (c.name || "").toLowerCase() === typed.toLowerCase());
-    if (!match) {
-      errEl.textContent = typed
-        ? "No one in your network by that name yet."
-        : "Who is this about?";
-      whoEl.focus();
-      return;
-    }
+  const hideDisambig = () => {
+    disambigEl.hidden = true;
+    disambigEl.innerHTML = "";
+  };
 
-    // The name alone is a complete intention, so this is the fallback rather
-    // than a validation error.
-    const text = thoughtEl.value.trim() || ("Reach out to " + match.name);
+  /** The thought, or the name on its own — which is already a whole intention. */
+  const thoughtFor = (name) =>
+    thoughtEl.value.trim() || ("Reach out to " + firstNameOf(name));
+
+  /**
+   * Attach the thought to somebody who already exists.
+   *
+   * Stays on the page: you are mid-thought, the person is already described,
+   * and taking you somewhere would interrupt the one gesture this form exists
+   * to make cheap (ORB-81).
+   */
+  async function captureOnto(match) {
     const saved = await db.saveContact(normalizeContact({
       ...match,
-      followUps: [normalizeFollowUpItem({ text, source: "capture" }), ...(match.followUps || [])]
+      followUps: [
+        normalizeFollowUpItem({ text: thoughtFor(match.name), source: "capture" }),
+        ...(match.followUps || [])
+      ]
     }));
     if (!saved) {
       errEl.textContent = "Could not save that — nothing was recorded.";
       return;
     }
-    whoEl.value = "";
-    thoughtEl.value = "";
-    chosen = null;
-    close();
+    reset();
     // ORB-105. "It is on your list" was the whole problem stated as a
     // reassurance: there are several lists and this named none of them.
     showToast("Noted about " + firstNameOf(match.name)
       + " — it is in Things to bring up next, on their profile.");
     whoEl.focus();
-    if (onSaved) await onSaved();
+    if (onSaved) await onSaved(saved);
+  }
+
+  /**
+   * Somebody new (ORB-129).
+   *
+   * The old form refused here — "No one in your network by that name yet" — so
+   * a thought about anybody not already saved had nowhere to go, which is the
+   * opposite of what a capture is for.
+   *
+   * This one DOES navigate, and the difference from the branch above is the
+   * point: a new contact is a name and nothing else, so the profile is where
+   * the rest of what you know goes, and now is when you know it. Everything
+   * else about them is left blank rather than guessed — no cadence (ORB-128),
+   * no meeting date, no conversation.
+   */
+  async function captureAsNew(name) {
+    const fresh = normalizeContact({
+      name,
+      followUpFrequency: "none",
+      reminderEnabled: false,
+      interactions: [],
+      followUps: [normalizeFollowUpItem({ text: thoughtFor(name), source: "capture" })]
+    });
+    // normalizeContact falls back to dateMet for lastContacted; there is no
+    // dateMet here, but this is stated rather than assumed (ORB-75).
+    fresh.lastContacted = "";
+    const saved = await db.saveContact(fresh);
+    if (!saved) {
+      errEl.textContent = "Could not save that — nothing was recorded.";
+      return;
+    }
+    reset();
+    showToast(firstNameOf(name) + " added, and your note is on their profile.");
+    if (onSaved) await onSaved(saved);
+    navigate(contactProfileUrl(saved.id));
+  }
+
+  function reset() {
+    whoEl.value = "";
+    thoughtEl.value = "";
+    chosen = null;
+    close();
+    hideDisambig();
+  }
+
+  /**
+   * "Do you mean this Chris, or a new one?" (ORB-129)
+   *
+   * Asked rather than guessed. Picking the first match would attach a thought
+   * to the wrong person silently; creating a new one would leave two Chrises
+   * and no way to tell which the note was about. Both are worse than a
+   * question, and the question only appears when there is a real ambiguity.
+   */
+  function askWhich(typed, candidates) {
+    disambigEl.innerHTML = '<p class="capture-ask">Which ' + escapeHtml(typed) + '?</p>'
+      + '<ul class="capture-options">'
+      + candidates.map((c) =>
+          '<li><button type="button" class="capture-option" data-pick-id="'
+          + escapeHtml(c.id) + '">'
+          + '<span class="capture-option-name">' + escapeHtml(c.name) + '</span>'
+          // Whatever distinguishes them. A list of identical first names with
+          // nothing beside them is not a choice anybody can make.
+          + (describeContact(c)
+            ? '<span class="capture-option-detail">' + escapeHtml(describeContact(c)) + '</span>'
+            : '')
+          + '</button></li>').join("")
+      + '<li><button type="button" class="capture-option capture-option-new" data-pick-new>'
+      + '<span class="capture-option-name">Someone new</span>'
+      + '<span class="capture-option-detail">Add ' + escapeHtml(typed)
+      + ' and open their profile</span>'
+      + '</button></li>'
+      + '</ul>';
+    disambigEl.hidden = false;
+
+    disambigEl.querySelectorAll("[data-pick-id]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const c = (getContacts() || []).find((x) => x.id === btn.dataset.pickId);
+        if (c) captureOnto(c);
+      });
+    });
+    disambigEl.querySelector("[data-pick-new]")
+      .addEventListener("click", () => captureAsNew(typed));
+  }
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    errEl.textContent = "";
+    hideDisambig();
+
+    const typed = whoEl.value.trim();
+    if (!typed) {
+      errEl.textContent = "Who is this about?";
+      whoEl.focus();
+      return;
+    }
+    // Chosen from the dropdown is an answer already given; do not ask again.
+    if (chosen) return captureOnto(chosen);
+
+    const candidates = captureCandidates(typed, getContacts());
+    if (!candidates.length) return captureAsNew(typed);
+    if (candidates.length === 1
+        && (candidates[0].name || "").trim().toLowerCase() === typed.toLowerCase()) {
+      return captureOnto(candidates[0]);
+    }
+    askWhich(typed, candidates);
   });
 }
 
@@ -5231,8 +5424,8 @@ async function initContactPage() {
       // place does not also need displaying above it; the input IS the display.
       // What is worth keeping at a glance is who this person is, in a sentence.
       + '<p class="profile-role">'
-      + (c.role || c.company
-        ? escapeHtml([c.role, c.company].filter(Boolean).join(" at "))
+      + (describeContact(c)
+        ? escapeHtml(describeContact(c))
         : '<span class="profile-role-empty">Add their role and company below</span>')
       + '</p>'
 
@@ -5348,6 +5541,14 @@ async function initContactPage() {
       // ── Body ──────────────────────────────────────────────────────────────
       + '<div class="profile-body">'
 
+      // ORB-129. A contact created from a caught thought arrives with a name
+      // and nothing else, and lands you here — so here is where it says what is
+      // worth adding. Each line gives the reason, because "complete your
+      // profile" is a chore and "so you can tell two Chrises apart" is not.
+      //
+      // No dismiss button: it disappears when it stops being true.
+      + (profileIsBare(c) ? bareProfileHtml(c) : '')
+
       + '<section class="card">'
       + '<h3 class="section-title">Log a conversation</h3>'
       + '<div class="two-col">'
@@ -5433,11 +5634,15 @@ async function initContactPage() {
       if (cur) await toggleStar(cur, renderPage);
     });
 
-    $("#cpEditBtn")?.addEventListener("click", async () => {
+    const startEditing = async () => {
       editing = true;
       await renderPage();
-      $("#cpRole")?.focus();
-    });
+      root.querySelector("#cpRole")?.focus();
+    };
+    $("#cpEditBtn")?.addEventListener("click", startEditing);
+    // ORB-129. Same gesture as Edit, so there is one way in and not two that
+    // could drift apart.
+    $("#cpFillIn")?.addEventListener("click", startEditing);
 
     $("#cpCancelEdit")?.addEventListener("click", async () => {
       // Re-renders from saved state, so cancelling discards rather than keeping

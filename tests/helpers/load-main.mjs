@@ -148,6 +148,9 @@ const EXPORTS = [
   // catching a thought in one gesture (ORB-81)
   "captureFormHtml", "wireCaptureForm", "openCaptureModal", "openCaptures",
   "normalizeFollowUpItem", "FOLLOWUP_SOURCES",
+  // a caught thought about somebody new (ORB-129)
+  "captureCandidates", "contactProfileUrl", "describeContact",
+  "profileIsBare", "bareProfileHtml",
   // a talking point knows where it came from, and the list has a lifecycle
   // (ORB-121, ORB-122)
   "lastConversationDate", "groupFollowUps", "FOLLOWUP_GROUPS",

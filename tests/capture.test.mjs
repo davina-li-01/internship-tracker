@@ -53,11 +53,18 @@ const capture = (over = {}) => ({ text: "Ask about the payments move", source: "
 
 const tick = () => new Promise((r) => setTimeout(r, 20));
 
+// `went` collects where the form tried to send you. Navigation is injected
+// rather than read off window.location, which jsdom will not let anyone
+// redefine — the same seam ORB-108 cut for mailto.
+let went = [];
 function mount(contacts) {
   document.body.innerHTML = '<div id="host"></div>';
   const host = document.getElementById("host");
   host.innerHTML = captureFormHtml(contacts);
-  wireCaptureForm(host, () => contacts, async () => {});
+  went = [];
+  wireCaptureForm(host, () => contacts, async () => {}, {
+    navigate: (url) => went.push(url)
+  });
   return { host, $: (sel) => host.querySelector(sel) };
 }
 
@@ -196,8 +203,10 @@ group("One required field, and it is the first thing you type");
   const saved = state.saves[state.saves.length - 1];
   ok("a name on its own saves", saved);
   eq("as a capture", saved.followUps[0].source, "capture");
+  // First name, matching every other prompt in the app: "Marcus" is who you
+  // owe a message and "Marcus Chen" is a database row (ORB-78).
   eq("with a sentence written for you rather than a blank",
-    saved.followUps[0].text, "Reach out to Marcus Chen");
+    saved.followUps[0].text, "Reach out to Marcus");
   eq("and it is open", saved.followUps[0].completed, false);
 }
 {
@@ -238,12 +247,20 @@ group("One required field, and it is the first thing you type");
   ok("and says what is missing", /Who is this about/.test($(".capture-error").textContent));
 }
 {
+  // ORB-129 REVERSED THIS. It used to refuse — "No one in your network by that
+  // name yet" — so a thought about anybody not already saved had nowhere to go,
+  // which is the opposite of what a capture is for. The name becomes a
+  // connection and you land on their profile to say who they are.
   resetState();
   const { host, $ } = mount([person()]);
   $(".capture-who").value = "Someone Unknown";
   await submit(host);
-  eq("a stranger saves nothing", state.saves.length, 0);
-  ok("and is told why", /No one in your network/.test($(".capture-error").textContent));
+  eq("a stranger is saved rather than refused", state.saves.length, 1);
+  eq("under the name as typed", state.saves[0].name, "Someone Unknown");
+  eq("carrying the thought", state.saves[0].followUps[0].source, "capture");
+  eq("and nothing is refused", $(".capture-error").textContent, "");
+  eq("and you are taken there to fill them in",
+    went[0], "contact.html?id=" + state.saves[0].id);
 }
 {
   resetState();

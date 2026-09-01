@@ -1494,6 +1494,64 @@ sits on `send.` while inbound uses the root.
 
 ---
 
+## ORB-129 — a caught thought about someone new becomes a connection
+
+Shipped 1 Sep. **The capture bar was refusing the case it exists for.**
+
+An unknown name got *"No one in your network by that name yet."* So the one
+gesture ORB-81 built to be cheap — catch the thought before it goes — worked
+only for people already saved, which is the smaller half.
+
+**Three ways a typed name resolves now.**
+
+| Typed | What happens |
+|---|---|
+| A full name that matches | Saves against that person. No question — you have typed their whole name, and asking would be the app pretending not to understand |
+| Something several people could be | **Asks.** *"Which Chris?"* — each candidate with their role and company, and *Someone new* last |
+| Nobody it matches | Becomes a connection, and takes you to their profile |
+
+**The question is the whole ticket.** Both alternatives fail silently: attaching
+to the first Chris puts a note on the wrong person and says nothing; creating a
+second Chris leaves two of them and no way to tell which the thought was about.
+A candidate list with nothing but identical first names is not a choice either,
+so each option carries what distinguishes them.
+
+`captureCandidates` matches on substring **or** exact first name — the second is
+what makes one word find the right person, the first is what makes half a
+surname do it.
+
+**Creating navigates; attaching does not.** A new contact is a name and nothing
+else, so the profile is where the rest of what you know goes and now is when you
+know it. Attaching to somebody already described would interrupt a gesture whose
+entire value is being cheap.
+
+Nothing is invented on the way: no cadence (ORB-128), no meeting date, no
+conversation, no contact date (ORB-75). All five asserted.
+
+**And the profile says what to put in.** A card shows only while a contact is a
+bare name — no role, no company, no email, no conversations, no notes — and each
+line carries its reason rather than just naming a field. *Role and company* so a
+second Chris is never a guess. *Where you know them from* because it is the first
+thing you will want and the first thing you will forget. *An email* so reaching
+out does not mean leaving Orbit. It says outright that a schedule is optional,
+three tickets after the app stopped assuming one, and it removes itself when it
+stops being true.
+
+**Two things tidied on the way.** `describeContact` is now written once — the
+profile heading was rolling its own `[role, company].join(" at ")` and this
+needed a third copy. And navigation is injected rather than read off
+`window.location`, which jsdom will not let anyone redefine — the same seam
+ORB-108 cut for `mailto`, and it is what makes "you land on their profile"
+testable at all.
+
+**Tests.** New `capture-new-person.test.mjs` (51). Like ORB-128's, it **cannot
+be run against the old code** — `captureCandidates` does not exist there, so the
+module will not load. `capture.test.mjs`'s "a stranger saves nothing" was
+reversed rather than deleted, and carries the reason. 1883 assertions, 51
+suites, green.
+
+---
+
 ## ORB-128 — stop deciding things for people, and say what was done
 
 Shipped 25 Aug. **The first five reports from users who did not build this**,

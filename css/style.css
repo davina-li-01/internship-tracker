@@ -2793,6 +2793,33 @@ body.dark .file-card-link { color: var(--accent); }
 .cw-form > .field-group { margin-top: 0.7rem; }
 .cw-form .cw-submit { margin-top: 0.8rem; }
 
+/* ── Which one did you mean (ORB-129) ────────────────────────── */
+/* Options, not a list: each one is a button because each one is a decision. */
+.capture-disambig { margin-top: 0.6rem; }
+.capture-ask { margin: 0 0 0.4rem; font-size: 0.85rem; font-weight: 700; }
+.capture-options { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; }
+.capture-option {
+  width: 100%; text-align: left; cursor: pointer;
+  display: flex; flex-direction: column; gap: 0.1rem;
+  padding: 0.5rem 0.7rem; border-radius: var(--radius-btn);
+  border: 1px solid var(--input-border); background: var(--input-bg);
+  font-family: inherit; transition: all var(--trans);
+}
+.capture-option:hover { border-color: var(--input-focus); transform: translateY(-1px); }
+.capture-option:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+.capture-option-name { font-size: 0.875rem; font-weight: 600; color: var(--text); }
+.capture-option-detail { font-size: 0.75rem; color: var(--text-muted); }
+/* Separated from the real people above it, because it is a different kind of
+   answer — not "one of these" but "none of these". */
+.capture-option-new { border-style: dashed; margin-top: 0.15rem; }
+
+/* ── A profile that is only a name (ORB-129) ─────────────────── */
+.bare-profile .section-title { margin-bottom: 0.35rem; }
+.bare-profile .muted { max-width: 62ch; }
+.bare-list { margin: 0.7rem 0 0.9rem; padding-left: 1.1rem; display: grid; gap: 0.35rem; }
+.bare-list li { font-size: 0.875rem; line-height: 1.5; }
+.bare-profile .tiny { margin: 0 0 0.9rem; }
+
 /* ── Empty state ─────────────────────────────────────────────── */
 .dash-empty { text-align: center; padding: 2.5rem 1.5rem; }
 .dash-empty-icon { font-size: 2.5rem; margin: 0 0 0.5rem; }
